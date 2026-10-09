@@ -1,5 +1,5 @@
 //! Review requests preserve required evidence while fitting the aggregate budget.
-//! Parent token-budget mode must not replace Guardian's summary compaction.
+//! Oversized required evidence fails closed; VRS integration has no summary compaction.
 
 use anyhow::Result;
 use codex_config::test_support::CloudConfigBundleFixture;
@@ -10,7 +10,6 @@ use codex_core::config::RolloutBudgetConfig;
 use codex_core::context::GuardianContextMode;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_features::Feature;
-use codex_history::RolloutItem;
 use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
@@ -40,7 +39,7 @@ use test_case::test_case;
 use super::image_rollout::RecordingFileAttachmentStore;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn independent_review_preserves_oversized_instruction_order() -> Result<()> {
+async fn independent_review_rejects_oversized_required_instructions() -> Result<()> {
     skip_if_no_network!(Ok(()));
     skip_if_wine_exec!(
         Ok(()),
@@ -49,7 +48,7 @@ async fn independent_review_preserves_oversized_instruction_order() -> Result<()
     let server = responses::start_mock_server().await;
     let mut extensions = ExtensionRegistryBuilder::new();
     extensions.thread_lifecycle_contributor(Arc::new(ThreadIdle));
-    let mut test = test_codex()
+    let test = test_codex()
         .with_extensions(Arc::new(extensions.build()))
         .with_model_info_override("gpt-5.6-luna", |model| model.context_window = Some(28_000))
         .with_model_info_override("gpt-5.5", |model| {
@@ -65,21 +64,6 @@ async fn independent_review_preserves_oversized_instruction_order() -> Result<()
         })
         .build_with_auto_env(&server)
         .await?;
-    let old_history: Vec<RolloutItem> = serde_json::from_value(json!([{
-        "type": "compacted",
-        "payload": {
-            "message": "Historical checkpoint without producer metadata.",
-            "replacement_history": [{
-                "type": "compaction",
-                "id": "old-checkpoint",
-                "encrypted_content": "legacy opaque context"
-            }]
-        }
-    }]))?;
-    test.codex.ensure_rollout_materialized().await;
-    test.codex.append_rollout_items(&old_history).await?;
-    test.codex =
-        super::guardian_checkpoint_migration::resume(&test, &test.codex, old_history).await?;
     assert_eq!(
         GuardianContextMode::from_history(
             test.codex
@@ -115,21 +99,10 @@ async fn independent_review_preserves_oversized_instruction_order() -> Result<()
                     ev_completed(&format!("done-{turn}")),
                 ]),
             ];
+            // D5 rejects the second oversized review before any reviewer request.
+            // Keep the original 28k window and input lengths; do not truncate evidence.
             if turn == 1 {
-                events.insert(
-                    /*index*/ 1,
-                    sse(vec![
-                        json!({
-                            "type": "response.output_item.done",
-                            "item": {
-                                "type": "compaction",
-                                "id": "review-summary",
-                                "encrypted_content": "Earlier reviewer context."
-                            }
-                        }),
-                        ev_completed("review-compaction"),
-                    ]),
-                );
+                events.remove(1);
             }
             events
         })
@@ -171,7 +144,11 @@ async fn independent_review_preserves_oversized_instruction_order() -> Result<()
         .iter()
         .filter(|request| request.body_json()["client_metadata"]["x-openai-subagent"] == "guardian")
         .collect::<Vec<_>>();
-    assert_eq!((compactions.len(), reviews.len()), (1, 2));
+    assert!(
+        compactions.is_empty(),
+        "D7 removes every compaction request"
+    );
+    assert_eq!(reviews.len(), 1, "D5 rejects the oversized second review");
     assert!(
         reviews[0]
             .message_input_text_groups("user")
@@ -180,26 +157,38 @@ async fn independent_review_preserves_oversized_instruction_order() -> Result<()
             .concat()
             .contains(&initial)
     );
-    let groups = reviews[1].message_input_text_groups("user");
-    let delta = groups.last().expect("follow-up review").concat();
-    assert!(delta.contains("<truncated omitted_approx_tokens="));
+    assert_eq!(requests.len(), 5);
+    let final_request = requests
+        .last()
+        .expect("parent receives the review rejection");
+    let output = final_request.function_call_output("exec-1");
     assert!(
-        delta.contains("User instructions and prior approvals may be incomplete where marked.")
+        output.to_string().contains("reviewer input budget"),
+        "expected required-evidence budget rejection: {output}"
     );
-    let transcript = delta
-        .split_once(">>> TRANSCRIPT DELTA START\n")
-        .expect("legacy transcript delta")
-        .1
-        .split_once(">>> TRANSCRIPT DELTA END\n")
-        .expect("legacy transcript delta end")
-        .0;
-    let approval_start = transcript.find(&approval).expect("complete prior approval");
-    let restriction_start = transcript.find(restriction).expect("later restriction");
-    assert!(approval_start + approval.len() < restriction_start);
-    assert!(!delta.contains(&initial), "old entries are not resent");
-    assert_eq!(
-        reviews[0].body_json()["client_metadata"]["thread_id"],
-        reviews[1].body_json()["client_metadata"]["thread_id"]
+    // I5 still requires the complete original instructions, in their original order.
+    // Rejecting a reviewer request must not shorten the parent's required evidence.
+    let user_text = final_request
+        .message_input_text_groups("user")
+        .concat()
+        .concat();
+    let initial_start = user_text
+        .find(&initial)
+        .expect("complete initial instruction");
+    let followup_start = user_text
+        .find(&followup)
+        .expect("complete follow-up instruction");
+    let restriction_start = user_text
+        .find(restriction)
+        .expect("complete later restriction");
+    assert!(initial_start + initial.len() <= followup_start);
+    assert!(followup_start + followup.len() <= restriction_start);
+    assert!(
+        final_request
+            .message_input_text_groups("developer")
+            .concat()
+            .concat()
+            .contains(&approval)
     );
     test.codex.shutdown_and_wait().await?;
     Ok(())
