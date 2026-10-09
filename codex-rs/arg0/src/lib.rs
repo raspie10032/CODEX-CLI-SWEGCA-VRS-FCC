@@ -230,6 +230,12 @@ where
     // this executable. Admittedly, we could invoke `keep()` on it, but it
     // would be nice to avoid leaving temporary directories behind, if possible.
     let path_entry_guard = arg0_dispatch();
+    // Environment setup is complete. Open VRS once before serving requests; restoration runs
+    // in the library's background workers. A startup error remains in the handle and is also
+    // returned by recording/assembly calls, so a turn cannot silently use another input source.
+    if let Err(err) = codex_vrs::initialize() {
+        eprintln!("WARNING: failed to initialize VRS: {err}");
+    }
     let current_exe = std::env::current_exe().ok();
 
     // Regular invocation. Run the async entry point on a thread with the same

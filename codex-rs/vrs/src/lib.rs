@@ -1,8 +1,9 @@
 //! In-process VRS context assembly (`libvrs`).
 //!
-//! One process-wide handle is opened lazily on first use. Rollout lines are inserted where they
-//! are written (`insert`), and the model input of a thread is assembled from the store
-//! (`assemble`). There is no fallback: every failure is returned to the caller.
+//! One process-wide handle is opened at process startup. Rollout lines are inserted by their
+//! recording caller (`insert`), then released after persistence (`written`). Model input is
+//! assembled from that store (`assemble`). Requests never initialize the handle or wait for it;
+//! every failure is returned to the caller without a history fallback.
 
 use std::ffi::CString;
 use std::ffi::c_char;
@@ -10,12 +11,14 @@ use std::ffi::c_int;
 use std::ffi::c_uint;
 use std::fmt;
 use std::path::Path;
-use std::sync::OnceLock;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicPtr;
+use std::sync::atomic::Ordering;
 
 /// Why the VRS store could not serve a call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VrsError {
-    /// The store is still restoring (`vrs_assemble` returned 1).
+    /// Startup has not published a handle yet, or the store is still restoring (return code 1).
     NotReady,
     /// The required input exceeds the physical window (`vrs_assemble` returned 2).
     OverWindow,
@@ -76,6 +79,7 @@ mod ffi {
             line: *const c_char,
             len: usize,
         ) -> c_int;
+        pub fn vrs_written(h: *mut VrsH, path: *const c_char, off: u64) -> c_int;
         pub fn vrs_assemble(
             h: *mut VrsH,
             path: *const c_char,
@@ -111,13 +115,47 @@ pub fn ephemeral_path(thread_id: &str) -> Result<std::path::PathBuf, VrsError> {
         .join(format!("{thread_id}.jsonl")))
 }
 
-static HANDLE: OnceLock<Result<Handle, String>> = OnceLock::new();
+// Startup publishes exactly one immutable result. The allocation and library handle live for
+// the process lifetime, so readers need neither a lock nor ownership/refcount updates.
+static OPEN_STARTED: AtomicBool = AtomicBool::new(false);
+static HANDLE: AtomicPtr<Result<Handle, VrsError>> = AtomicPtr::new(std::ptr::null_mut());
+
+/// Opens the process-wide store before the application starts serving requests.
+///
+/// Opening starts the library's background restore and returns without waiting for readiness.
+/// Repeated or concurrent calls never reopen the store: they return its published result, or
+/// `NotReady` while the first caller is opening it. Request paths must only call `insert`,
+/// `written`, and `assemble`, which read the published handle without initializing it.
+pub fn initialize() -> Result<(), VrsError> {
+    initialize_once(|| {
+        let home = codex_utils_home_dir::find_codex_home()
+            .map_err(|err| VrsError::Unavailable(err.to_string()))?;
+        open_handle(home.as_path()).map_err(VrsError::Unavailable)
+    })
+}
+
+/// Initializes a process whose Codex home is supplied by its embedding application or test.
+///
+/// Like `initialize`, this is a startup operation. The first startup call fixes the home for
+/// the process lifetime; subsequent calls only read that result.
+pub fn initialize_for_home(home: &Path) -> Result<(), VrsError> {
+    initialize_once(|| open_handle(home).map_err(VrsError::Unavailable))
+}
+
+fn initialize_once(open: impl FnOnce() -> Result<Handle, VrsError>) -> Result<(), VrsError> {
+    if OPEN_STARTED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
+        HANDLE.store(Box::into_raw(Box::new(open())), Ordering::Release);
+    }
+    handle().map(|_| ())
+}
 
 #[cfg(target_os = "linux")]
-fn open_handle() -> Result<Handle, String> {
-    let home = codex_utils_home_dir::find_codex_home().map_err(|err| err.to_string())?;
-    let sessions = home.as_path().join("sessions");
-    let index = home.as_path().join("vrs").join("idx");
+fn open_handle(home: &Path) -> Result<Handle, String> {
+    let sessions = home.join("sessions");
+    let index = home.join("vrs").join("idx");
     // libvrs refuses to open without its rollout tree, and its index lives beside it.
     std::fs::create_dir_all(&sessions)
         .map_err(|err| format!("create {}: {err}", sessions.display()))?;
@@ -144,15 +182,16 @@ fn open_handle() -> Result<Handle, String> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn open_handle() -> Result<Handle, String> {
+fn open_handle(_home: &Path) -> Result<Handle, String> {
     Err("libvrs is only available on Linux".to_string())
 }
 
 fn handle() -> Result<&'static Handle, VrsError> {
-    HANDLE
-        .get_or_init(open_handle)
-        .as_ref()
-        .map_err(|reason| VrsError::Unavailable(reason.clone()))
+    let result = HANDLE.load(Ordering::Acquire);
+    // SAFETY: only startup stores this pointer, after fully constructing its allocation. It is
+    // immutable and never freed or replaced; a null pointer means startup has not published yet.
+    let result = unsafe { result.as_ref() }.ok_or(VrsError::NotReady)?;
+    result.as_ref().map_err(Clone::clone)
 }
 
 #[cfg(target_os = "linux")]
@@ -179,15 +218,36 @@ pub fn insert(path: &Path, off: u64, line: &[u8]) -> Result<(), VrsError> {
             line.len(),
         )
     };
-    if rc == 0 {
-        Ok(())
-    } else {
-        Err(VrsError::Failed(rc))
+    match rc {
+        0 => Ok(()),
+        1 => Err(VrsError::NotReady),
+        other => Err(VrsError::Failed(other)),
     }
 }
 
 #[cfg(not(target_os = "linux"))]
 pub fn insert(_path: &Path, _off: u64, _line: &[u8]) -> Result<(), VrsError> {
+    handle().map(|_| ())
+}
+
+/// Releases the library's in-memory copy after the line at `off` has been written and flushed.
+///
+/// This acknowledges persistence; it does not wait for a writer or assembly operation.
+#[cfg(target_os = "linux")]
+pub fn written(path: &Path, off: u64) -> Result<(), VrsError> {
+    let handle = handle()?;
+    let path = c_path(path)?;
+    // SAFETY: the handle lives for the process lifetime and the path outlives this call.
+    let rc = unsafe { ffi::vrs_written(handle.raw, path.as_ptr(), off) };
+    match rc {
+        0 => Ok(()),
+        1 => Err(VrsError::NotReady),
+        other => Err(VrsError::Failed(other)),
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn written(_path: &Path, _off: u64) -> Result<(), VrsError> {
     handle().map(|_| ())
 }
 
@@ -206,14 +266,20 @@ pub fn assemble(path: &Path) -> Result<Assembled, VrsError> {
     } else {
         // SAFETY: the library returns `len` readable bytes at `json`.
         let bytes = unsafe { std::slice::from_raw_parts(json.cast::<u8>(), len) };
-        let parsed = if rc == 0 { Some(parse_reply(bytes)) } else { None };
+        let parsed = if rc == 0 {
+            Some(parse_reply(bytes))
+        } else {
+            None
+        };
         // SAFETY: `json` was allocated by the library and is not used after this point.
         unsafe { ffi::vrs_free(json) };
         parsed
     };
     match rc {
         0 => body.unwrap_or_else(|| {
-            Err(VrsError::Unavailable("vrs_assemble returned no JSON".to_string()))
+            Err(VrsError::Unavailable(
+                "vrs_assemble returned no JSON".to_string(),
+            ))
         }),
         1 => Err(VrsError::NotReady),
         2 => Err(VrsError::OverWindow),
@@ -232,7 +298,10 @@ fn parse_reply(bytes: &[u8]) -> Result<Assembled, VrsError> {
     if value.get("ok").and_then(serde_json::Value::as_bool) == Some(false) {
         return Err(VrsError::Unavailable(format!(
             "assembler error: {}",
-            value.get("error").map(ToString::to_string).unwrap_or_default()
+            value
+                .get("error")
+                .map(ToString::to_string)
+                .unwrap_or_default()
         )));
     }
     let items = value
@@ -242,14 +311,30 @@ fn parse_reply(bytes: &[u8]) -> Result<Assembled, VrsError> {
         .ok_or_else(|| VrsError::Unavailable("VRS reply has no items".to_string()))?;
     Ok(Assembled {
         items,
-        tokens: value.get("tokens").and_then(serde_json::Value::as_u64).unwrap_or(0),
-        micros: value.get("us").and_then(serde_json::Value::as_u64).unwrap_or(0),
+        tokens: value
+            .get("tokens")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0),
+        micros: value
+            .get("us")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn requests_before_startup_return_not_ready_without_opening() {
+        let path = Path::new("not-created-before-vrs-startup.jsonl");
+        assert!(matches!(insert(path, 0, b"{}\n"), Err(VrsError::NotReady)));
+        assert!(matches!(written(path, 0), Err(VrsError::NotReady)));
+        assert!(matches!(assemble(path), Err(VrsError::NotReady)));
+        assert!(!OPEN_STARTED.load(Ordering::Acquire));
+        assert!(HANDLE.load(Ordering::Acquire).is_null());
+    }
 
     #[test]
     fn parses_reply() {

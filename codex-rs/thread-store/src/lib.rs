@@ -117,3 +117,11 @@ pub use types::ThreadSortKey;
 pub use types::TimelinePage;
 pub use types::TurnPage;
 pub use types::UpdateThreadMetadataParams;
+
+// Standalone unit tests do not enter the CLI startup path.
+#[cfg(test)]
+#[ctor::ctor]
+fn initialize_vrs_for_thread_store_tests() {
+    let home = tempfile::tempdir().expect("create VRS test home").keep();
+    codex_vrs::initialize_for_home(&home).expect("initialize VRS for tests");
+}

@@ -51,5 +51,6 @@ uuid = { workspace = true }
 zstd = { workspace = true }
 
 [dev-dependencies]
+ctor = { workspace = true }
 codex-utils-absolute-path = { workspace = true }
 pretty_assertions = { workspace = true }

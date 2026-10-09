@@ -1,4 +1,4 @@
-/* Link stub for libvrs (doc P-5). Every call reports "not ready" (1) until the real
+/* Link stub for libvrs (doc P-5). Assembly reports "not ready" (1) until the real
  * libvrs.a built in $WORK/vrsint replaces it. Build:
  *   cc -O2 -fPIC -c vrs_stub.c -o vrs_stub.o && ar rcs libvrs.a vrs_stub.o
  */
@@ -14,6 +14,7 @@ typedef struct {
     const unsigned* cpus;
     unsigned ncpus;
     int segwin;
+    uint64_t budget;
 } vrs_opts;
 
 int vrs_open(const vrs_opts* opts, vrs_h** out) {
@@ -30,6 +31,11 @@ int vrs_ready(vrs_h* h) {
 
 int vrs_insert(vrs_h* h, const char* path, uint64_t off, const char* line, size_t len) {
     (void)h; (void)path; (void)off; (void)line; (void)len;
+    return 0;
+}
+
+int vrs_written(vrs_h* h, const char* path, uint64_t off) {
+    (void)h; (void)path; (void)off;
     return 0;
 }
 

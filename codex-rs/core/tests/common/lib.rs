@@ -58,6 +58,10 @@ fn enable_deterministic_unified_exec_process_ids_for_tests() {
 #[ctor]
 fn configure_arg0_dispatch_for_test_binaries() {
     let _ = TEST_ARG0_PATH_ENTRY.get_or_init(codex_arg0::arg0_dispatch);
+    // The library keeps workers alive for the process lifetime. Keep their isolated root alive
+    // too; test startup must never index or write the user's actual Codex home.
+    let home = tempfile::tempdir().expect("create VRS test home").keep();
+    codex_vrs::initialize_for_home(&home).expect("initialize VRS for tests");
 }
 
 #[ctor]
