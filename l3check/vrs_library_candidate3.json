@@ -1,0 +1,26 @@
+{
+  "artifact_status": "source_review_candidate_not_applied_or_compiled",
+  "source": "$WORK/vrsint/vrs_lib.cpp",
+  "source_sha256": "21ba6146899e8d1b9673e1f78f74d5c9be3d4abd525eb915947d43d5cee485ea",
+  "header_sha256": "692968b42a8b61bf7641a91043b3c663e4a2d478ae41bd3460d508da32746c45",
+  "library_sha256": "493759a11d4cf341cf13c70ea4548ffa285b182e9ef405fa404f60924845c61a",
+  "patch_sha256": "144330c52f128a3bdca7bfeb55cad36ff19dce8092a95e143c3b0e2b0e285ee6",
+  "patch_check": {
+    "command": "git apply --check l3check/vrs_library_candidate3.patch (isolated temporary source copy)",
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "compiled": false,
+  "linked": false,
+  "tested": false,
+  "original_library_modified": false,
+  "owner_update_observed": {
+    "source_sha256": "c468087b1e7ef0e2c34f3199283e7ea97d76a4f583749abac59d4322076d0732",
+    "library_sha256": "cc81fe7547cb8e9f1e0f1f06355ca661bec54ca41cb56c88fda15f8e383c0479",
+    "patch_check_exit_code": 0,
+    "patch_check_stderr": "",
+    "vi27_insert_line": 3326,
+    "vi28_wait_line": 3337
+  }
+}
