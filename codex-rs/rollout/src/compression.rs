@@ -271,23 +271,37 @@ impl RolloutLineReader {
         self.metrics.reached_eof = false;
         let mut failure_source = ReadFailureSource::Stream;
         let result = async {
-            match &mut self.inner {
-                RolloutLineReaderInner::Plain(lines) => lines.next_line().await,
-                RolloutLineReaderInner::Blocking(slot) => {
-                    let Some(mut reader) = slot.take() else {
-                        failure_source = ReadFailureSource::ReaderBusy;
-                        return Err(io::Error::other("compressed rollout reader is busy"));
-                    };
-                    let (line, reader) =
-                        tokio::task::spawn_blocking(move || (reader.next().transpose(), reader))
-                            .await
-                            .map_err(|err| {
-                                failure_source = ReadFailureSource::TaskJoin;
-                                io::Error::other(err)
-                            })?;
-                    *slot = Some(reader);
-                    line
+            loop {
+                let line = match &mut self.inner {
+                    RolloutLineReaderInner::Plain(lines) => lines.next_line().await,
+                    RolloutLineReaderInner::Blocking(slot) => {
+                        let Some(mut reader) = slot.take() else {
+                            failure_source = ReadFailureSource::ReaderBusy;
+                            return Err(io::Error::other("compressed rollout reader is busy"));
+                        };
+                        let (line, reader) = tokio::task::spawn_blocking(move || {
+                            (reader.next().transpose(), reader)
+                        })
+                        .await
+                        .map_err(|err| {
+                            failure_source = ReadFailureSource::TaskJoin;
+                            io::Error::other(err)
+                        })?;
+                        *slot = Some(reader);
+                        line
+                    }
+                }?;
+                let Some(mut line) = line else {
+                    return Ok(None);
+                };
+                let hole_len = line.len() - crate::trim_rollout_hole_prefix(&line).len();
+                if hole_len > 0 {
+                    line.drain(..hole_len);
+                    if line.is_empty() {
+                        continue;
+                    }
                 }
+                return Ok(Some(line));
             }
         }
         .await;
@@ -317,7 +331,12 @@ impl RolloutLineReader {
         };
         blocking_reader::scan_lines(reader, self.metrics, move |lines| {
             for line in lines {
-                if let Some(found) = find(&line?) {
+                let line = line?;
+                let trimmed = crate::trim_rollout_hole_prefix(&line);
+                if trimmed.is_empty() && !line.is_empty() {
+                    continue;
+                }
+                if let Some(found) = find(trimmed) {
                     return Ok(Some(found));
                 }
             }

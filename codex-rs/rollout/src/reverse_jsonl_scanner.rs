@@ -26,6 +26,7 @@ pub struct ReverseJsonlScanner<R> {
     chunk_position: usize,
     chunk: Vec<u8>,
     record_reversed: Vec<u8>,
+    pending_nul_bytes: usize,
     max_record_bytes: Option<usize>,
     discarding_oversized_record: bool,
 }
@@ -57,6 +58,7 @@ where
             chunk_position: 0,
             chunk: vec![0; READ_CHUNK_SIZE],
             record_reversed: Vec::new(),
+            pending_nul_bytes: 0,
             max_record_bytes: None,
             discarding_oversized_record: false,
         })
@@ -94,41 +96,55 @@ where
                 self.chunk_position = read_size;
             }
 
-            let chunk = &self.chunk[..self.chunk_position];
-            if let Some(newline_position) = memchr::memrchr(b'\n', chunk) {
-                let fragment = &chunk[newline_position + 1..];
-                if !self.discarding_oversized_record {
-                    if self.max_record_bytes.is_some_and(|max_record_bytes| {
-                        self.record_reversed.len().saturating_add(fragment.len()) > max_record_bytes
-                    }) {
-                        self.record_reversed.clear();
-                        self.discarding_oversized_record = true;
-                    } else {
-                        self.record_reversed.extend(fragment.iter().rev().copied());
-                    }
-                }
+            if let Some(newline_position) =
+                memchr::memrchr(b'\n', &self.chunk[..self.chunk_position])
+            {
+                self.append_fragment(newline_position + 1);
                 self.chunk_position = newline_position;
                 if self.discarding_oversized_record {
                     self.discarding_oversized_record = false;
+                    self.pending_nul_bytes = 0;
                     continue;
                 }
                 if let Some(outcome) = self.finish_record() {
                     return Ok(Some(outcome));
                 }
             } else {
-                if !self.discarding_oversized_record {
-                    if self.max_record_bytes.is_some_and(|max_record_bytes| {
-                        self.record_reversed.len().saturating_add(chunk.len()) > max_record_bytes
-                    }) {
-                        self.record_reversed.clear();
-                        self.discarding_oversized_record = true;
-                    } else {
-                        self.record_reversed.extend(chunk.iter().rev().copied());
-                    }
-                }
+                self.append_fragment(0);
                 self.chunk_position = 0;
             }
         }
+    }
+
+    fn append_fragment(&mut self, start: usize) {
+        if self.discarding_oversized_record {
+            return;
+        }
+        let fragment = &self.chunk[start..self.chunk_position];
+        let hole_len = fragment.iter().take_while(|byte| **byte == 0).count();
+        let content = &fragment[hole_len..];
+        if !content.is_empty() {
+            // Keep leading NUL runs pending across chunk boundaries: a hole must neither use
+            // record-buffer memory nor count toward the limit for the following valid record.
+            // If earlier non-NUL bytes appear, the run was inside a record and must be retained.
+            let with_pending = self
+                .record_reversed
+                .len()
+                .saturating_add(self.pending_nul_bytes);
+            if self
+                .max_record_bytes
+                .is_some_and(|max| with_pending.saturating_add(content.len()) > max)
+            {
+                self.record_reversed.clear();
+                self.pending_nul_bytes = 0;
+                self.discarding_oversized_record = true;
+                return;
+            }
+            self.record_reversed.resize(with_pending, 0);
+            self.record_reversed.extend(content.iter().rev().copied());
+            self.pending_nul_bytes = 0;
+        }
+        self.pending_nul_bytes = self.pending_nul_bytes.saturating_add(hole_len);
     }
 
     /// Scans the next rollout record through the canonical persisted JSON decoder.
@@ -146,6 +162,7 @@ where
     where
         T: DeserializeOwned,
     {
+        self.pending_nul_bytes = 0;
         self.record_reversed.reverse();
         let outcome = if self.record_reversed.iter().all(u8::is_ascii_whitespace) {
             None

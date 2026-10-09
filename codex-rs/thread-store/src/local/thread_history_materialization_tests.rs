@@ -60,6 +60,33 @@ use crate::ThreadPersistenceMetadata;
 use crate::ThreadSortKey;
 use crate::ThreadStore;
 
+#[test]
+fn projection_keeps_source_byte_offsets_when_skipping_reserved_holes() {
+    let home = TempDir::new().expect("temp dir");
+    let path = home.path().join("rollout-holes.jsonl");
+    let mut contents = vec![0; 37];
+    let line = RolloutLine {
+        timestamp: "2025-01-03T12:00:00Z".to_string(),
+        ordinal: Some(0),
+        item: turn_started("turn-after-hole"),
+    };
+    contents.extend_from_slice(&serde_json::to_vec(&line).expect("serialize rollout line"));
+    contents.push(b'\n');
+    let expected_end = contents.len() as u64;
+    fs::write(&path, contents).expect("write rollout with hole");
+
+    let (steps, end) = super::read_projection_steps_sync(&path, 0, 0, ThreadId::default(), None)
+        .expect("project after hole");
+    assert_eq!(end, expected_end);
+    assert_eq!(steps.len(), 1);
+    let super::RolloutProjectionStep::Line(projected) = &steps[0] else {
+        panic!("expected projected rollout line");
+    };
+    assert_eq!(projected.ordinal, 0);
+    assert_eq!(projected.start_byte_offset, 0);
+    assert_eq!(projected.end_byte_offset, expected_end);
+}
+
 #[tokio::test]
 async fn paginated_history_without_state_db_does_not_initialize_sqlite() {
     let home = TempDir::new().expect("temp dir");

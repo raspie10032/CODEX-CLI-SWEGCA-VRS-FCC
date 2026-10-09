@@ -75,12 +75,27 @@ pub fn decode_rollout_line(value: Value) -> serde_json::Result<RolloutLine> {
 
 /// Parses a persisted JSONL rollout record through the canonical JSON decoder.
 pub fn parse_rollout_line(line: &str) -> serde_json::Result<RolloutLine> {
-    serde_json::from_str::<Value>(line).and_then(decode_rollout_line)
+    serde_json::from_str::<Value>(trim_rollout_hole_prefix(line)).and_then(decode_rollout_line)
 }
 
 /// Parses persisted JSONL rollout record bytes through the canonical JSON decoder.
 pub fn parse_rollout_line_bytes(bytes: &[u8]) -> serde_json::Result<RolloutLine> {
-    serde_json::from_slice::<Value>(bytes).and_then(decode_rollout_line)
+    serde_json::from_slice::<Value>(trim_rollout_hole_prefix_bytes(bytes))
+        .and_then(decode_rollout_line)
+}
+
+/// Skips unwritten reservations before a rollout record. A reservation includes its newline,
+/// so a crash can leave a NUL-only range directly before the next persisted JSON record.
+/// Interior NUL bytes remain invalid JSON rather than silently changing a damaged record.
+pub(crate) fn trim_rollout_hole_prefix(line: &str) -> &str {
+    line.trim_start_matches('\0')
+}
+
+/// Skips a NUL-only reservation immediately before a persisted JSON record.
+/// Callers tracking file offsets must still count the original, untrimmed bytes.
+pub fn trim_rollout_hole_prefix_bytes(bytes: &[u8]) -> &[u8] {
+    let hole_len = bytes.iter().take_while(|byte| **byte == 0).count();
+    &bytes[hole_len..]
 }
 
 pub const SESSIONS_SUBDIR: &str = "sessions";
@@ -170,3 +185,10 @@ pub use writer_lock::WriterLockGuard;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[ctor::ctor]
+fn initialize_vrs_for_rollout_tests() {
+    let home = tempfile::tempdir().expect("create VRS test home").keep();
+    codex_vrs::initialize_for_home(&home).expect("initialize VRS for tests");
+}

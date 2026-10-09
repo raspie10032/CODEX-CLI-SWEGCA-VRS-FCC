@@ -82,6 +82,47 @@ use crate::local::test_support::test_config;
 
 const TIMESTAMP: &str = "2025-01-03T12:00:00Z";
 
+#[tokio::test]
+async fn migration_reader_preserves_offsets_across_holes_larger_than_record_limit() {
+    let home = TempDir::new().expect("temp dir");
+    let path = home.path().join("rollout-holes.jsonl");
+    let line = format!(
+        "{}\n",
+        json!({
+            "timestamp": TIMESTAMP,
+            "type": "event_msg",
+            "payload": {"type": "warning", "message": "after hole"},
+        })
+    );
+    let hole_len = super::MAX_ROLLOUT_LINE_BYTES + 1;
+    let mut contents = vec![0; hole_len];
+    contents.extend_from_slice(line.as_bytes());
+    contents.extend_from_slice(&[0; 23]);
+    fs::write(&path, contents).expect("write rollout with holes");
+    let file = tokio::fs::File::open(&path).await.expect("open rollout");
+    let mut reader = tokio::io::BufReader::new(file);
+    let mut bytes = Vec::new();
+
+    let record = super::read_rollout_record(&mut reader, &mut bytes)
+        .await
+        .expect("read past hole")
+        .expect("record");
+    assert_eq!(record.byte_count, (hole_len + line.len()) as u64);
+    assert!(record.line.is_some());
+    let tail = super::read_rollout_record(&mut reader, &mut bytes)
+        .await
+        .expect("read tail hole")
+        .expect("tail bytes");
+    assert_eq!(tail.byte_count, 23);
+    assert!(tail.line.is_none());
+    assert!(
+        super::read_rollout_record(&mut reader, &mut bytes)
+            .await
+            .expect("read EOF")
+            .is_none()
+    );
+}
+
 fn write_rollout(
     home: &Path,
     thread_id: ThreadId,

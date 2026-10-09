@@ -19,6 +19,7 @@ use serde_json::Value;
 /// rewrites for historical wire shapes that current protocol types no longer
 /// accept.
 pub(super) fn parse_legacy_rollout_line(bytes: &[u8]) -> Result<Option<RolloutLine>, String> {
+    let bytes = codex_rollout::trim_rollout_hole_prefix_bytes(bytes);
     if bytes.iter().all(u8::is_ascii_whitespace) {
         return Ok(None);
     }

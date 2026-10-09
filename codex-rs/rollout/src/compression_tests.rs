@@ -31,6 +31,52 @@ use crate::read_session_meta_line;
 use crate::search_rollout_matches;
 
 #[tokio::test]
+async fn rollout_readers_skip_reserved_holes_for_resume_and_listing() -> anyhow::Result<()> {
+    for compressed in [false, true] {
+        let home = TempDir::new()?;
+        let uuid = Uuid::from_u128(81);
+        let thread_id = ThreadId::from_string(&uuid.to_string())?;
+        let path = rollout_path(home.path(), "2025-01-03T12-00-00", uuid);
+        write_rollout(&path, thread_id, "hello holes")?;
+        let original = fs::read_to_string(&path)?;
+        let hole = "\0".repeat(70 * 1024);
+        let mut contents = String::new();
+        for line in original.lines() {
+            contents.push_str(&hole);
+            contents.push_str(line);
+            contents.push('\n');
+        }
+        contents.push_str(&hole);
+        fs::write(&path, contents)?;
+        if compressed {
+            compress_now(&path)?;
+        }
+
+        let (items, loaded_thread_id, parse_errors) =
+            RolloutRecorder::load_rollout_items(&path).await?;
+        assert_eq!(loaded_thread_id, Some(thread_id));
+        assert_eq!(parse_errors, 0);
+        assert_eq!(items.len(), 2);
+        assert_eq!(read_session_meta_line(&path).await?.meta.id, thread_id);
+
+        let mut reader = open_rollout_line_reader(&path).await?;
+        for expected in original.lines() {
+            assert_eq!(reader.next_line().await?.as_deref(), Some(expected));
+        }
+        assert_eq!(reader.next_line().await?, None);
+
+        let reader = open_rollout_line_reader(&path).await?;
+        assert_eq!(
+            reader
+                .find_map(|line| line.contains('\0').then_some(()))
+                .await?,
+            None
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn load_rollout_items_reads_compressed_rollout() -> anyhow::Result<()> {
     let home = TempDir::new()?;
     let uuid = Uuid::from_u128(1);

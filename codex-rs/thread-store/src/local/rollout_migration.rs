@@ -1208,15 +1208,32 @@ async fn read_rollout_record(
     bytes: &mut Vec<u8>,
 ) -> ThreadStoreResult<Option<RolloutRecord>> {
     bytes.clear();
-    let mut byte_count = reader
+    // Reserved but unwritten records include their newline. Skip the leading hole before
+    // enforcing the JSON record limit, while retaining its bytes in the source checkpoint.
+    let mut hole_byte_count = 0usize;
+    loop {
+        let available = reader.fill_buf().await.map_err(migration_error)?;
+        let hole_len = available.iter().take_while(|byte| **byte == 0).count();
+        if hole_len == 0 {
+            break;
+        }
+        reader.consume(hole_len);
+        hole_byte_count = hole_byte_count
+            .checked_add(hole_len)
+            .ok_or_else(|| migration_error("rollout record byte count overflow"))?;
+    }
+    let line_byte_count = reader
         .take((MAX_ROLLOUT_LINE_BYTES + 1) as u64)
         .read_until(b'\n', bytes)
         .await
         .map_err(migration_error)?;
+    let mut byte_count = hole_byte_count
+        .checked_add(line_byte_count)
+        .ok_or_else(|| migration_error("rollout record byte count overflow"))?;
     if byte_count == 0 {
         return Ok(None);
     }
-    if byte_count > MAX_ROLLOUT_LINE_BYTES {
+    if line_byte_count > MAX_ROLLOUT_LINE_BYTES {
         // Some historical tool outputs are too large to migrate safely in memory. Discard the
         // whole record, including any unread suffix.
         while bytes.last() != Some(&b'\n') {

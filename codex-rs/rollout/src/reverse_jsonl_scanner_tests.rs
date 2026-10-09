@@ -129,6 +129,45 @@ fn skips_blank_lines_with_or_without_termination() -> std::io::Result<()> {
 }
 
 #[test]
+fn skips_holes_larger_than_chunks_without_rejecting_the_following_record() -> std::io::Result<()> {
+    let hole = "\0".repeat(super::READ_CHUNK_SIZE * 3 + 17);
+    let input = format!(
+        "{hole}{}\n{hole}{}\n{hole}",
+        serde_json::to_string(&record("first"))?,
+        serde_json::to_string(&record("second"))?
+    );
+    let mut scanner = ReverseJsonlScanner::new(Cursor::new(input.into_bytes()))?
+        .with_max_record_bytes(/*max_record_bytes*/ 32);
+
+    assert_records(&mut scanner, &["second", "first"])
+}
+
+#[test]
+fn preserves_invalid_nul_bytes_inside_records() -> std::io::Result<()> {
+    let input = b"{\"value\":\"first\"}\n{\"value\":\"damaged\0record\"}\n";
+    let mut scanner = ReverseJsonlScanner::new(Cursor::new(input))?;
+
+    assert!(matches!(
+        scanner.scan_next::<TestRecord>()?,
+        Some(ScanOutcome::Rejected(_))
+    ));
+    assert_records(&mut scanner, &["first"])
+}
+
+#[test]
+fn preserves_invalid_nul_bytes_across_chunk_boundaries() -> std::io::Result<()> {
+    let hole = "\0".repeat(super::READ_CHUNK_SIZE * 2);
+    let input = format!("{{\"value\":\"first\"}}\n{{\"value\":\"damaged{hole}record\"}}\n");
+    let mut scanner = ReverseJsonlScanner::new(Cursor::new(input.into_bytes()))?;
+
+    assert!(matches!(
+        scanner.scan_next::<TestRecord>()?,
+        Some(ScanOutcome::Rejected(_))
+    ));
+    assert_records(&mut scanner, &["first"])
+}
+
+#[test]
 fn scans_across_read_chunk_boundaries() -> std::io::Result<()> {
     let empty_record_len = serde_json::to_string(&record(""))?.len();
     for distance_from_eof in [

@@ -15,6 +15,30 @@ fn line(payload_type: &str, payload: serde_json::Value) -> Vec<u8> {
 }
 
 #[test]
+fn skips_leading_reservations_without_removing_nuls_inside_json() {
+    let bytes = line("event_msg", json!({"type": "warning", "message": "hello"}));
+    let mut with_hole = vec![0; 128];
+    with_hole.extend_from_slice(&bytes);
+    let parsed = parse_legacy_rollout_line(&with_hole)
+        .expect("parse after hole")
+        .expect("keep warning");
+    assert!(matches!(
+        parsed.item,
+        RolloutItem::EventMsg(EventMsg::Warning(_))
+    ));
+    assert!(
+        parse_legacy_rollout_line(&[0; 128])
+            .expect("hole only")
+            .is_none()
+    );
+
+    let damaged = String::from_utf8(bytes)
+        .expect("UTF-8 JSON")
+        .replace("hello", "hel\0lo");
+    assert!(parse_legacy_rollout_line(damaged.as_bytes()).is_err());
+}
+
+#[test]
 fn parses_legacy_numeric_event_payloads_through_value() {
     let bytes = line(
         "event_msg",

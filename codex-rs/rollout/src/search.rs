@@ -73,6 +73,7 @@ async fn ripgrep_rollout_paths(
 
     let output = match Command::from(codex_utils_process::background_command(rg_command))
         .arg("-l")
+        .arg("--text")
         .arg("--fixed-strings")
         .arg("--ignore-case")
         .arg("--no-ignore")

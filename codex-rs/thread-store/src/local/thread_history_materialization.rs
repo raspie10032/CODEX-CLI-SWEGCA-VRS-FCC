@@ -157,6 +157,7 @@ fn read_projection_steps_sync(
             .ok_or_else(|| ThreadStoreError::Internal {
                 message: "durable rollout byte offset overflow".to_string(),
             })?;
+        let line_bytes = codex_rollout::trim_rollout_hole_prefix_bytes(line_bytes);
         if line_bytes.iter().all(u8::is_ascii_whitespace) {
             next_offset = line_end_offset;
             line_start_offset = line_end_offset;
