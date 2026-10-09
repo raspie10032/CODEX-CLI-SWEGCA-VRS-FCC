@@ -31,25 +31,6 @@ impl RolloutOrdinalState {
             },
         }
     }
-
-    pub(crate) fn current(&self) -> io::Result<Option<u64>> {
-        match self {
-            Self::Legacy => Ok(None),
-            Self::Paginated { next } => {
-                let ordinal = (*next)
-                    .ok_or_else(|| io::Error::other("paginated rollout record ordinal overflow"))?;
-                Ok(Some(ordinal))
-            }
-        }
-    }
-
-    pub(crate) fn advance(&mut self) {
-        if let Self::Paginated { next } = self
-            && let Some(ordinal) = *next
-        {
-            *next = ordinal.checked_add(1);
-        }
-    }
 }
 
 pub(crate) fn ordinal_state_for_rollout(
