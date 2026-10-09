@@ -72,3 +72,23 @@ wait removed from A20 is not replaced with another barrier. The central
 and its hash to `None`. Sampler/config/retained-conversation fields and related
 code remain in the prior WIP. This note does not claim those definitions are
 removed; the root agent was notified for D7 and test classification.
+
+## Additional D3 / D7 audit fixes
+
+`ContextManager::replace_assembled` now drops its old compatibility review
+transcript. Otherwise legacy and independent Guardian modes selected
+`review_history` instead of `items`, even though `items` had just been assembled
+by VRS. A regression test covers all three Guardian modes and has been added
+but not executed by this agent.
+
+`guardian/request_budget.rs::prepare_prompt` now only checks the complete
+request budget. The removed compaction restoration path appended retained
+originals directly to the prompt after VRS assembly. `RetainedReviewContext` and
+its compaction-only unit test were removed with that mechanism.
+
+Classification (a), removed test:
+`guardian::input_budget::tests::compacted_review_restores_originals_once_and_persists_the_request_prefix`.
+Reason: its only behavior is restoring a simulated compacted reviewer window;
+D7 deletes guardian compaction. This unit test is outside the `--test all`
+integration baseline. Its removal is source-classified, not a claim about the
+baseline/current failed-test difference.

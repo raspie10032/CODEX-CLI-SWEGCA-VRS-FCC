@@ -1,7 +1,7 @@
 //! Finalizes a pending reviewer input after tools and turn context are resolved.
 //! The thread attachment is a single in-flight request, consumed before history
-//! recording. Budget failures preserve it for a compaction retry; successful
-//! finalization consumes it. It is not another retained history.
+//! recording. Successful finalization consumes it; budget failures end the request.
+//! It is not another retained history.
 
 use codex_features::Feature;
 use codex_guardian_context::ComposedContext;
@@ -28,15 +28,7 @@ use crate::session::turn_context::TurnContext;
 #[derive(Clone)]
 pub(crate) struct PendingReviewContext(pub ComposedContext);
 
-/// Frozen originals for this review, restored only if its live history is compacted.
-pub(super) struct RetainedReviewContext {
-    pub context: ComposedContext,
-    pub history_version: u64,
-}
-
-/// Reject inputs that cannot fit even without history or tools before Core tries
-/// pre-turn compaction. This is only a feasibility check; its selected copy is
-/// discarded. Actual selection waits for the complete first-step overhead.
+/// Reject evidence that cannot fit before constructing a reviewer request.
 pub(crate) async fn check_pending(session: &Session, turn: &TurnContext) -> CodexResult<()> {
     let Some(pending) = session
         .services
@@ -103,7 +95,6 @@ pub(crate) async fn finalize(
         .vrs_history()
         .await
         .map_err(crate::session::vrs_input::vrs_error_to_codex)?;
-    let history_version = history.history_version();
     let history = history.for_prompt_annotated(&model.input_modalities);
     // Use the history that will actually reach the model.
     context.retain_new_instructions(&history);
@@ -252,10 +243,6 @@ pub(crate) async fn finalize(
         }
         Err(error) => return Err(CodexErr::InvalidRequest(error.to_string())),
     }
-    step.turn.extension_data.insert(RetainedReviewContext {
-        context: pending.0.retained_instructions(),
-        history_version,
-    });
     session
         .services
         .thread_extension_data

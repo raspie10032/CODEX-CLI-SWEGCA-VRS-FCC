@@ -712,6 +712,9 @@ impl ContextManager {
             })
             .collect();
         self.items = Arc::new(items);
+        // Guardian must use the same assembly in every review mode. A compatibility
+        // transcript from an earlier window must never replace the assembled items.
+        self.review_history = None;
         self.history_version = self.history_version.saturating_add(1);
     }
 

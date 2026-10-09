@@ -132,6 +132,31 @@ fn raw_items(history: &ContextManager) -> Vec<ResponseItem> {
     history.raw_items().cloned().collect()
 }
 
+#[test_case(GuardianContextMode::Legacy; "legacy")]
+#[test_case(GuardianContextMode::Independent; "independent")]
+#[test_case(GuardianContextMode::ThreadOwned; "thread owned")]
+fn assembled_history_is_the_only_guardian_transcript(mode: GuardianContextMode) {
+    let mut history = ContextManager::new();
+    history.guardian_review_mode = mode;
+    history.review_history = Some(TranscriptHistory::default());
+    history.record_items(
+        [assistant_msg("stale transcript")].iter(),
+        TruncationPolicy::Tokens(10_000),
+    );
+    let assembled = vec![assistant_msg("selected by VRS")];
+
+    history.replace_assembled(assembled.clone());
+
+    assert_eq!(
+        history
+            .conversation_history_snapshot()
+            .review_items()
+            .cloned()
+            .collect::<Vec<_>>(),
+        assembled,
+    );
+}
+
 #[test]
 fn delivered_assistant_context_invalidates_reviews_without_changing_authorization() {
     let revisions = |history: &ContextManager| {
