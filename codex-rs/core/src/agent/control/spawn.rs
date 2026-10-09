@@ -1001,32 +1001,34 @@ impl LocalAgentControl {
             | (MultiAgentVersion::V2, _) => (None, None),
         };
         let parent_history_mode = parent_thread.config_snapshot().await.history_mode;
-        // `record_conversation_items` only queues persistence writes asynchronously.
-        // Flush before snapshotting store history for a fork.
-        parent_thread.ensure_rollout_materialized().await;
-        parent_thread.flush_rollout().await?;
-
+        // Parent model items always come from A(S_t, parent), including forks (D3 A20).
+        // Host metadata is read from the live session; no rollout writer barrier is needed.
+        let parent_history = parent_thread
+            .session
+            .vrs_history()
+            .await
+            .map_err(crate::session::vrs_input::vrs_error_to_codex)?;
         let destination_history_mode = matches!(parent_history_mode, ThreadHistoryMode::Paginated)
             .then_some(ThreadHistoryMode::Paginated);
-        let mut forked_rollout_items =
-            load_agent_model_context(state, parent_thread_id, parent_history_mode)
-                .await?
-                .ok_or_else(|| {
-                    CodexErr::Fatal(format!(
-                        "parent thread history unavailable for fork: {parent_thread_id}"
-                    ))
-                })?
-                .items;
-
-        let selected_capability_roots = forked_rollout_items
-            .iter()
-            .find_map(|item| {
-                let RolloutItem::SessionMeta(meta_line) = item else {
-                    return None;
-                };
-                Some(meta_line.meta.selected_capability_roots.clone())
-            })
-            .unwrap_or_default();
+        let selected_capability_roots = parent_thread
+            .session
+            .services
+            .selected_capability_roots
+            .clone();
+        let world_state = parent_history.world_state_checkpoint();
+        let mut forked_rollout_items: Vec<RolloutItem> = parent_history
+            .into_annotated_items()
+            .into_iter()
+            .map(RolloutItem::ResponseItem)
+            .collect();
+        if matches!(fork_mode, SpawnAgentForkMode::FullHistory) {
+            if let Some(reference_context) = parent_thread.session.reference_context_item().await {
+                forked_rollout_items.push(RolloutItem::TurnContext(reference_context));
+            }
+            if let Some(world_state) = world_state {
+                forked_rollout_items.push(RolloutItem::WorldState(world_state));
+            }
+        }
         if let SpawnAgentForkMode::LastNTurns(last_n_turns) = fork_mode {
             forked_rollout_items =
                 truncate_rollout_to_last_n_fork_turns(forked_rollout_items, *last_n_turns);
@@ -1047,24 +1049,9 @@ impl LocalAgentControl {
             } else {
                 Vec::new()
             };
-        let mut preserve_context_baselines = matches!(fork_mode, SpawnAgentForkMode::FullHistory);
-        if preserve_context_baselines {
-            for item in forked_rollout_items.iter().rev() {
-                let RolloutItem::Compacted(compacted) = item else {
-                    continue;
-                };
-                // Legacy checkpoints force the child to rebuild context regardless of the
-                // live parent's reference baseline; an older superseded checkpoint does not.
-                if compacted.replacement_history.is_none() {
-                    preserve_context_baselines = false;
-                }
-                break;
-            }
-        }
+        let preserve_context_baselines = matches!(fork_mode, SpawnAgentForkMode::FullHistory);
         let mut replaced_parent_developer_instructions = false;
         // Scrub inherited hints and replace only the parent's developer-instruction fragment.
-        // Compaction stores response items separately, so sanitize both top-level messages and
-        // compacted replacement histories with the same policy.
         let retain_forked_item = |envelope: &mut ResponseItemEnvelope, replaced: &mut bool| {
             if multi_agent_version == MultiAgentVersion::V2
                 && matches!(&envelope.item, ResponseItem::Message { role, .. } if role == "user" || role == "assistant")
@@ -1160,35 +1147,8 @@ impl LocalAgentControl {
                 RolloutItem::ResponseItem(response_item) => {
                     retain_forked_item(response_item, &mut replaced_parent_developer_instructions)
                 }
-                RolloutItem::Compacted(compacted) => {
-                    // This compaction becomes part of the subagent's initial history. Rewrite its
-                    // metadata to describe the child rather than the parent.
-                    compacted.latest_token_usage_record = None;
-                    if let Some(resume_metadata) = &mut compacted.resume_metadata {
-                        resume_metadata.multi_agent_version = Some(multi_agent_version);
-                        if !preserve_context_baselines {
-                            resume_metadata.previous_turn_settings = None;
-                        }
-                    }
-                    // Parent-local review evidence must not become the child's authorization.
-                    // Root user authorization is collected separately by the host.
-                    compacted.guardian_history = None;
-                    // Only V2 fetches root authorization live. Its local scope starts known-empty;
-                    // V1 must remain incomplete when inherited authorization has been stripped.
-                    compacted.retained_context = (multi_agent_version == MultiAgentVersion::V2)
-                        .then(codex_history::RetainedContext::default);
-                    if let Some(replacement_history) = compacted.replacement_history.as_mut() {
-                        // Matches before this checkpoint cannot survive its replacement history.
-                        replaced_parent_developer_instructions = false;
-                        replacement_history.retain_mut(|response_item| {
-                            retain_forked_item(
-                                response_item,
-                                &mut replaced_parent_developer_instructions,
-                            )
-                        });
-                    }
-                    true
-                }
+                // Assemblies never copy legacy compaction records into child history.
+                RolloutItem::Compacted(_) => false,
                 RolloutItem::WorldState(world_state) => {
                     if multi_agent_version == MultiAgentVersion::V2 {
                         world_state.state.remove("multi_agent_usage_hint");

@@ -382,15 +382,13 @@ async fn run_review_on_session(
         }
     };
 
-    let reviewer_has_full_transcript = reviewer_history
-        .raw_items()
-        .any(|item| {
-            matches!(item, ResponseItem::Message { role, content, .. }
-            if role == "user" && content.iter().any(|content| {
-                matches!(content, ContentItem::InputText { text }
-                    if text == GUARDIAN_TRANSCRIPT_START)
-            }))
-        });
+    let reviewer_has_full_transcript = reviewer_history.raw_items().any(|item| {
+        matches!(item, ResponseItem::Message { role, content, .. }
+        if role == "user" && content.iter().any(|content| {
+            matches!(content, ContentItem::InputText { text }
+                if text == GUARDIAN_TRANSCRIPT_START)
+        }))
+    });
     let (prompt_mode, last_admitted_node_repl_response_sequence) = {
         let mut state = review_session.state.lock().await;
         state.pending_node_repl_evidence_admission = None;
