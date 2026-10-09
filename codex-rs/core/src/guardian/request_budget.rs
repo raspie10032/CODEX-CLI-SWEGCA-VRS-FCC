@@ -9,7 +9,7 @@ use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::protocol::TruncationPolicy;
 
-use crate::context_manager::estimate_item_token_count;
+use crate::context_manager::estimate_item_token_count_uncached;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 
@@ -38,7 +38,7 @@ pub(crate) fn estimate_request_tokens(request: &ResponsesApiRequest) -> usize {
     let input = request
         .input
         .iter()
-        .map(estimate_item_token_count)
+        .map(estimate_item_token_count_uncached)
         .fold(0i64, i64::saturating_add);
     let instructions = TruncationPolicy::Bytes(request.instructions.len()).token_budget();
     let metadata = serde_json::to_vec(&(&request.tools, &request.text))

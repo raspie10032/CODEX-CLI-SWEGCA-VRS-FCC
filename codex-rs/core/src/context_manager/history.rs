@@ -60,6 +60,7 @@ use codex_protocol::protocol::TokenUsageInfo;
 use codex_protocol::protocol::TurnContextItem;
 use codex_protocol::protocol::WorldStateItem;
 use codex_utils_audio::estimate_audio_token_count;
+use codex_utils_audio::estimate_audio_token_count_uncached;
 use codex_utils_cache::BlockingLruCache;
 use codex_utils_cache::sha1_digest;
 use codex_utils_output_truncation::TruncationPolicy;
@@ -1096,6 +1097,20 @@ pub(crate) fn estimate_item_token_count(item: &ResponseItem) -> i64 {
     approx_tokens_from_byte_count_i64(model_visible_bytes)
 }
 
+/// The existing content estimate without process-wide media caches or initializer waits.
+/// Admission uses this entry point; legacy history telemetry retains its cached estimator.
+pub(crate) fn estimate_item_token_count_uncached(item: &ResponseItem) -> i64 {
+    let model_visible_bytes =
+        estimate_response_item_model_visible_bytes_with_policy(item, MediaEstimateCache::Bypass);
+    approx_tokens_from_byte_count_i64(model_visible_bytes)
+}
+
+#[derive(Clone, Copy)]
+enum MediaEstimateCache {
+    Use,
+    Bypass,
+}
+
 /// Approximate model-visible byte cost for one image input.
 ///
 /// The estimator later converts bytes to tokens using a 4-bytes/token heuristic
@@ -1120,6 +1135,13 @@ static ORIGINAL_IMAGE_ESTIMATE_CACHE: LazyLock<OriginalImageEstimateCache> = Laz
 });
 
 fn estimate_response_item_model_visible_bytes(item: &ResponseItem) -> i64 {
+    estimate_response_item_model_visible_bytes_with_policy(item, MediaEstimateCache::Use)
+}
+
+fn estimate_response_item_model_visible_bytes_with_policy(
+    item: &ResponseItem,
+    cache: MediaEstimateCache,
+) -> i64 {
     match item {
         ResponseItem::Message { content, .. } => content
             .iter()
@@ -1128,9 +1150,9 @@ fn estimate_response_item_model_visible_bytes(item: &ResponseItem) -> i64 {
                     text_bytes(text)
                 }
                 ContentItem::InputImage { image, detail } => {
-                    estimate_image_reference_bytes(image, *detail)
+                    estimate_image_reference_bytes_with_policy(image, *detail, cache)
                 }
-                ContentItem::InputAudio { audio_url } => estimate_audio_bytes(audio_url),
+                ContentItem::InputAudio { audio_url } => estimate_audio_bytes(audio_url, cache),
             })
             .fold(0i64, i64::saturating_add),
         ResponseItem::AgentMessage {
@@ -1185,7 +1207,7 @@ fn estimate_response_item_model_visible_bytes(item: &ResponseItem) -> i64 {
             namespace,
             output,
             ..
-        } => estimate_function_output_bytes(&output.body)
+        } => estimate_function_output_bytes(&output.body, cache)
             .saturating_add(text_bytes(call_id.as_deref().unwrap_or_default()))
             .saturating_add(text_bytes(name.as_deref().unwrap_or_default()))
             .saturating_add(text_bytes(namespace.as_deref().unwrap_or_default())),
@@ -1194,7 +1216,7 @@ fn estimate_response_item_model_visible_bytes(item: &ResponseItem) -> i64 {
             name,
             output,
             ..
-        } => estimate_function_output_bytes(&output.body)
+        } => estimate_function_output_bytes(&output.body, cache)
             .saturating_add(text_bytes(call_id))
             .saturating_add(text_bytes(name.as_deref().unwrap_or_default())),
         // These payloads are themselves JSON arguments, rather than transport envelopes
@@ -1275,44 +1297,56 @@ fn parse_base64_image_data_url(url: &str) -> Option<&str> {
 fn estimate_original_image_bytes(image_url: &str) -> Option<i64> {
     let key = sha1_digest(image_url.as_bytes());
     ORIGINAL_IMAGE_ESTIMATE_CACHE.get_or_init(key, || {
-        let payload = match parse_base64_image_data_url(image_url) {
-            Some(payload) => payload,
-            None => {
-                tracing::trace!("skipping original-detail estimate for non-base64 image data URL");
-                return None;
-            }
-        };
-        let bytes = match BASE64_STANDARD.decode(payload) {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                tracing::trace!("failed to decode original-detail image payload: {error}");
-                return None;
-            }
-        };
-        let dynamic = match image::load_from_memory(&bytes) {
-            Ok(dynamic) => dynamic,
-            Err(error) => {
-                tracing::trace!("failed to decode original-detail image bytes: {error}");
-                return None;
-            }
-        };
-        let width = i64::from(dynamic.width());
-        let height = i64::from(dynamic.height());
-        let patch_size = i64::from(ORIGINAL_IMAGE_PATCH_SIZE);
-        let patches_wide = width.saturating_add(patch_size.saturating_sub(1)) / patch_size;
-        let patches_high = height.saturating_add(patch_size.saturating_sub(1)) / patch_size;
-        let patch_count = patches_wide.saturating_mul(patches_high);
-        let patch_count = usize::try_from(patch_count).unwrap_or(usize::MAX);
-        let patch_count = patch_count.min(ORIGINAL_IMAGE_MAX_PATCHES);
-        Some(i64::try_from(approx_bytes_for_tokens(patch_count)).unwrap_or(i64::MAX))
+        estimate_original_image_bytes_uncached(image_url)
     })
 }
 
+fn estimate_original_image_bytes_uncached(image_url: &str) -> Option<i64> {
+    let payload = match parse_base64_image_data_url(image_url) {
+        Some(payload) => payload,
+        None => {
+            tracing::trace!("skipping original-detail estimate for non-base64 image data URL");
+            return None;
+        }
+    };
+    let bytes = match BASE64_STANDARD.decode(payload) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            tracing::trace!("failed to decode original-detail image payload: {error}");
+            return None;
+        }
+    };
+    let dynamic = match image::load_from_memory(&bytes) {
+        Ok(dynamic) => dynamic,
+        Err(error) => {
+            tracing::trace!("failed to decode original-detail image bytes: {error}");
+            return None;
+        }
+    };
+    let width = i64::from(dynamic.width());
+    let height = i64::from(dynamic.height());
+    let patch_size = i64::from(ORIGINAL_IMAGE_PATCH_SIZE);
+    let patches_wide = width.saturating_add(patch_size.saturating_sub(1)) / patch_size;
+    let patches_high = height.saturating_add(patch_size.saturating_sub(1)) / patch_size;
+    let patch_count = patches_wide.saturating_mul(patches_high);
+    let patch_count = usize::try_from(patch_count).unwrap_or(usize::MAX);
+    let patch_count = patch_count.min(ORIGINAL_IMAGE_MAX_PATCHES);
+    Some(i64::try_from(approx_bytes_for_tokens(patch_count)).unwrap_or(i64::MAX))
+}
+
 /// Inline image estimate, excluding the data URL prefix and message framing.
-fn estimate_image_bytes(image_url: &str, detail: Option<ImageDetail>) -> i64 {
+fn estimate_image_bytes(
+    image_url: &str,
+    detail: Option<ImageDetail>,
+    cache: MediaEstimateCache,
+) -> i64 {
     match detail {
         Some(ImageDetail::Original) => {
-            estimate_original_image_bytes(image_url).unwrap_or(RESIZED_IMAGE_BYTES_ESTIMATE)
+            match cache {
+                MediaEstimateCache::Use => estimate_original_image_bytes(image_url),
+                MediaEstimateCache::Bypass => estimate_original_image_bytes_uncached(image_url),
+            }
+            .unwrap_or(RESIZED_IMAGE_BYTES_ESTIMATE)
         }
         _ => RESIZED_IMAGE_BYTES_ESTIMATE,
     }
@@ -1324,8 +1358,16 @@ pub(crate) fn estimate_image_reference_bytes(
     image: &ImageReference,
     detail: Option<ImageDetail>,
 ) -> i64 {
+    estimate_image_reference_bytes_with_policy(image, detail, MediaEstimateCache::Use)
+}
+
+fn estimate_image_reference_bytes_with_policy(
+    image: &ImageReference,
+    detail: Option<ImageDetail>,
+    cache: MediaEstimateCache,
+) -> i64 {
     match image {
-        ImageReference::Inline { image_url } => estimate_image_bytes(image_url, detail),
+        ImageReference::Inline { image_url } => estimate_image_bytes(image_url, detail, cache),
         ImageReference::File { .. } if detail == Some(ImageDetail::Original) => {
             i64::try_from(approx_bytes_for_tokens(ORIGINAL_IMAGE_MAX_PATCHES)).unwrap_or(i64::MAX)
         }
@@ -1333,14 +1375,18 @@ pub(crate) fn estimate_image_reference_bytes(
     }
 }
 
-fn estimate_audio_bytes(audio_url: &str) -> i64 {
-    i64::try_from(approx_bytes_for_tokens(estimate_audio_token_count(
-        audio_url,
-    )))
-    .unwrap_or(i64::MAX)
+fn estimate_audio_bytes(audio_url: &str, cache: MediaEstimateCache) -> i64 {
+    let tokens = match cache {
+        MediaEstimateCache::Use => estimate_audio_token_count(audio_url),
+        MediaEstimateCache::Bypass => estimate_audio_token_count_uncached(audio_url),
+    };
+    i64::try_from(approx_bytes_for_tokens(tokens)).unwrap_or(i64::MAX)
 }
 
-fn estimate_function_output_bytes(output: &FunctionCallOutputBody) -> i64 {
+fn estimate_function_output_bytes(
+    output: &FunctionCallOutputBody,
+    cache: MediaEstimateCache,
+) -> i64 {
     match output {
         FunctionCallOutputBody::Text(text) => text_bytes(text),
         FunctionCallOutputBody::ContentItems(items) => items
@@ -1348,10 +1394,10 @@ fn estimate_function_output_bytes(output: &FunctionCallOutputBody) -> i64 {
             .map(|part| match part {
                 FunctionCallOutputContentItem::InputText { text } => text_bytes(text),
                 FunctionCallOutputContentItem::InputImage { image, detail } => {
-                    estimate_image_reference_bytes(image, *detail)
+                    estimate_image_reference_bytes_with_policy(image, *detail, cache)
                 }
                 FunctionCallOutputContentItem::InputAudio { audio_url } => {
-                    estimate_audio_bytes(audio_url)
+                    estimate_audio_bytes(audio_url, cache)
                 }
                 FunctionCallOutputContentItem::EncryptedContent { encrypted_content } => {
                     i64::try_from(estimate_encrypted_function_output_length(
