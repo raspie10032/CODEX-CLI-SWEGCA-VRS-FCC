@@ -10921,6 +10921,42 @@ async fn attach_in_memory_thread_store(
 }
 
 #[tokio::test]
+async fn in_memory_live_thread_publishes_model_items_to_vrs() {
+    let (mut session, _) = make_session_and_context().await;
+    let store = attach_in_memory_thread_store(&mut session).await;
+    assert!(session.live_thread().is_some());
+    assert_eq!(session.current_rollout_path().await.unwrap(), None);
+    let items = vec![
+        serde_json::from_value::<ResponseItem>(json!({
+            "type": "message", "role": "user", "content": [{
+                "type": "input_text", "text": "find the ephemeral tool result"
+            }]
+        }))
+        .unwrap(),
+        serde_json::from_value::<ResponseItem>(json!({
+            "type": "function_call", "name": "lookup", "call_id": "ephemeral-lookup",
+            "arguments": "{}"
+        }))
+        .unwrap(),
+        serde_json::from_value::<ResponseItem>(json!({
+            "type": "function_call_output", "call_id": "ephemeral-lookup",
+            "output": "ephemeral tool evidence"
+        }))
+        .unwrap(),
+    ];
+    let rollout = items
+        .iter()
+        .cloned()
+        .map(|item| RolloutItem::ResponseItem(item.into()))
+        .collect::<Vec<_>>();
+    assert!(session.persist_rollout_items(&rollout).await);
+    assert_eq!(store.calls().await.append_items, 1);
+    let assembled = super::vrs_input::vrs_input(&session).await.unwrap();
+    assert_eq!(assembled, items);
+    assert!(session.state.lock().await.vrs_recording_error.is_none());
+}
+
+#[tokio::test]
 async fn hook_transcript_path_does_not_persist_non_local_thread_store() {
     let (mut session, _) = make_session_and_context().await;
     let store = attach_in_memory_thread_store(&mut session).await;

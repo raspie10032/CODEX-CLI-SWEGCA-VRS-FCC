@@ -98,3 +98,18 @@ feedback buffer, not a model request.
 
 This is a manually audited call-path inventory, not a dynamic reachability proof.
 The final report must combine it with actual compilation and test outcomes.
+
+## Follow-up D1 audit: no-file live stores
+
+- **Non-local live store omitted from S** — L3; blocks I2/I5. A `LiveThread`
+  is not proof of a file-backed recorder: `thread-store/src/live_thread.rs:391`
+  returns no local path for `InMemoryThreadStore` and remote backends, and
+  `thread-store/src/in_memory.rs:650` only appends to its own history. At
+  `core/src/session/mod.rs:4240`, successful non-local appends now also publish
+  to the same virtual VRS path selected by assembly. Local file appends remain
+  owned by the recorder and are not inserted twice. Append, path lookup, and
+  VRS insertion errors all poison the session through the existing D5 error
+  field. No writer flush or new lock is introduced. Added regression test
+  `session::tests::in_memory_live_thread_publishes_model_items_to_vrs` checks
+  a user request plus tool call/output survives into the assembly. No build or
+  test has been run by this subagent for this change.

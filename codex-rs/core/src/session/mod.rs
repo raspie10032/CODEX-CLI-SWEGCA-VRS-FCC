@@ -4238,27 +4238,37 @@ impl Session {
 
     #[tracing::instrument(level = "trace", skip_all, fields(item_count = items.len()))]
     pub(crate) async fn persist_rollout_items(&self, items: &[RolloutItem]) -> bool {
-        if let Some(live_thread) = self.live_thread() {
-            if let Err(e) = live_thread.append_items(items).await {
-                error!("failed to record rollout items: {e:#}");
-                self.state
-                    .lock()
+        let result = async {
+            if let Some(live_thread) = self.live_thread() {
+                live_thread
+                    .append_items(items)
                     .await
-                    .vrs_recording_error
-                    .get_or_insert_with(|| format!("{e:#}"));
-                return false;
-            }
-        } else {
-            // A thread without a rollout file still lives in the VRS store (design D1).
-            if let Err(err) = self.insert_ephemeral_vrs_lines(items).await {
-                error!("failed to record ephemeral rollout items: {err}");
-                self.state
-                    .lock()
+                    .map_err(|err| format!("{err:#}"))?;
+                if live_thread
+                    .local_rollout_path()
                     .await
-                    .vrs_recording_error
-                    .get_or_insert_with(|| err.to_string());
-                return false;
+                    .map_err(|err| format!("{err:#}"))?
+                    .is_some()
+                {
+                    // Local recorders publish reserved lines before enqueueing their writes.
+                    return Ok::<(), String>(());
+                }
             }
+            // A live remote or in-memory store has no RolloutRecorder, just like an ephemeral
+            // thread. Publish its records under the same virtual path used by assembly (D1).
+            self.insert_ephemeral_vrs_lines(items)
+                .await
+                .map_err(|err| err.to_string())
+        }
+        .await;
+        if let Err(error) = result {
+            error!("failed to record rollout items: {error}");
+            self.state
+                .lock()
+                .await
+                .vrs_recording_error
+                .get_or_insert(error);
+            return false;
         }
         true
     }
