@@ -1,0 +1,8 @@
+{
+  "command": "taskset -c 0-11 timeout 20s l3check/library_deferred3",
+  "exit_code": 1,
+  "seconds": 0.0063520519906887785,
+  "stdout": "open=0 ready=1 insert=0 written=-3 expected_written=0\n",
+  "stderr": "",
+  "library_sha256": "493759a11d4cf341cf13c70ea4548ffa285b182e9ef405fa404f60924845c61a"
+}
