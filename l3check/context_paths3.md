@@ -113,3 +113,29 @@ The final report must combine it with actual compilation and test outcomes.
   `session::tests::in_memory_live_thread_publishes_model_items_to_vrs` checks
   a user request plus tool call/output survives into the assembly. No build or
   test has been run by this subagent for this change.
+
+## Follow-up D4 audit: internal execution metadata capture
+
+- **Diagnostic capture incorrectly requested a fresh model assembly** — L3;
+  blocks the internal metadata assertions while model tool output delivery still
+  succeeds. `core/src/test_support.rs:74` previously called the A14 snapshot
+  after `TurnComplete`; the library is then allowed to select a different
+  context from its now-closed turn. This test-only diagnostic helper now reads
+  the bounded D4 live cache H, which the design explicitly reserves for non-model
+  consumers (document lines 128–131). The production conversation snapshot still
+  reassembles A and propagates errors. Existing result-metadata assertions remain.
+- **D4 replacement lost execution success** — L3; blocks diagnostic correctness.
+  `protocol/src/models.rs:2178` explicitly excludes tool `success` from serialized
+  model data. `core/src/context_manager/history.rs:684` now preserves that field
+  by surviving response item identity, alongside existing harness metadata. The
+  retained data is bounded by the currently assembled records; it is dropped
+  when an item leaves the assembly. `vrs_input` still returns the assembler's
+  vector directly, without copying live metadata into model input. Added the
+  two cases of
+  `context_manager::history::tests::assembly_keeps_bounded_diagnostic_success_without_changing_wire_input`:
+  both success and failure must survive, serialized wire JSON must remain
+  exactly unchanged, and removing the record must remove the diagnostic copy.
+  No build or test has been run by this subagent for this change.
+
+The refreshed clone inventory has 73 calls, including the new test-only capture
+consumer. Its per-call line locations include the current session changes.

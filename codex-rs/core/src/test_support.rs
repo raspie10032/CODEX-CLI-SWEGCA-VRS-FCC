@@ -74,8 +74,12 @@ pub async fn environment_windows_sandbox_types(
 pub async fn history_with_tool_call_metadata(
     thread: &crate::CodexThread,
 ) -> Vec<codex_protocol::models::ResponseItem> {
-    let history = thread.conversation_history_snapshot().await.unwrap();
-    let mut items = history.items().cloned().collect::<Vec<_>>();
+    // D4 reserves H for host diagnostics: capture assertions inspect the last assembled live
+    // cache plus later records, including serde-skipped execution success. Reassembling A here
+    // would select a new context after TurnComplete and lose those diagnostic observations.
+    // Production model/scorer snapshots still call conversation_history_snapshot -> A (D3 A14).
+    let history = thread.session.clone_history().await;
+    let mut items = history.raw_items().cloned().collect::<Vec<_>>();
     thread
         .session
         .services

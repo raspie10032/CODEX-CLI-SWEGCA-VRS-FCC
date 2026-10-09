@@ -682,25 +682,37 @@ impl ContextManager {
     /// Retained context, review mode and the world-state baseline describe the same thread and
     /// are kept.
     pub(crate) fn replace_assembled(&mut self, items: Vec<ResponseItem>) {
-        // Items that were already in the history keep their harness metadata (matched by id).
-        let known: std::collections::HashMap<String, &CodexHarnessMetadata> = self
+        // Preserve host-only metadata for surviving item identities. It is not serialized into
+        // rollout/model JSON (notably FunctionCallOutputPayload::success), and disappears as
+        // soon as that item leaves the bounded assembly. Model input consumes A directly.
+        let known: std::collections::HashMap<String, &ResponseItemEnvelope> = self
             .items
             .iter()
-            .filter_map(|envelope| {
-                Some((
-                    envelope.item.id()?.as_str().to_owned(),
-                    envelope.metadata.as_ref()?,
-                ))
-            })
+            .filter_map(|envelope| Some((envelope.item.id()?.as_str().to_owned(), envelope)))
             .collect();
         let items: Vec<ResponseItemEnvelope> = items
             .into_iter()
             .filter(|item| is_api_message(item, /*metadata*/ None))
-            .map(|item| {
-                let metadata = item
-                    .id()
-                    .and_then(|id| known.get(id.as_str()))
-                    .map(|metadata| (*metadata).clone());
+            .map(|mut item| {
+                let previous = item.id().and_then(|id| known.get(id.as_str())).copied();
+                let metadata = previous.and_then(|envelope| envelope.metadata.clone());
+                if let Some(previous) = previous {
+                    match (&mut item, &previous.item) {
+                        (
+                            ResponseItem::FunctionCallOutput { output, .. },
+                            ResponseItem::FunctionCallOutput {
+                                output: previous, ..
+                            },
+                        )
+                        | (
+                            ResponseItem::CustomToolCallOutput { output, .. },
+                            ResponseItem::CustomToolCallOutput {
+                                output: previous, ..
+                            },
+                        ) => output.success = previous.success,
+                        _ => {}
+                    }
+                }
                 ResponseItemEnvelope { item, metadata }
             })
             .collect();

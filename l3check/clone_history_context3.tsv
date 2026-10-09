@@ -32,8 +32,8 @@ codex-rs/core/src/prompt_debug.rs	107	D3 A5 debug API rendering, no model reques
 codex-rs/core/src/session/handlers.rs	346	Shutdown telemetry user-turn count only.
 codex-rs/core/src/session/inject_tests.rs	43	Test-only fixture/assertion; not a production model request path.
 codex-rs/core/src/session/mod.rs	1495	Token estimate only; returns numeric count, not model input.
-codex-rs/core/src/session/mod.rs	1701	Resume/fork memory-mode pollution flag based on external-context presence.
-codex-rs/core/src/session/mod.rs	4268	Session clone helper delegated to callers listed here; no direct request dispatch.
+codex-rs/core/src/session/mod.rs	1701	Token estimate only; returns numeric count, not model input.
+codex-rs/core/src/session/mod.rs	4278	Token estimate only; returns numeric count, not model input.
 codex-rs/core/src/session/notification_tests.rs	61	Test-only fixture/assertion; not a production model request path.
 codex-rs/core/src/session/retained_context_tests.rs	55	Test-only fixture/assertion; not a production model request path.
 codex-rs/core/src/session/retained_context_tests.rs	109	Test-only fixture/assertion; not a production model request path.
@@ -65,8 +65,9 @@ codex-rs/core/src/session/tests.rs	9918	Test-only fixture/assertion; not a produ
 codex-rs/core/src/session/tests.rs	10236	Test-only fixture/assertion; not a production model request path.
 codex-rs/core/src/session/tests.rs	10538	Test-only fixture/assertion; not a production model request path.
 codex-rs/core/src/session/tests.rs	10591	Test-only fixture/assertion; not a production model request path.
-codex-rs/core/src/session/tests.rs	11599	Test-only fixture/assertion; not a production model request path.
-codex-rs/core/src/session/tests.rs	12210	Test-only fixture/assertion; not a production model request path.
+codex-rs/core/src/session/tests.rs	11635	Test-only fixture/assertion; not a production model request path.
+codex-rs/core/src/session/tests.rs	12246	Test-only fixture/assertion; not a production model request path.
+codex-rs/core/src/test_support.rs	81	Test-only metadata capture from bounded D4 live cache; helper performs no request and production scorer snapshots still reassemble VRS.
 codex-rs/core/src/thread_manager_tests.rs	1508	Test-only fixture/assertion; not a production model request path.
 codex-rs/core/src/tools/context.rs	105	Lookup of originating call ID/provenance, no conversation payload.
 codex-rs/core/src/tools/handlers/extension_tools.rs	460	Test-only fixture/assertion; not a production model request path.

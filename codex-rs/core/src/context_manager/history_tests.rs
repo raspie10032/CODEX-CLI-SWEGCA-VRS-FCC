@@ -175,6 +175,40 @@ fn repeated_assembly_preserves_the_history_revision() {
     assert!(history.history_version() > version);
 }
 
+#[test_case(false; "failure")]
+#[test_case(true; "success")]
+fn assembly_keeps_bounded_diagnostic_success_without_changing_wire_input(success: bool) {
+    let mut output = ResponseItem::FunctionCallOutput {
+        id: Some(ResponseItemId::new("fco")),
+        call_id: Some("captured-call".to_string()),
+        name: None,
+        namespace: None,
+        output: FunctionCallOutputPayload {
+            body: FunctionCallOutputBody::Text("captured result".to_string()),
+            success: Some(success),
+        },
+        internal_chat_message_metadata_passthrough: None,
+    };
+    let mut history = create_history_with_items(vec![output.clone()]);
+    let wire = serde_json::to_value(&output).unwrap();
+    output = serde_json::from_value(wire.clone()).unwrap();
+    assert!(matches!(
+        &output,
+        ResponseItem::FunctionCallOutput { output, .. } if output.success.is_none()
+    ));
+
+    history.replace_assembled(vec![output]);
+
+    let diagnostic = history.raw_items().next().unwrap();
+    assert!(matches!(
+        diagnostic,
+        ResponseItem::FunctionCallOutput { output, .. } if output.success == Some(success)
+    ));
+    assert_eq!(serde_json::to_value(diagnostic).unwrap(), wire);
+    history.replace_assembled(Vec::new());
+    assert_eq!(history.raw_items().len(), 0);
+}
+
 #[test]
 fn delivered_assistant_context_invalidates_reviews_without_changing_authorization() {
     let revisions = |history: &ContextManager| {
