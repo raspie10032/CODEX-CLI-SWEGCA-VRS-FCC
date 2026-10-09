@@ -411,6 +411,32 @@ async fn compact_and_assert_answers(
     Ok(actual.clone())
 }
 
+// D7 persists original events; this helper never creates a synthetic checkpoint.
+async fn assert_original_history_answers(
+    test: &TestCodex,
+    thread: &CodexThread,
+    expected: &[VerifiedAnswer],
+) -> Result<RetainedContext> {
+    thread.ensure_rollout_materialized().await;
+    thread.flush_rollout().await?;
+    let persisted = load_context(test, thread).await?;
+    assert!(
+        persisted
+            .iter()
+            .all(|item| !matches!(item, RolloutItem::Compacted(_))),
+        "D7 forbids producing compaction checkpoints"
+    );
+    let snapshot = thread.conversation_history_snapshot().await?;
+    let actual = snapshot
+        .retained_context()
+        .context("retained original-event context")?;
+    assert_eq!(
+        actual.verified_answers().cloned().collect::<Vec<_>>(),
+        expected
+    );
+    Ok(actual.clone())
+}
+
 #[derive(Clone, Copy)]
 enum InstructionSize {
     Normal,
@@ -786,26 +812,25 @@ async fn legacy_checkpoint_recovers_root_excerpt_before_discarding_backup(
     Ok(())
 }
 
-// Cover live copied history and a truncated referenced checkpoint. Parent-answer
+// Cover live copied history and referenced original history with large inputs. Parent-answer
 // omission is already exercised by retained_answers_cross_real_session_boundaries.
 #[test_case(ThreadHistoryMode::Legacy; "copied worker history")]
-#[test_case(ThreadHistoryMode::Paginated; "referenced truncated checkpoint")]
+#[test_case(ThreadHistoryMode::Paginated; "referenced original history")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn standalone_fork_retains_inherited_user_instructions(
     history_mode: ThreadHistoryMode,
 ) -> Result<()> {
-    let compacted = history_mode == ThreadHistoryMode::Paginated;
+    let large_input = history_mode == ThreadHistoryMode::Paginated;
     skip_if_no_network!(Ok(()));
     let server = start_mock_server().await;
-    let mut test = test_codex()
+    let test = test_codex()
         .with_history_mode(history_mode)
         .with_config(|config| {
             config.experimental_thread_store = ThreadStoreConfig::Local;
             config
                 .features
                 .disable(Feature::TokenBudget)
-                .expect("use local compaction for worker checkpoint");
-            config.model_provider.name = "Local compaction test provider".to_owned();
+                .expect("test original history without token-budget guidance");
             for feature in [
                 Feature::GuardianApproval,
                 Feature::Collab,
@@ -820,7 +845,7 @@ async fn standalone_fork_retains_inherited_user_instructions(
         })
         .build_with_auto_env(&server)
         .await?;
-    let instruction = if compacted {
+    let instruction = if large_input {
         format!(
             "You may publish the release. {} Delegate an inspection.",
             "Original project detail. ".repeat(500)
@@ -859,9 +884,8 @@ async fn standalone_fork_retains_inherited_user_instructions(
         .await?;
     wait_for_event(&worker, |event| matches!(event, EventMsg::TurnComplete(_))).await;
     test.codex.shutdown_and_wait().await?;
-    let local_instruction = if compacted {
-        // Leave less than Guardian's 900-token budget for the inherited source
-        // within local compaction's 20K user-message budget.
+    let local_instruction = if large_input {
+        // Keep the original large input; Guardian's retained excerpts remain bounded.
         format!("Ask me before publishing. {}", "x".repeat(78_000))
     } else {
         "Ask me before publishing.".to_owned()
@@ -874,18 +898,6 @@ async fn standalone_fork_retains_inherited_user_instructions(
         }]))
         .await?;
     wait_for_event(&worker, |event| matches!(event, EventMsg::TurnComplete(_))).await;
-    if compacted {
-        // Local compaction keeps the inherited source message in replacement history.
-        mount_sse_sequence(
-            &server,
-            vec![sse(vec![
-                ev_assistant_message("worker-summary", "Inspected the project."),
-                ev_completed("worker-compacted"),
-            ])],
-        )
-        .await;
-        compact_and_assert_answers(&test, &worker, &[]).await?;
-    }
     let worker_context = worker.conversation_history_snapshot().await.unwrap();
     let inherited_text = worker_context
         .items()
@@ -900,16 +912,10 @@ async fn standalone_fork_retains_inherited_user_instructions(
             _ => None,
         })
         .context("inherited source in worker history")?;
-    if compacted {
-        assert_ne!(inherited_text, instruction);
-        assert!(inherited_text.contains("tokens truncated"));
-        assert!(inherited_text.len() < 900 * 4);
-    }
-    // The adopted root later compacts through the mechanical path, which can drop originals.
-    test.config
-        .features
-        .enable(Feature::TokenBudget)
-        .expect("use mechanical root compaction");
+    assert_eq!(
+        inherited_text, instruction,
+        "D3/D7 must preserve the inherited original instead of a compacted excerpt"
+    );
     let fork = if history_mode == ThreadHistoryMode::Paginated {
         let prepared = test
             .thread_store
@@ -967,10 +973,13 @@ async fn standalone_fork_retains_inherited_user_instructions(
             })
             .collect::<Vec<_>>(),
         vec![
-            (inherited_text, !compacted),
+            (
+                codex_guardian_context::truncate_text(&inherited_text, /*max_tokens*/ 900),
+                !large_input
+            ),
             (
                 codex_guardian_context::truncate_text(&local_instruction, /*max_tokens*/ 900),
-                !compacted,
+                !large_input,
             ),
         ],
     );
@@ -985,7 +994,7 @@ async fn standalone_fork_retains_inherited_user_instructions(
         .clone();
     assert!(!expected.verified_answers_complete());
     let root = fork.thread;
-    compact_and_assert_answers(&test, &root, &[after]).await?;
+    assert_original_history_answers(&test, &root, &[after]).await?;
     let root = resume(&test, &root).await?;
     assert_eq!(
         root.conversation_history_snapshot()
@@ -999,11 +1008,11 @@ async fn standalone_fork_retains_inherited_user_instructions(
     Ok(())
 }
 
-#[test_case(false; "without checkpoint")]
-#[test_case(true; "after checkpoint")]
+#[test_case(false; "without parent restart")]
+#[test_case(true; "after parent restart")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn forked_parent_instructions_do_not_become_local_authorization(
-    compact_parent: bool,
+    resume_parent: bool,
 ) -> Result<()> {
     skip_if_no_network!(Ok(()));
     const PARENT_GRANT: &str = "You may publish the private release. Delegate its inspection.";
@@ -1013,7 +1022,7 @@ async fn forked_parent_instructions_do_not_become_local_authorization(
     let mut extensions = ExtensionRegistryBuilder::<Config>::new();
     extensions.tool_lifecycle_contributor(child_gate.clone());
     extensions.thread_lifecycle_contributor(child_gate.clone());
-    let test = test_codex()
+    let mut test = test_codex()
         .with_extensions(Arc::new(extensions.build()))
         .with_history_mode(ThreadHistoryMode::Legacy)
         .with_config(move |config| {
@@ -1040,12 +1049,8 @@ async fn forked_parent_instructions_do_not_become_local_authorization(
     })
     .await;
     wait_for_thread_idle(&test.codex).await;
-    if compact_parent {
-        test.codex.submit(Op::Compact).await?;
-        wait_for_event(&test.codex, |event| {
-            matches!(event, EventMsg::TurnComplete(_))
-        })
-        .await;
+    if resume_parent {
+        test.codex = resume(&test, &test.codex).await?;
         wait_for_thread_idle(&test.codex).await;
     }
 
@@ -1098,7 +1103,7 @@ async fn forked_parent_instructions_do_not_become_local_authorization(
         ]),
     )
     .await;
-    // This grant is either in uncompacted history or in the checkpoint's replay suffix.
+    // The grant is an original user event, both before and after a real restart.
     test.codex
         .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
             text: PARENT_GRANT.to_owned(),
@@ -1204,8 +1209,7 @@ async fn forked_parent_instructions_do_not_become_local_authorization(
             .retained_context(),
         expected.as_ref()
     );
-    child.submit(Op::Compact).await?;
-    wait_for_event(&child, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+    // A second restart verifies replay idempotence without a synthetic checkpoint.
     let child = resume(&test, &child).await?;
     assert_eq!(
         child
@@ -1254,7 +1258,23 @@ async fn retained_answers_cross_real_session_boundaries(
     )
     .await?;
     let thread = resume(&test, &test.codex).await?;
-    compact_and_assert_answers(&test, &thread, std::slice::from_ref(&before)).await?;
+    assert_original_history_answers(&test, &thread, std::slice::from_ref(&before)).await?;
+    let saved_before = load_context(&test, &thread).await?;
+    let mut before_events = saved_before
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::RetainedContext(event) => Some(event.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    before_events.dedup();
+    assert_eq!(
+        before_events,
+        vec![RetainedContextEvent::VerifiedAnswer {
+            answer: before.clone(),
+            acceptance_order: Some(2),
+        }]
+    );
 
     let after = record_answer(
         &thread,
@@ -1265,24 +1285,12 @@ async fn retained_answers_cross_real_session_boundaries(
     .await?;
     thread.flush_rollout().await?;
     let saved = load_context(&test, &thread).await?;
-    let checkpoint_index = saved
-        .iter()
-        .rposition(|item| matches!(item, RolloutItem::Compacted(_)))
-        .context("real compaction persisted a checkpoint")?;
-    let RolloutItem::Compacted(checkpoint) = &saved[checkpoint_index] else {
-        unreachable!()
-    };
     assert_eq!(
-        checkpoint
-            .retained_context
-            .as_ref()
-            .context("retained checkpoint")?
-            .verified_answers()
-            .cloned()
-            .collect::<Vec<_>>(),
-        vec![before.clone()],
+        serde_json::to_value(&saved[..saved_before.len()])?,
+        serde_json::to_value(&saved_before)?,
+        "later original events must preserve the durable prefix"
     );
-    let suffix = &saved[checkpoint_index + 1..];
+    let suffix = &saved[saved_before.len()..];
     let mut events = suffix
         .iter()
         .filter_map(|item| match item {
@@ -1340,11 +1348,11 @@ async fn retained_answers_cross_real_session_boundaries(
         serde_json::to_string(&child_history)?.contains("Delegate an inspection."),
         "the child must actually inherit parent conversation context"
     );
-    compact_and_assert_answers(&test, &child, &[]).await?;
+    assert_original_history_answers(&test, &child, &[]).await?;
     let child = resume(&test, &child).await?;
-    compact_and_assert_answers(&test, &child, &[]).await?;
+    assert_original_history_answers(&test, &child, &[]).await?;
     child.shutdown_and_wait().await?;
-    compact_and_assert_answers(&test, &thread, &expected).await?;
+    assert_original_history_answers(&test, &thread, &expected).await?;
 
     thread.shutdown_and_wait().await?;
     Ok(())

@@ -401,6 +401,34 @@
       "function": "experimental-context eligibility and model-default activation tests",
       "action": "new_context tool must be absent; get_context_remaining and token-budget metadata assertions retained",
       "basis": "VRS_코덱스일체화_v1.md:141-144"
+    },
+    {
+      "class": "c",
+      "file": "codex-rs/core/tests/suite/guardian_retained_context.rs",
+      "function": "standalone_fork_retains_inherited_user_instructions",
+      "action": "Preserve same long/short inputs and trust/completeness assertions; incoming parent message now equals full original, retained excerpts remain bounded, then resume and compare retained state exactly",
+      "basis": "VRS_코덱스일체화_v1.md:109-131,141-144",
+      "test_name_mapping": {
+        "referenced_truncated_checkpoint": "referenced_original_history"
+      }
+    },
+    {
+      "class": "c",
+      "file": "codex-rs/core/tests/suite/guardian_retained_context.rs",
+      "function": "forked_parent_instructions_do_not_become_local_authorization",
+      "action": "Replace parent compaction preparation with real parent restart; keep inherited-vs-local trust, goal revisions, local instruction, repeated child restart equality assertions",
+      "basis": "VRS_코덱스일체화_v1.md:127-135,141-144",
+      "test_name_mapping": {
+        "without_checkpoint": "without_parent_restart",
+        "after_checkpoint": "after_parent_restart"
+      }
+    },
+    {
+      "class": "c",
+      "file": "codex-rs/core/tests/suite/guardian_retained_context.rs",
+      "function": "retained_answers_cross_real_session_boundaries",
+      "action": "Assert original persisted VerifiedAnswer events at exact orders 2 and 5, unchanged saved prefix, duplicate delivery idempotence, no Compacted records, child-local answer isolation, and repeated real resume equality",
+      "basis": "VRS_코덱스일체화_v1.md:127-135,141-144"
     }
   ],
   "new_contract_tests": [
