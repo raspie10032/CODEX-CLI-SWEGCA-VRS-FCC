@@ -68,7 +68,7 @@ Added:
 - `context_manager::history::tests::repeated_assembly_preserves_the_history_revision`
 
 Class (a), removed because these only test obsolete parent-compaction reuse
-(D3 A14, document line 132; D7, document lines 154-157):
+(D3 A14, document line 121; D7, document lines 141-144):
 
 - `async_scorer::sampler_tests::sampler_reuses_parent_compaction_only_for_matching_model_hashes`
 - `async_scorer::extension_tests::contributor_reuses_the_latest_compatible_parent_compaction`
