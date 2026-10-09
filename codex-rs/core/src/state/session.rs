@@ -12,7 +12,6 @@ use super::auto_compact_window::AutoCompactWindow;
 use super::auto_compact_window::AutoCompactWindowIds;
 use super::auto_compact_window::AutoCompactWindowSnapshot;
 use crate::context_manager::ContextManager;
-use crate::context_manager::HistoryReplacement;
 use crate::session::PreviousTurnSettings;
 use crate::session::session::SessionConfiguration;
 use crate::session::startup_prewarm::SessionStartupPrewarmHandle;
@@ -177,7 +176,6 @@ impl SessionState {
         self.replace_annotated_history(
             items.into_iter().map(ResponseItemEnvelope::new).collect(),
             reference_context_item,
-            HistoryReplacement::Reset,
         );
     }
 
@@ -185,22 +183,9 @@ impl SessionState {
         &mut self,
         items: Vec<ResponseItemEnvelope>,
         reference_context_item: Option<TurnContextItem>,
-        replacement: HistoryReplacement,
     ) {
-        let invalidate_reviews = match replacement {
-            HistoryReplacement::Compaction {
-                reviewer_compaction_hash,
-            } => self
-                .history
-                .replace_compacted(items, reviewer_compaction_hash.as_deref()),
-            HistoryReplacement::Reset => {
-                self.history.replace_annotated(items);
-                true
-            }
-        };
-        if invalidate_reviews {
-            std::mem::take(&mut self.history_reset).cancel();
-        }
+        self.history.replace_annotated(items);
+        std::mem::take(&mut self.history_reset).cancel();
         self.history
             .set_reference_context_item(reference_context_item);
         self.auto_compact_window.clear_prefill();
@@ -285,10 +270,6 @@ impl SessionState {
         self.auto_compact_window.claim_token_budget_reminder()
     }
 
-    pub(crate) fn claim_auto_compact_fallback(&mut self) -> bool {
-        self.auto_compact_window.claim_auto_compact_fallback()
-    }
-
     pub(crate) fn auto_compact_window_number(&self) -> u64 {
         self.auto_compact_window.window_number()
     }
@@ -303,24 +284,6 @@ impl SessionState {
         ids: AutoCompactWindowIds,
     ) {
         self.auto_compact_window.restore(window_number, ids);
-    }
-
-    pub(crate) fn advance_auto_compact_window(&mut self) -> (u64, AutoCompactWindowIds) {
-        self.auto_compact_window.advance()
-    }
-
-    pub(crate) fn request_new_context_window(&mut self) {
-        self.auto_compact_window.request_new_context_window();
-    }
-
-    pub(crate) fn take_new_context_window_request(&mut self) -> bool {
-        self.auto_compact_window.take_new_context_window_request()
-    }
-
-    pub(crate) fn start_new_context_window(&mut self) -> (u64, AutoCompactWindowIds) {
-        let window = self.auto_compact_window.advance();
-        self.auto_compact_window.clear_prefill();
-        window
     }
 
     pub(crate) fn token_info(&self) -> Option<TokenUsageInfo> {

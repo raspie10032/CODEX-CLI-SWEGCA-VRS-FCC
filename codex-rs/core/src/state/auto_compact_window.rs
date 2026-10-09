@@ -34,7 +34,6 @@ enum AutoCompactWindowPrefill {
 pub(super) struct AutoCompactWindow {
     window_number: u64,
     ids: AutoCompactWindowIds,
-    new_context_window_requested: bool,
     /// Absolute input-token baseline for the current compaction window.
     ///
     /// `body_after_prefix` subtracts this from later active-context usage. It is
@@ -42,7 +41,6 @@ pub(super) struct AutoCompactWindow {
     /// resume/recompute baselines when available.
     prefill_input_tokens: Option<AutoCompactWindowPrefill>,
     token_budget_reminder_delivered: bool,
-    auto_compact_fallback_delivered: bool,
 }
 
 impl AutoCompactWindow {
@@ -50,10 +48,8 @@ impl AutoCompactWindow {
         Self {
             window_number: 0,
             ids,
-            new_context_window_requested: false,
             prefill_input_tokens: None,
             token_budget_reminder_delivered: false,
-            auto_compact_fallback_delivered: false,
         }
     }
 
@@ -74,32 +70,8 @@ impl AutoCompactWindow {
         self.ids = ids;
     }
 
-    pub(super) fn advance(&mut self) -> (u64, AutoCompactWindowIds) {
-        self.window_number = self.window_number.saturating_add(1);
-        self.ids.previous_window_id = Some(self.ids.window_id);
-        self.ids.window_id = Uuid::now_v7();
-        self.new_context_window_requested = false;
-        self.token_budget_reminder_delivered = false;
-        self.auto_compact_fallback_delivered = false;
-        (self.window_number, self.ids)
-    }
-
     pub(super) fn claim_token_budget_reminder(&mut self) -> bool {
         !std::mem::replace(&mut self.token_budget_reminder_delivered, true)
-    }
-
-    pub(super) fn claim_auto_compact_fallback(&mut self) -> bool {
-        !std::mem::replace(&mut self.auto_compact_fallback_delivered, true)
-    }
-
-    pub(super) fn request_new_context_window(&mut self) {
-        self.new_context_window_requested = true;
-    }
-
-    pub(super) fn take_new_context_window_request(&mut self) -> bool {
-        let requested = self.new_context_window_requested;
-        self.new_context_window_requested = false;
-        requested
     }
 
     /// Records the request-input side of the first server usage sample. The
@@ -147,7 +119,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     #[test]
-    fn tracks_prefill_and_window_boundaries() {
+    fn restores_legacy_window_ids_and_tracks_prefill() {
         let mut window = AutoCompactWindow::new_with_ids(AutoCompactWindowIds::new_initial());
 
         assert_eq!(window.window_number(), 0);
@@ -176,24 +148,6 @@ mod tests {
         assert_eq!(window.ids().window_id, restored_window_id);
         assert!(window.claim_token_budget_reminder());
         assert!(!window.claim_token_budget_reminder());
-        assert!(window.claim_auto_compact_fallback());
-        assert!(!window.claim_auto_compact_fallback());
-        window.request_new_context_window();
-        assert!(window.take_new_context_window_request());
-        assert!(!window.take_new_context_window_request());
-        window.request_new_context_window();
-        let (window_number, ids) = window.advance();
-        assert_eq!(window_number, 4);
-        assert_eq!(window.window_number(), 4);
-        assert_eq!(window.ids(), ids);
-        assert_eq!(ids.first_window_id, first_window_id);
-        assert_eq!(ids.previous_window_id, Some(restored_window_id));
-        assert_eq!(ids.window_id.get_version_num(), 7);
-        assert_ne!(ids.window_id, restored_window_id);
-        assert!(!window.take_new_context_window_request());
-        assert!(window.claim_token_budget_reminder());
-        assert!(window.claim_auto_compact_fallback());
-
         assert_eq!(
             window.snapshot(),
             AutoCompactWindowSnapshot {

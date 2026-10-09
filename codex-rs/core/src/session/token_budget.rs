@@ -162,7 +162,6 @@ pub(super) async fn maybe_record(
     sess: &Session,
     turn_context: &TurnContext,
     base_window_tokens_remaining: Option<i64>,
-    allow_auto_compact_fallback: bool,
 ) {
     if !turn_context.config.features.enabled(Feature::TokenBudget) {
         return;
@@ -197,30 +196,6 @@ pub(super) async fn maybe_record(
             .await;
         }
     }
-
-    if !allow_auto_compact_fallback || base_window_tokens_remaining != 0 {
-        return;
-    }
-    let Some(prompt) = config.auto_compact_fallback_prompt.as_deref() else {
-        return;
-    };
-
-    let fallback_due = {
-        let mut state = sess.state.lock().await;
-        state.claim_auto_compact_fallback()
-    };
-    if !fallback_due {
-        return;
-    }
-
-    let response_item =
-        ContextualUserFragment::into(crate::context::AutoCompactFallbackPrompt::new(prompt));
-    sess.record_conversation_items(
-        turn_context,
-        turn_context.model_info(),
-        std::slice::from_ref(&response_item),
-    )
-    .await;
 }
 
 #[cfg(test)]

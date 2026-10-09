@@ -405,69 +405,6 @@ fn checkpoint_replayed_messages_keep_legacy_review_when_the_source_survives() {
     assert_eq!(history.retained_context(), &retained);
 }
 
-#[test_case(None; "no retained checkpoint")]
-#[test_case(Some(serde_json::json!({
-    "verified_answers": [], "incomplete": false
-})); "legacy retained checkpoint without instructions")]
-fn plaintext_checkpoint_without_backup_preserves_root_instructions(
-    saved_context: Option<serde_json::Value>,
-) {
-    let instruction = serde_json::from_value(serde_json::json!({
-        "type": "message", "id": "original-restriction", "role": "user",
-        "content": [{"type": "input_text", "text": "Only publish privately."}]
-    }))
-    .expect("old instruction without ordering metadata");
-    let saved_context: Option<RetainedContext> =
-        saved_context.map(|value| serde_json::from_value(value).expect("legacy retained context"));
-    let mut history = root_history();
-    history.replace(vec![instruction]);
-    history.restore_review_context(
-        saved_context.as_ref(),
-        /*checkpoint*/ None,
-        Some("reviewer"),
-    );
-
-    // Compaction removes the only plaintext copy. Resume must keep it available
-    // to worker authorization without adding it back to the reviewer's model window.
-    let compacted = vec![ResponseItemEnvelope {
-        item: serde_json::from_value(serde_json::json!({
-            "type": "compaction", "id": "new-checkpoint", "encrypted_content": "opaque"
-        }))
-        .expect("new checkpoint"),
-        metadata: Some(CodexHarnessMetadata {
-            compaction_model_hash: Some("reviewer".to_owned()),
-            ..Default::default()
-        }),
-    }];
-    history.replace_compacted(compacted.clone(), Some("reviewer"));
-    let mut resumed = root_history();
-    resumed.replace_annotated(compacted.clone());
-    resumed.restore_review_context(
-        Some(history.retained_context()),
-        history.guardian_history_checkpoint().as_ref(),
-        Some("reviewer"),
-    );
-    let snapshot = resumed.conversation_history_snapshot();
-    assert_eq!(
-        (
-            GuardianContextMode::from_history(snapshot.as_ref()),
-            snapshot.review_items().cloned().collect::<Vec<_>>(),
-            resumed
-                .legacy_user_messages()
-                .map(|message| message.text)
-                .collect::<Vec<_>>(),
-        ),
-        (
-            GuardianContextMode::ThreadOwned,
-            compacted
-                .into_iter()
-                .map(|envelope| envelope.item)
-                .collect::<Vec<_>>(),
-            vec!["Only publish privately.".to_owned()],
-        ),
-    );
-}
-
 #[test]
 fn legacy_checkpoint_rollback_keeps_answers_before_a_same_turn_steer() {
     let mut checkpoint: codex_history::CompactedItem = serde_json::from_value(serde_json::json!({
@@ -1650,7 +1587,7 @@ fn drop_last_n_user_turns_preserves_prefix() {
     assert_eq!(history.retained_context(), &retained);
 
     // A steered message shares its source turn, but rollback must keep the earlier
-    // instruction and answer as complete evidence, including after the next compaction.
+    // instruction and answer as complete evidence.
     let mut history = root_history();
     let mut expected = None;
     for (id, text) in [
@@ -1689,7 +1626,6 @@ fn drop_last_n_user_turns_preserves_prefix() {
         }
     }
     history.drop_last_n_user_turns(/*num_turns*/ 1);
-    history.replace_compacted(Vec::new(), /*reviewer_compaction_hash*/ None);
     let retained = history.retained_context();
     assert!(retained.user_messages_complete());
     assert!(retained.verified_answers_complete());

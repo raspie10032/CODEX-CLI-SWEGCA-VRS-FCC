@@ -507,7 +507,6 @@ pub(crate) async fn run_turn(
                     sess.as_ref(),
                     turn_context.as_ref(),
                     token_status.base_window_tokens_remaining,
-                    !token_limit_reached,
                 )
                 .await;
 

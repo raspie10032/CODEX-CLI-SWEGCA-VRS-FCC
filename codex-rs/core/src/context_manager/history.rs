@@ -134,13 +134,6 @@ struct SharedConversationHistory {
     guardian_review_context_revision: u64,
 }
 
-pub(crate) enum HistoryReplacement {
-    Compaction {
-        reviewer_compaction_hash: Option<String>,
-    },
-    Reset,
-}
-
 impl ConversationHistorySnapshot for SharedConversationHistory {
     fn latest_compaction(&self) -> Option<codex_history::CompactionCheckpoint<'_>> {
         codex_history::CompactionCheckpoint::latest(&self.items)
@@ -739,47 +732,6 @@ impl ContextManager {
         self.history_version = self.history_version.saturating_add(1);
         self.reset_version = self.history_version;
         self.world_state_baseline = None;
-    }
-
-    /// Returns whether compaction changed Guardian's evidence policy, invalidating older reviews.
-    pub(crate) fn replace_compacted(
-        &mut self,
-        items: Vec<ResponseItemEnvelope>,
-        reviewer_compaction_hash: Option<&str>,
-    ) -> bool {
-        let promoted = self.guardian_review_mode == GuardianContextMode::Legacy
-            && GuardianContextMode::for_checkpoint(&items, reviewer_compaction_hash)
-                == GuardianContextMode::ThreadOwned;
-        if promoted {
-            self.guardian_review_mode = GuardianContextMode::ThreadOwned;
-            self.user_message_revision = self.user_message_revision.saturating_add(/*rhs*/ 1);
-        }
-        if self.guardian_review_mode == GuardianContextMode::ThreadOwned
-            && (!self.retain_inherited_user_messages
-                || !self.retained_context.has_missing_user_messages()
-                || !self.has_legacy_user_messages())
-        {
-            self.review_history = None;
-        }
-        if self.guardian_review_mode == GuardianContextMode::Legacy && self.review_history.is_none()
-        {
-            let mut retained = TranscriptHistory::new(self.history_version.saturating_add(1));
-            for item in self
-                .annotated_items()
-                .iter()
-                .filter(|entry| !is_guardian_context_message(&entry.item))
-            {
-                retained.record(item);
-            }
-            self.review_history = Some(retained);
-        }
-        self.items = Arc::new(items);
-        self.history_version = self.history_version.saturating_add(1);
-        if promoted {
-            self.reset_version = self.history_version;
-        }
-        self.world_state_baseline = None;
-        promoted
     }
 
     /// Drop the last `num_turns` instruction turns from this history.

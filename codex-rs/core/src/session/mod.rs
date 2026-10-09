@@ -209,7 +209,6 @@ use crate::config::PermissionProfileState;
 use crate::config::StartedNetworkProxy;
 use crate::config::resolve_web_search_mode_for_turn;
 use crate::context_manager::ContextManager;
-use crate::context_manager::HistoryReplacement;
 use crate::thread_rollout_truncation::initial_history_has_prior_user_turns;
 use codex_config::CONFIG_TOML_FILE;
 use codex_config::ConfigLayerSource;
@@ -1745,11 +1744,7 @@ impl Session {
         let reviewer_compaction_hash = reviewer.comp_hash.clone();
         {
             let mut state = self.state.lock().await;
-            state.replace_annotated_history(
-                history,
-                reference_context_item,
-                HistoryReplacement::Reset,
-            );
+            state.replace_annotated_history(history, reference_context_item);
             state.history.restore_review_context(
                 Some(&retained_context),
                 guardian_history.as_ref(),
@@ -4306,11 +4301,6 @@ impl Session {
             window_number,
             context_window_id,
         )
-    }
-
-    pub(crate) async fn request_new_context_window(&self) {
-        let mut state = self.state.lock().await;
-        state.request_new_context_window();
     }
 
     pub(crate) async fn reference_context_item(&self) -> Option<TurnContextItem> {
