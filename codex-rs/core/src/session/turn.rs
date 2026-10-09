@@ -514,6 +514,23 @@ pub(crate) async fn run_turn(
 
             // Construct the input that we will send to the model.
             let sampling_request_input: Vec<ResponseItem> = async {
+                if crate::vrs_ctx::enabled() {
+                    if let Err(err) = sess.flush_rollout().await {
+                        tracing::warn!(error = %err, "vrs: rollout flush failed");
+                    }
+                    let rollout = sess.current_rollout_path().await.ok().flatten();
+                    if let Some(items) =
+                        crate::vrs_ctx::assemble(&sess.thread_id.to_string(), rollout).await
+                    {
+                        let mut history = crate::context_manager::ContextManager::new();
+                        history.record_items(
+                            items.iter(),
+                            step_context.settings.model_info.truncation_policy.into(),
+                        );
+                        return history
+                            .for_prompt(&step_context.settings.model_info.input_modalities);
+                    }
+                }
                 sess.clone_history()
                     .await
                     .for_prompt(&step_context.settings.model_info.input_modalities)
@@ -1488,6 +1505,11 @@ async fn run_auto_compact(
     reason: CompactionReason,
     phase: CompactionPhase,
 ) -> CodexResult<()> {
+    if crate::vrs_ctx::skip_compaction(&sess.thread_id.to_string()) {
+        tracing::info!(reason = ?reason, phase = ?phase, "vrs_compaction_skipped");
+        crate::vrs_ctx::receipt_compaction_skipped(&sess.thread_id.to_string());
+        return Ok(());
+    }
     let turn_context = &step_context.turn;
     let _profile_guard = turn_context.turn_timing_state.begin_compaction();
     let _compaction_span = trace_span!(

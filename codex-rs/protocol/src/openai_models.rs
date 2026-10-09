@@ -524,6 +524,10 @@ impl ModelInfo {
     }
 
     pub fn auto_compact_token_limit(&self) -> Option<i64> {
+        // doomexp (VRS_장기과제_DOOM_v1.md §12): a configured limit is capped by the usable window (95 %), not by 90 %
+        if let Some(limit) = self.auto_compact_token_limit {
+            return Some(self.usable_context_window().map_or(limit, |usable| std::cmp::min(limit, usable)));
+        }
         let context_limit = self
             .resolved_context_window()
             .map(|context_window| (context_window * 9) / 10);
