@@ -96,6 +96,8 @@ pub(crate) struct Session {
     pub(super) fork_persistence: ForkPersistence,
     pub(super) forked_from_ordinal_exclusive: Option<u64>,
     pub(super) next_internal_sub_id: AtomicU64,
+    /// Names this live Session's virtual store separately from other incarnations of its thread.
+    pub(super) ephemeral_vrs_generation: uuid::Uuid,
     /// Next byte offset of this thread's virtual rollout when it has no rollout file.
     pub(super) ephemeral_vrs_offset: AtomicU64,
 }
@@ -1827,6 +1829,7 @@ impl Session {
                 fork_persistence,
                 forked_from_ordinal_exclusive,
                 next_internal_sub_id: AtomicU64::new(0),
+                ephemeral_vrs_generation: uuid::Uuid::new_v4(),
                 ephemeral_vrs_offset: AtomicU64::new(0),
             });
             if let Some(startup) = &startup {

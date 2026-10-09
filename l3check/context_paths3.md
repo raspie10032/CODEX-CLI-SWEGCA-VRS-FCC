@@ -139,3 +139,25 @@ The final report must combine it with actual compilation and test outcomes.
 
 The refreshed clone inventory has 73 calls, including the new test-only capture
 consumer. Its per-call line locations include the current session changes.
+
+## VI-30 non-local resume generations
+
+Each Session now owns one UUID generation. Both virtual insertion and assembly use
+`sessions/ephemeral/<generation>/<thread_id>.jsonl`; the original thread basename
+and metadata IDs stay intact. Non-local resume ingests supplied original RolloutItems
+into that new store before settings, warnings, or assembly. It does not append the
+supplied history to the backend again, or send raw history as a model fallback.
+All seed errors enter the existing sticky D5 recording failure. Virtual offsets use
+checked CAS to reject overflow before a key could wrap. No global registry or lock
+was added. See design §5.5 VI-30 and `core/src/session/vrs_input.rs:190`.
+
+Added, not executed by this subagent:
+
+- `session::tests::same_thread_non_local_resume_seeds_a_distinct_vrs_generation`
+- `session::tests::non_local_resume_seed_failure_prevents_model_input`
+
+The first keeps both same-thread Sessions live and checks the new assembly contains
+the original user item plus the new user item, while the old path is unchanged.
+The second injects offset exhaustion before seeding and checks the D5 request error
+preserves the failure reason and never wraps the offset. Existing protocol assertions
+were not relaxed.

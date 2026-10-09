@@ -237,6 +237,7 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
+use std::sync::atomic::Ordering;
 use std::time::Duration as StdDuration;
 
 pub(crate) fn mcp_config_for_test(config: &crate::config::Config) -> Arc<codex_mcp::McpConfig> {
@@ -6455,6 +6456,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         fork_persistence: ForkPersistence::Copied,
         forked_from_ordinal_exclusive: None,
         next_internal_sub_id: AtomicU64::new(0),
+        ephemeral_vrs_generation: Uuid::new_v4(),
         ephemeral_vrs_offset: AtomicU64::new(0),
     };
     let per_turn_config = session.build_per_turn_config(
@@ -8722,6 +8724,7 @@ where
         fork_persistence: ForkPersistence::Copied,
         forked_from_ordinal_exclusive: None,
         next_internal_sub_id: AtomicU64::new(0),
+        ephemeral_vrs_generation: Uuid::new_v4(),
         ephemeral_vrs_offset: AtomicU64::new(0),
     });
     let per_turn_config = session.build_per_turn_config(
@@ -10954,6 +10957,112 @@ async fn in_memory_live_thread_publishes_model_items_to_vrs() {
     let assembled = super::vrs_input::vrs_input(&session).await.unwrap();
     assert_eq!(assembled, items);
     assert!(session.state.lock().await.vrs_recording_error.is_none());
+}
+
+#[tokio::test]
+async fn same_thread_non_local_resume_seeds_a_distinct_vrs_generation() {
+    let (mut first, _) = make_session_and_context().await;
+    attach_in_memory_thread_store(&mut first).await;
+    let old_item = serde_json::from_value::<ResponseItem>(json!({
+        "type": "message", "role": "user", "content": [{
+            "type": "input_text", "text": "retain the original non-local user request"
+        }]
+    }))
+    .unwrap();
+    let old_rollout = vec![
+        session_meta_item(first.thread_id, None),
+        RolloutItem::ResponseItem(old_item.clone().into()),
+    ];
+    assert!(first.persist_rollout_items(&old_rollout).await);
+    assert_eq!(
+        super::vrs_input::vrs_input(&first).await.unwrap(),
+        vec![old_item.clone()]
+    );
+    let first_path = first.ephemeral_vrs_path().unwrap();
+
+    // Keep the first generation alive, including its keys starting at offset zero.
+    let (mut resumed, _) = make_session_and_context().await;
+    resumed.thread_id = first.thread_id;
+    let resumed_store = attach_in_memory_thread_store(&mut resumed).await;
+    let resumed_path = resumed.ephemeral_vrs_path().unwrap();
+    assert_ne!(first_path, resumed_path);
+    assert_eq!(first_path.file_name(), resumed_path.file_name());
+    assert_eq!(
+        first_path.file_stem().unwrap().to_str().unwrap(),
+        first.thread_id.to_string()
+    );
+    resumed
+        .record_initial_history(InitialHistory::Resumed(ResumedHistory {
+            history_revision: None,
+            conversation_id: first.thread_id,
+            history: Arc::new(old_rollout),
+            rollout_path: None,
+        }))
+        .await;
+    assert!(resumed.state.lock().await.vrs_recording_error.is_none());
+    assert_eq!(
+        super::vrs_input::vrs_input(&resumed).await.unwrap(),
+        vec![old_item.clone()]
+    );
+    // Only the new settings checkpoint is appended; supplied history is already in the backend.
+    assert_eq!(resumed_store.calls().await.append_items, 1);
+
+    let next_offset = resumed.ephemeral_vrs_offset.load(Ordering::Relaxed);
+    assert!(next_offset > 0);
+    let new_item = serde_json::from_value::<ResponseItem>(json!({
+        "type": "message", "role": "user", "content": [{
+            "type": "input_text", "text": "append the resumed non-local request"
+        }]
+    }))
+    .unwrap();
+    assert!(
+        resumed
+            .persist_rollout_items(&[RolloutItem::ResponseItem(new_item.clone().into())])
+            .await
+    );
+    assert!(resumed.ephemeral_vrs_offset.load(Ordering::Relaxed) > next_offset);
+    assert_eq!(
+        super::vrs_input::vrs_input(&resumed).await.unwrap(),
+        vec![old_item.clone(), new_item]
+    );
+    // No old (path, offset) key was overwritten and no resumed record leaked into it.
+    assert_eq!(
+        codex_vrs::assemble(&first_path).unwrap().items,
+        vec![serde_json::to_value(old_item).unwrap()]
+    );
+}
+
+#[tokio::test]
+async fn non_local_resume_seed_failure_prevents_model_input() {
+    let (mut session, _) = make_session_and_context().await;
+    attach_in_memory_thread_store(&mut session).await;
+    session
+        .ephemeral_vrs_offset
+        .store(u64::MAX, Ordering::Relaxed);
+    session
+        .record_initial_history(InitialHistory::Resumed(ResumedHistory {
+            history_revision: None,
+            conversation_id: session.thread_id,
+            history: Arc::new(vec![session_meta_item(session.thread_id, None)]),
+            rollout_path: None,
+        }))
+        .await;
+    assert_eq!(
+        session.ephemeral_vrs_offset.load(Ordering::Relaxed),
+        u64::MAX
+    );
+    let error = super::vrs_input::vrs_prompt_input(
+        &session,
+        &[codex_protocol::openai_models::InputModality::Text],
+    )
+    .await
+    .expect_err("failed D1 seeding must prevent a model request");
+    assert!(
+        error
+            .to_string()
+            .contains("virtual rollout offset overflow")
+    );
+    assert!(error.to_string().contains("reopen the session"));
 }
 
 #[tokio::test]

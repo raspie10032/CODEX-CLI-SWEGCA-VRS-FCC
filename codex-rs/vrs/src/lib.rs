@@ -104,14 +104,16 @@ const SEGWIN: c_int = 1;
 
 /// The virtual rollout path under which the lines of a thread without a rollout file are kept.
 ///
-/// Nothing is written at this path; it only names the thread in the store.
-pub fn ephemeral_path(thread_id: &str) -> Result<std::path::PathBuf, VrsError> {
+/// Nothing is written at this path. Each live Session has its own generation so resuming the
+/// same thread cannot reuse old `(path, offset)` keys. The basename retains the thread identity.
+pub fn ephemeral_path(generation: &str, thread_id: &str) -> Result<std::path::PathBuf, VrsError> {
     let home = codex_utils_home_dir::find_codex_home()
         .map_err(|err| VrsError::Unavailable(err.to_string()))?;
     Ok(home
         .as_path()
         .join("sessions")
         .join("ephemeral")
+        .join(generation)
         .join(format!("{thread_id}.jsonl")))
 }
 

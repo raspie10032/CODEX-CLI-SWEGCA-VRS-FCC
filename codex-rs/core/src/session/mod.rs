@@ -1579,8 +1579,11 @@ impl Session {
                 None
             }
             InitialHistory::Resumed(resumed_history) => {
-                let turn_context = self.new_default_turn().await;
                 let rollout_items = resumed_history.history;
+                // A non-local backend has no file for startup restoration. Seed its supplied
+                // original records into this Session generation before any new records or A.
+                self.seed_non_local_vrs_history(&rollout_items).await;
+                let turn_context = self.new_default_turn().await;
                 if matches!(
                     rollout_items.iter().rev().find_map(|item| match item {
                         RolloutItem::EventMsg(event) => agent_status_from_event(event),

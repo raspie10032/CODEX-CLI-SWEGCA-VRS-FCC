@@ -63,7 +63,7 @@ pub(crate) fn vrs_error_to_codex(error: VrsError) -> CodexErr {
 pub(crate) async fn vrs_input(sess: &Session) -> Result<Vec<ResponseItem>, VrsError> {
     let thread_id = sess.thread_id.to_string();
     let started = Instant::now();
-    let result = assemble_for(sess, &thread_id).await;
+    let result = assemble_for(sess).await;
     let elapsed_us = started.elapsed().as_micros();
     match &result {
         Ok((items, tokens)) => {
@@ -82,10 +82,7 @@ pub(crate) async fn vrs_input(sess: &Session) -> Result<Vec<ResponseItem>, VrsEr
     Ok(items)
 }
 
-async fn assemble_for(
-    sess: &Session,
-    thread_id: &str,
-) -> Result<(Vec<ResponseItem>, u64), VrsError> {
+async fn assemble_for(sess: &Session) -> Result<(Vec<ResponseItem>, u64), VrsError> {
     if let Some(error) = sess.state.lock().await.vrs_recording_error.as_ref() {
         return Err(VrsError::Unavailable(format!(
             "rollout recording failed: {error}; reopen the session before sending another request"
@@ -95,7 +92,7 @@ async fn assemble_for(
     // Assembly reads VRS immediately and never waits for the rollout writer.
     let path: PathBuf = match sess.current_rollout_path().await {
         Ok(Some(path)) => path,
-        Ok(None) => codex_vrs::ephemeral_path(thread_id)?,
+        Ok(None) => sess.ephemeral_vrs_path()?,
         Err(err) => return Err(VrsError::Unavailable(format!("no rollout path: {err}"))),
     };
     let assembled = codex_vrs::assemble(&path)?;
@@ -189,13 +186,39 @@ impl Session {
         Ok(state.history.with_assembled_items(items))
     }
 
+    /// One immutable generation per live Session; insertion and assembly share this identity.
+    pub(super) fn ephemeral_vrs_path(&self) -> Result<PathBuf, VrsError> {
+        codex_vrs::ephemeral_path(
+            &self.ephemeral_vrs_generation.to_string(),
+            &self.thread_id.to_string(),
+        )
+    }
+
+    /// Ingests the original supplied non-local history into this Session's new S (design D1).
+    /// The backend already owns these records, so do not append a duplicate copy there.
+    pub(super) async fn seed_non_local_vrs_history(&self, items: &[RolloutItem]) {
+        let result = match self.current_rollout_path().await {
+            Ok(Some(_)) => return,
+            Ok(None) => self.insert_ephemeral_vrs_lines(items).await,
+            Err(error) => Err(VrsError::Unavailable(format!("no rollout path: {error}"))),
+        };
+        if let Err(error) = result {
+            warn!("failed to ingest resumed non-local VRS history: {error}");
+            self.state
+                .lock()
+                .await
+                .vrs_recording_error
+                .get_or_insert_with(|| error.to_string());
+        }
+    }
+
     /// Records rollout items of a thread that has no rollout file into the store (design D1).
     pub(crate) async fn insert_ephemeral_vrs_lines(
         &self,
         items: &[RolloutItem],
     ) -> Result<(), VrsError> {
         let history_mode = self.state.lock().await.session_configuration.history_mode;
-        let path = codex_vrs::ephemeral_path(&self.thread_id.to_string())?;
+        let path = self.ephemeral_vrs_path()?;
         for item in items {
             if !codex_rollout::is_persisted_rollout_item(item, history_mode) {
                 continue;
@@ -205,7 +228,10 @@ impl Session {
             })?;
             let offset = self
                 .ephemeral_vrs_offset
-                .fetch_add(line.len() as u64, Ordering::Relaxed);
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |offset| {
+                    offset.checked_add(line.len() as u64)
+                })
+                .map_err(|_| VrsError::Unavailable("virtual rollout offset overflow".into()))?;
             codex_vrs::insert(&path, offset, line.as_bytes())?;
         }
         Ok(())
