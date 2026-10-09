@@ -434,6 +434,13 @@
       "test": "spawned_full_history_v2_child_uses_model_precedence_without_dropping_context::world_state_appends_context_window_when_agent_identity_changes",
       "action": "keep parent/child identity, exact world-state snapshots, distinct context IDs; remove Compact setup and assert no synthesized Compacted item",
       "basis": "VRS_코덱스일체화_v1.md:22,109-131,141-144"
+    },
+    {
+      "class": "c",
+      "file": "codex-rs/core/tests/suite/guardian_subagent_authorization.rs",
+      "function": "run_guardian_subagent_review, blocked post-hook cases",
+      "action": "Remove Compact preparation/model mock and obsolete dropped-call assertion; preserve exact relevant trusted root messages before/after real restart, every order/completeness and approval assertion remains",
+      "basis": "VRS_코덱스일체화_v1.md:109-135,141-144"
     }
   ],
   "intended_expectation_changes": [

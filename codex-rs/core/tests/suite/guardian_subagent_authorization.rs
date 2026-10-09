@@ -1559,7 +1559,7 @@ async fn run_guardian_subagent_review(
             (inherited_prefix, MissingCheckpointSource::None, true),
         ] {
             // Code Mode was replayed above from real history; these fixtures omit its delivery events.
-            // The blocked-result case uses a real compaction and resume below.
+            // The blocked-result case uses an original-event restart below.
             if code_mode || block_post_hook {
                 continue;
             }
@@ -1820,24 +1820,10 @@ async fn run_guardian_subagent_review(
                     .guardian_root_snapshot()
                     .await
                     .unwrap()
-                    .expect("before compaction")
+                    .expect("before original-event restart")
                     .messages,
             );
-            let compact = mount_sse_once_match(
-                &server,
-                move |request: &wiremock::Request| is_root_request(request, root_thread_id),
-                sse(vec![
-                    ev_assistant_message("compact-root", "Deployment context compacted."),
-                    ev_completed("compact-root-response"),
-                ]),
-            )
-            .await;
-            root.submit(Op::Compact).await?;
-            wait_for_event(&root, |event| matches!(event, EventMsg::TurnComplete(_))).await;
-            compact.single_request();
-            assert!(!root.conversation_history_snapshot().await.unwrap().items().any(|item| {
-                matches!(item, ResponseItem::FunctionCall { call_id, .. } | ResponseItem::CustomToolCall { call_id, .. } if call_id == MESSAGE_CALL_ID)
-            }));
+            // D7: the original-event restart must preserve the same trusted exchange.
             root.flush_rollout().await?;
             let saved = test
                 .thread_store
@@ -1853,7 +1839,7 @@ async fn run_guardian_subagent_review(
                         .guardian_root_snapshot()
                         .await
                         .unwrap()
-                        .expect("after compacted resume")
+                        .expect("after original-event restart")
                         .messages
                 ),
                 before
