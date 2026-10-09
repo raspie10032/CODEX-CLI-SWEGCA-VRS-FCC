@@ -348,18 +348,20 @@ async fn run_review_on_session(
             guardian_model_provider_id: params.spawn_config.model_provider_id.clone(),
             had_prior_review_context: had_prior_context,
         });
-    if prior_review_count > 0 {
-        ensure_guardian_followup_reminder(review_session).await;
-    }
-
-    match run_before_review_deadline(
+    let reviewer_history = match run_before_review_deadline(
         deadline,
         params.external_cancel.as_ref(),
-        Box::pin(ensure_guardian_node_repl_policy(review_session, params)),
+        Box::pin(async {
+            if prior_review_count > 0 {
+                ensure_guardian_followup_reminder(review_session).await?;
+            }
+            ensure_guardian_node_repl_policy(review_session, params).await?;
+            Ok::<_, anyhow::Error>(review_session.session.vrs_history().await?)
+        }),
     )
     .await
     {
-        Ok(Ok(())) => {}
+        Ok(Ok(history)) => history,
         Ok(Err(error)) => {
             return ReviewSessionResult {
                 outcome: GuardianReviewSessionOutcome::SessionFailed {
@@ -378,12 +380,9 @@ async fn run_review_on_session(
                 analytics: analytics_result,
             };
         }
-    }
+    };
 
-    let reviewer_has_full_transcript = review_session
-        .session
-        .clone_history()
-        .await
+    let reviewer_has_full_transcript = reviewer_history
         .raw_items()
         .any(|item| {
             matches!(item, ResponseItem::Message { role, content, .. }
@@ -445,7 +444,7 @@ async fn run_review_on_session(
                 .section_costs()
                 .any(|(_, cost)| cost.image_count > 0)
             {
-                let reviewer_history = review_session.session.clone_history().await;
+                let reviewer_history = review_session.session.vrs_history().await?;
                 let mut reviewer_image_urls = HashSet::new();
                 let mut reviewer_file_ids = HashSet::new();
                 for item in reviewer_history.raw_items() {
@@ -714,12 +713,14 @@ async fn run_review_on_session(
     }
 }
 
-async fn ensure_guardian_followup_reminder(review_session: &GuardianReviewSession) {
+async fn ensure_guardian_followup_reminder(
+    review_session: &GuardianReviewSession,
+) -> anyhow::Result<()> {
     let followup_reminder = GuardianFollowupReviewReminder.body();
     let already_injected = review_session
         .session
-        .clone_history()
-        .await
+        .vrs_history()
+        .await?
         .raw_items()
         .any(|item| {
             matches!(item, ResponseItem::Message { role, content, .. }
@@ -730,7 +731,7 @@ async fn ensure_guardian_followup_reminder(review_session: &GuardianReviewSessio
                 }))
         });
     if already_injected {
-        return;
+        return Ok(());
     }
 
     let reminder: ResponseItem = ContextualUserFragment::into(GuardianFollowupReviewReminder);
@@ -738,6 +739,7 @@ async fn ensure_guardian_followup_reminder(review_session: &GuardianReviewSessio
         .session
         .inject_no_new_turn(vec![reminder], /*current_turn_context*/ None)
         .await;
+    Ok(())
 }
 
 async fn ensure_guardian_node_repl_policy(
@@ -761,8 +763,8 @@ async fn ensure_guardian_node_repl_policy(
     }
     let already_injected = review_session
         .session
-        .clone_history()
-        .await
+        .vrs_history()
+        .await?
         .raw_items()
         .any(|item| {
             matches!(item, ResponseItem::Message { role, content, .. }
