@@ -7,7 +7,6 @@ use codex_core::config::Config;
 use codex_features::Feature;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use codex_protocol::protocol::EventMsg;
-use codex_protocol::protocol::Op;
 use codex_protocol::protocol::ThreadSettingsOverrides;
 use codex_protocol::user_input::UserInput;
 use core_test_support::responses::ResponseMock;
@@ -251,26 +250,6 @@ async fn root_service_tier_change_updates_existing_subagent(
         .await?;
     wait_for_turn_complete(&child).await;
     assert_request_service_tier(&continued_child_request, updated_request_service_tier);
-
-    let child_compaction_request = mount_sse_once_match(
-        &server,
-        |request: &wiremock::Request| body_contains(request, "compaction_trigger"),
-        sse(vec![
-            ev_response_created("child-remote-compaction"),
-            json!({
-                "type": "response.output_item.done",
-                "item": {
-                    "type": "compaction",
-                    "encrypted_content": "compacted child history",
-                },
-            }),
-            ev_completed("child-remote-compaction"),
-        ]),
-    )
-    .await;
-    child.submit(Op::Compact).await?;
-    wait_for_turn_complete(&child).await;
-    assert_request_service_tier(&child_compaction_request, updated_request_service_tier);
 
     let future_child_request = mount_completed_child(&server, FOLLOWUP_PROMPT, ROOT_PROMPT).await;
     child

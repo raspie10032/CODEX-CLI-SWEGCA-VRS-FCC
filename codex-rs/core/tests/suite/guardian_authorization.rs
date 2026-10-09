@@ -388,12 +388,14 @@ async fn guardian_authorization_revision_survives_compaction_not_user_input() ->
 
     test.codex.submit(Op::Compact).await?;
     wait_for_event(&test.codex, |event| {
-        matches!(event, EventMsg::TurnComplete(_))
+        matches!(event, EventMsg::Error(error)
+            if error.codex_error_info == Some(codex_protocol::protocol::CodexErrorInfo::BadRequest))
     })
     .await;
     assert_eq!(
         test.codex.guardian_authorization_version().await.unwrap(),
-        expected
+        expected,
+        "the unsupported compact command must not invalidate authorization"
     );
 
     Ok(())

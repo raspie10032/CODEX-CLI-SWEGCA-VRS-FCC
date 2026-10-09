@@ -329,6 +329,69 @@
       "attribute": "#[test_case(Change::RootReset; \"root history reset\")]",
       "action": "removed only compaction parameter",
       "basis": "VRS_코덱스일체화_v1.md:141-144"
+    },
+    {
+      "class": "c",
+      "file": "codex-rs/core/tests/suite/guardian_authorization.rs",
+      "function": "guardian_authorization_revision_survives_compaction_not_user_input",
+      "action": "Requires BadRequest from unsupported Compact; every user-input and authorization revision assertion preserved",
+      "basis": "D7/I1"
+    },
+    {
+      "class": "a",
+      "file": "codex-rs/core/tests/suite/guardian_history.rs",
+      "function": "guardian_history_survives_restart_and_user_fork",
+      "action": "Removed only Compact setup; all restart/fork/retained-answer assertions remain",
+      "basis": "D7/I1"
+    },
+    {
+      "class": "a",
+      "file": "codex-rs/core/tests/suite/guardian_history.rs",
+      "function": "guardian_answers_survive_compaction_and_eviction",
+      "action": "Removed only Compact setup; all restart/fork/retained-answer assertions remain",
+      "basis": "D7/I1"
+    },
+    {
+      "class": "a",
+      "file": "codex-rs/core/tests/suite/subagent_service_tier.rs",
+      "function": "root_service_tier_change_updates_existing_subagent",
+      "action": "Removed only compact model request and its tier assertion; ordinary existing/future child tier assertions retained",
+      "basis": "D7/I1"
+    },
+    {
+      "class": "a",
+      "file": "codex-rs/core/tests/suite/guardian_context_budget.rs",
+      "attribute": "#[test_case(4_500, ReviewerResponse::ToolContinuation; \"oversized_tool_continuation_compacts\")]",
+      "action": "Removed only compaction-specific parameter; required context fail-closed case retained",
+      "basis": "D7/I1; D5"
+    },
+    {
+      "class": "a",
+      "file": "codex-rs/core/tests/suite/guardian_context_budget.rs",
+      "attribute": "#[test_case(4_500, ReviewerResponse::FileImageContinuation; \"uploaded_original_image_history_compacts\")]",
+      "action": "Removed only compaction-specific parameter; required context fail-closed case retained",
+      "basis": "D7/I1; D5"
+    },
+    {
+      "class": "a",
+      "file": "codex-rs/core/tests/suite/guardian_context_budget.rs",
+      "attribute": "#[test_case(4_500, ReviewerResponse::UncompactableContinuation; \"ineffective_compaction_fails_closed\")]",
+      "action": "Removed only compaction-specific parameter; required context fail-closed case retained",
+      "basis": "D7/I1; D5"
+    },
+    {
+      "class": "a",
+      "file": "codex-rs/core/tests/suite/guardian_context_budget.rs",
+      "attribute": "#[test_case(4_500, ReviewerResponse::CompactionError; \"compaction_service_error_does_not_request_user_approval\")]",
+      "action": "Removed only compaction-specific parameter; required context fail-closed case retained",
+      "basis": "D7/I1; D5"
+    },
+    {
+      "class": "a",
+      "file": "codex-rs/core/tests/suite/guardian_context_budget.rs",
+      "attribute": "#[test_case(6_000, ReviewerResponse::NextReview; \"incoming_review_compacts_existing_history\")]",
+      "action": "Removed only compaction-specific parameter; required context fail-closed case retained",
+      "basis": "D7/I1; D5"
     }
   ],
   "intended_expectation_changes": [
