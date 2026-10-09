@@ -617,6 +617,7 @@ async fn responses_http_504_preserves_status_after_stream_retry() -> Result<()> 
 
 /// Remote compaction v2 uses the upstream header before another HTTP request.
 #[tokio::test(flavor = "current_thread")]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn compact_v2_uses_retry_after() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
@@ -689,6 +690,7 @@ async fn compact_v2_uses_retry_after() -> Result<()> {
 // TODO(anp) respect Retry-After
 /// Remote compaction v2 stream failures retry without using the enclosing response header.
 #[tokio::test(flavor = "current_thread")]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn compact_v2_stream_failure_uses_local_backoff_despite_retry_after() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
@@ -764,6 +766,7 @@ async fn compact_v2_stream_failure_uses_local_backoff_despite_retry_after() -> R
 
 /// Headerless remote compaction stream rate limits exhaust retries before one terminal error.
 #[tokio::test(flavor = "current_thread")]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn compact_v2_stream_failure_without_retry_after_exhausts_stream_retries() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
@@ -859,6 +862,7 @@ async fn compact_v2_stream_failure_without_retry_after_exhausts_stream_retries()
 // TODO(anp) respect Retry-After
 /// Remote compaction v2 already honors exact retry advice embedded in rate-limit messages.
 #[tokio::test(flavor = "current_thread")]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn compact_v2_rate_limit_message_uses_server_advised_retry_delay() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
@@ -934,6 +938,7 @@ async fn compact_v2_rate_limit_message_uses_server_advised_retry_delay() -> Resu
 
 /// Remote compaction rate-limit messages provide exact retry advice without an HTTP header.
 #[tokio::test(flavor = "current_thread")]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn compact_v2_rate_limit_message_without_retry_after_uses_server_advised_delay() -> Result<()>
 {
     skip_if_no_network!(Ok(()));
@@ -1009,6 +1014,7 @@ async fn compact_v2_rate_limit_message_without_retry_after_uses_server_advised_d
 
 /// Headerless remote compaction v2 overloads exhaust request retries before one terminal error.
 #[tokio::test(flavor = "current_thread")]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn compact_v2_overload_without_retry_after_exhausts_request_retries() -> Result<()> {
     skip_if_no_network!(Ok(()));
 

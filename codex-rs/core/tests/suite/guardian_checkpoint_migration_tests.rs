@@ -89,6 +89,7 @@ pub(super) async fn resume(
 #[test_case::test_case("local")]
 #[test_case::test_case("remote")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn independent_history_resume_filters_rolled_back_sources(compaction: &str) -> Result<()> {
     skip_if_no_network!(Ok(()));
     let server = responses::start_mock_server().await;

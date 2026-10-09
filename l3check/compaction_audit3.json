@@ -1,0 +1,356 @@
+{
+  "evidence": "source audit; not test execution",
+  "doc": "VRS_코덱스일체화_v1.md:141-144",
+  "compaction_only_candidates": [
+    {
+      "function": "response_item_ids_are_sent_for_all_remote_v2_compaction_requests",
+      "location": "codex-rs/core/tests/suite/client.rs:711",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "current_time_reminder_is_refreshed_after_compaction",
+      "location": "codex-rs/core/tests/suite/current_time_reminder.rs:560",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "code_mode_compaction_request_preserves_tool_inventory",
+      "location": "codex-rs/core/tests/suite/code_mode.rs:1671",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "code_mode_wait_id_stays_known_after_compaction",
+      "location": "codex-rs/core/tests/suite/code_mode.rs:1748",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "code_mode_mcp_metadata_keeps_originating_window_after_compaction",
+      "location": "codex-rs/core/tests/suite/code_mode.rs:2007",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "compact_session_start_hook_records_additional_context_for_next_turn",
+      "location": "codex-rs/core/tests/suite/hooks.rs:2203",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "reasoning_effort_override_compaction_fallback_uses_each_models_effort",
+      "location": "codex-rs/core/tests/suite/reasoning_effort_override.rs:1288",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "responses_lite_compact_request_uses_lite_transport_contract",
+      "location": "codex-rs/core/tests/suite/responses_lite.rs:551",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "compact_v2_uses_retry_after",
+      "location": "codex-rs/core/tests/suite/retry_after.rs:620",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "compact_v2_stream_failure_uses_local_backoff_despite_retry_after",
+      "location": "codex-rs/core/tests/suite/retry_after.rs:692",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "compact_v2_stream_failure_without_retry_after_exhausts_stream_retries",
+      "location": "codex-rs/core/tests/suite/retry_after.rs:767",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "compact_v2_rate_limit_message_uses_server_advised_retry_delay",
+      "location": "codex-rs/core/tests/suite/retry_after.rs:862",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "compact_v2_rate_limit_message_without_retry_after_uses_server_advised_delay",
+      "location": "codex-rs/core/tests/suite/retry_after.rs:937",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "compact_v2_overload_without_retry_after_exhausts_request_retries",
+      "location": "codex-rs/core/tests/suite/retry_after.rs:1012",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "compaction_budget_exhaustion_fails_without_retry",
+      "location": "codex-rs/core/tests/suite/rollout_budget.rs:339",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "restates_the_current_remainder_after_compaction",
+      "location": "codex-rs/core/tests/suite/rollout_budget.rs:405",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "compaction_checkpoints_settings_changed_during_its_model_request",
+      "location": "codex-rs/core/tests/suite/settings_commits.rs:296",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "guardian_history_preserves_reviewer_across_parent_compaction",
+      "location": "codex-rs/core/tests/suite/guardian_history.rs:206",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "independent_history_resume_filters_rolled_back_sources",
+      "location": "codex-rs/core/tests/suite/guardian_checkpoint_migration_tests.rs:92",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "retained_instructions_keep_identity_across_compaction_and_resume",
+      "location": "codex-rs/core/tests/suite/guardian_retained_context.rs:423",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "legacy_checkpoint_recovers_root_excerpt_before_discarding_backup",
+      "location": "codex-rs/core/tests/suite/guardian_retained_context.rs:667",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "guardian_checkpoint_migration_request_history",
+      "location": "codex-rs/core/tests/suite/scenarios.rs:1751",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "compressed_shared_fork_resume_preserves_checkpoint_and_frozen_history",
+      "location": "codex-rs/core/tests/suite/rollout_compression.rs:38",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "token_budget_context_uses_new_window_after_compaction",
+      "location": "codex-rs/core/tests/suite/token_budget.rs:1011",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "token_budget_compaction_runs_compact_hooks",
+      "location": "codex-rs/core/tests/suite/token_budget.rs:1127",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "token_budget_mid_turn_auto_compaction_resets_before_active_follow_up",
+      "location": "codex-rs/core/tests/suite/token_budget.rs:1178",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "new_context_tool_skips_auto_compact_fallback",
+      "location": "codex-rs/core/tests/suite/token_budget.rs:1305",
+      "classification": "a_candidate",
+      "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
+      "action": "ignored under D7/I1; body retained and still compiled"
+    }
+  ],
+  "mixed_cases": [
+    {
+      "file": "guardian_authorization.rs",
+      "cases": [
+        "compaction promotes policy",
+        "ordinary compaction preserves review"
+      ],
+      "preserve": "Other authorization update cases and all unrelated assertions"
+    },
+    {
+      "file": "guardian_authorization_refresh.rs",
+      "cases": [
+        "root history reset"
+      ],
+      "preserve": "Unchanged/revoke/status/repeated/cancel cases"
+    },
+    {
+      "file": "code_mode.rs",
+      "cases": [
+        "multimodal_reviewer_compaction_preserves_evidence"
+      ],
+      "preserve": "Other reviewer modalities/constraints; oversized metadata case should retain inventory assertions while dropping only compaction subscenario"
+    },
+    {
+      "file": "subagent_service_tier.rs",
+      "cases": [
+        "root_service_tier_change_updates_existing_subagent"
+      ],
+      "preserve": "Service-tier propagation assertions on ordinary parent/child requests; remove only compact request branch"
+    },
+    {
+      "file": "guardian_history.rs",
+      "cases": [
+        "guardian_history_survives_restart_and_user_fork",
+        "guardian_answers_survive_compaction_and_eviction"
+      ],
+      "preserve": "Restart/fork and retained answer safety behavior; remove explicit Compact setup and adjust mocks"
+    },
+    {
+      "file": "guardian_retained_context.rs",
+      "cases": [
+        "standalone_fork_retains_inherited_user_instructions",
+        "forked_parent_instructions_do_not_become_local_authorization",
+        "retained_answers_cross_real_session_boundaries"
+      ],
+      "preserve": "Fork/retained-context authorization assertions; investigate independently rather than whole-test ignore"
+    }
+  ],
+  "compatibility_matches": [
+    "codex-rs/app-server-protocol/src/protocol/v2/config.rs:285:    pub model_auto_compact_token_limit: Option<i64>,",
+    "codex-rs/app-server-protocol/src/protocol/v2/config.rs:286:    pub model_auto_compact_token_limit_scope: Option<AutoCompactTokenLimitScope>,",
+    "codex-rs/app-server-protocol/src/protocol/v2/tests.rs:2100:        model_auto_compact_token_limit: None,",
+    "codex-rs/app-server-protocol/src/protocol/v2/tests.rs:2101:        model_auto_compact_token_limit_scope: None,",
+    "codex-rs/app-server-protocol/src/protocol/v2/tests.rs:2141:        model_auto_compact_token_limit: None,",
+    "codex-rs/app-server-protocol/src/protocol/v2/tests.rs:2142:        model_auto_compact_token_limit_scope: None,",
+    "codex-rs/app-server/tests/common/config.rs:172:            \"compact_prompt = \\\"{compact_prompt}\\\"\\nmodel_auto_compact_token_limit = {auto_compact_limit}\"",
+    "codex-rs/app-server/tests/common/config_tests.rs:59:        \"model_auto_compact_token_limit = 321\",",
+    "codex-rs/app-server/tests/suite/logging.rs:589:        .with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 100000\")",
+    "codex-rs/app-server/tests/suite/v2/executor_mcp.rs:1059:        \"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 1024\\nmcp_oauth_credentials_store = \\\"file\\\"\\nmcp_oauth_callback_port = {global_callback_port}\"",
+    "codex-rs/app-server/tests/suite/v2/external_agent_config.rs:2508:            \"compact_prompt = \\\"Summarize the conversation.\\\"\\nmodel_auto_compact_token_limit = 200\",",
+    "codex-rs/app-server/tests/suite/v2/guardian_v2_history_tests.rs:262:        .with_root_config(\"approvals_reviewer = \\\"auto_review\\\"\\nmodel_auto_compact_token_limit = 1000000\")",
+    "codex-rs/app-server/tests/suite/v2/mcp_server_status.rs:1490:        .with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 1024\")",
+    "codex-rs/app-server/tests/suite/v2/mcp_tool.rs:1624:            \"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = {auto_compact_limit}\"",
+    "codex-rs/app-server/tests/suite/v2/multi_agent_v2_developer_instructions.rs:376:            \"developer_instructions = {PARENT_INSTRUCTIONS:?}\\nmodel_context_window = 100\\nmodel_auto_compact_token_limit = 90\\ncompact_prompt = {COMPACT_PROMPT:?}\"",
+    "codex-rs/app-server/tests/suite/v2/selected_environment.rs:29:        .with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 100000\")",
+    "codex-rs/app-server/tests/suite/v2/selected_environment.rs:238:        .with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 100000\")",
+    "codex-rs/app-server/tests/suite/v2/thread_settings_update.rs:701:        .with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 200000\")",
+    "codex-rs/config/src/config_toml.rs:181:    pub model_auto_compact_token_limit: Option<i64>,",
+    "codex-rs/config/src/config_toml.rs:185:    pub model_auto_compact_token_limit_scope: Option<AutoCompactTokenLimitScope>,",
+    "codex-rs/protocol/src/config_types.rs:43:/// `model_auto_compact_token_limit`."
+  ],
+  "source_pruning_commit": "b89e5eb9e",
+  "source_pruning": {
+    "removed": [
+      "HistoryReplacement::Compaction",
+      "ContextManager::replace_compacted",
+      "AutoCompactWindow::advance",
+      "request/take new_context flags",
+      "new_context handler and model exposure",
+      "auto_compact fallback prompt injection"
+    ],
+    "retained": [
+      "Ordinary remaining-token reminder",
+      "Legacy replay/telemetry window IDs, unable to advance",
+      "Config and protocol deserialization fields"
+    ]
+  },
+  "unit_test_changes": [
+    {
+      "class": "a",
+      "test": "plaintext_checkpoint_without_backup_preserves_root_instructions",
+      "action": "deleted 2 parameter cases",
+      "why": "Constructs and applies new compaction then resumes it; path removed by D7"
+    },
+    {
+      "class": "a",
+      "test": "tracks_prefill_and_window_boundaries",
+      "action": "renamed restores_legacy_window_ids_and_tracks_prefill; removed only advance/request/fallback section",
+      "why": "D7 removes window-reset operations; restore/prefill/reminder assertions retained"
+    },
+    {
+      "class": "a",
+      "test": "drop_last_n_user_turns_preserves_prefix",
+      "action": "removed replace_compacted call only",
+      "why": "Retained every rollback evidence assertion; removed extra compaction operation"
+    }
+  ],
+  "mixed_adjustments": [
+    {
+      "class": "a",
+      "function": "code_mode_tool_call_completeness_is_private_and_opt_in",
+      "action": "removed only nested compaction lifecycle subscenario; all pre-compaction inventory/metadata/privacy assertions and all four cases remain",
+      "basis": "VRS_코덱스일체화_v1.md:141-144"
+    },
+    {
+      "file": "codex-rs/core/tests/suite/code_mode.rs",
+      "attribute": "#[test_case(\"node_repl\", true, true, false, Some(\"compaction\"); \"multimodal_reviewer_compaction_preserves_evidence\")]",
+      "action": "removed only compaction parameter",
+      "basis": "VRS_코덱스일체화_v1.md:141-144"
+    },
+    {
+      "file": "codex-rs/core/tests/suite/guardian_authorization.rs",
+      "attribute": "#[test_case(PendingReviewChange::Compaction, GuardianContextMode::Legacy, GuardianAssessmentStatus::Aborted; \"compaction promotes policy\")]",
+      "action": "removed only compaction parameter",
+      "basis": "VRS_코덱스일체화_v1.md:141-144"
+    },
+    {
+      "file": "codex-rs/core/tests/suite/guardian_authorization.rs",
+      "attribute": "#[test_case(PendingReviewChange::Compaction, GuardianContextMode::ThreadOwned, GuardianAssessmentStatus::Approved; \"ordinary compaction preserves review\")]",
+      "action": "removed only compaction parameter",
+      "basis": "VRS_코덱스일체화_v1.md:141-144"
+    },
+    {
+      "file": "codex-rs/core/tests/suite/guardian_authorization_refresh.rs",
+      "attribute": "#[test_case(Change::RootReset; \"root history reset\")]",
+      "action": "removed only compaction parameter",
+      "basis": "VRS_코덱스일체화_v1.md:141-144"
+    }
+  ],
+  "intended_expectation_changes": [
+    {
+      "class": "c",
+      "file": "codex-rs/core/tests/suite/token_budget.rs",
+      "function": "experimental-context eligibility and model-default activation tests",
+      "action": "new_context tool must be absent; get_context_remaining and token-budget metadata assertions retained",
+      "basis": "VRS_코덱스일체화_v1.md:141-144"
+    }
+  ],
+  "new_contract_tests": [
+    {
+      "class": "c",
+      "function": "manual_compaction_is_rejected_without_model_request",
+      "file": "codex-rs/core/tests/suite/client.rs",
+      "asserts": [
+        "First event for Op::Compact submission is BadRequest error",
+        "No model/server request sent"
+      ],
+      "basis": "VRS_코덱스일체화_v1.md:22,141-144",
+      "validation": "pending root compilation and execution"
+    }
+  ]
+}

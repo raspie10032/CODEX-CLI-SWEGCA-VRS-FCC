@@ -350,11 +350,11 @@ async fn experimental_context_requires_capable_model_and_codex_backend(
         .await?;
 
     let request = response.single_request();
-    assert_eq!(
-        tool_names(&request)
+    assert!(
+        !tool_names(&request)
             .iter()
             .any(|name| name == "new_context"),
-        expected_enabled
+        "D7 removes context-window resets even when token-budget accounting is enabled"
     );
     assert_eq!(
         !token_budget_contexts(&request).is_empty(),
@@ -440,9 +440,10 @@ async fn token_budget_history_notes_can_be_enabled_without_experimental_context(
     assert_eq!(requests.len(), 2);
     for request in requests {
         assert!(
-            tool_names(&request)
+            !tool_names(&request)
                 .iter()
-                .any(|name| name == "new_context")
+                .any(|name| name == "new_context"),
+            "D7 removes context-window reset tools"
         );
         assert_eq!(token_budget_contexts(&request).len(), 1);
         let turn_metadata: Value = serde_json::from_str(
@@ -1008,6 +1009,7 @@ async fn get_context_remaining_returns_unknown_when_threshold_is_unbounded() -> 
 #[test_case(false; "token_budget_only")]
 #[test_case(true; "with_client_developer_retention")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn token_budget_context_uses_new_window_after_compaction(
     retain_client_developer_messages: bool,
 ) -> Result<()> {
@@ -1124,6 +1126,7 @@ async fn token_budget_context_uses_new_window_after_compaction(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn token_budget_compaction_runs_compact_hooks() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
@@ -1175,6 +1178,7 @@ async fn token_budget_compaction_runs_compact_hooks() -> Result<()> {
 #[test_case(false; "token_budget_only")]
 #[test_case(true; "with_client_developer_retention")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn token_budget_mid_turn_auto_compaction_resets_before_active_follow_up(
     retain_client_developer_messages: bool,
 ) -> Result<()> {
@@ -1302,6 +1306,7 @@ async fn token_budget_mid_turn_auto_compaction_resets_before_active_follow_up(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn new_context_tool_skips_auto_compact_fallback() -> Result<()> {
     skip_if_no_network!(Ok(()));
 

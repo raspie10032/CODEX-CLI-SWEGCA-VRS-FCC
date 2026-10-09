@@ -44,7 +44,6 @@ enum Change {
 #[test_case(Change::Revoke; "parent revokes authorization")]
 #[test_case(Change::Repeated; "repeated parent updates exhaust budget")]
 #[test_case(Change::Cancel; "explicit worker cancellation")]
-#[test_case(Change::RootReset; "root history reset")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn guardian_refreshes_subagent_authorization(change: Change) -> Result<()> {
     skip_if_no_network!(Ok(()));

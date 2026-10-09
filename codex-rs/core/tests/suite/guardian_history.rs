@@ -203,6 +203,7 @@ async fn guardian_history_survives_restart_and_user_fork(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn guardian_history_preserves_reviewer_across_parent_compaction() -> Result<()> {
     skip_if_no_network!(Ok(()));
     let server = start_mock_server().await;

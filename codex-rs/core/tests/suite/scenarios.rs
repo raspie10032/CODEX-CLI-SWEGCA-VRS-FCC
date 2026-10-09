@@ -1748,6 +1748,7 @@ async fn subagent_waits_for_its_inherited_environment_configuration() -> Result<
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn guardian_checkpoint_migration_request_history() -> Result<()> {
     skip_if_no_network!(Ok(()));
     use super::guardian_checkpoint_migration::migration_scenario;

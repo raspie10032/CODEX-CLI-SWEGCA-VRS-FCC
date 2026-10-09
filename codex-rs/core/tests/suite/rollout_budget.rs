@@ -336,6 +336,7 @@ async fn exhausted_budget_fails_current_and_later_turns() -> Result<()> {
 #[test_case(false, true ; "local provider units")]
 #[test_case(true, false ; "remote v2 token usage")]
 #[test_case(true, true ; "remote v2 provider units")]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn compaction_budget_exhaustion_fails_without_retry(
     remote_v2: bool,
     provider_units: bool,
@@ -402,6 +403,7 @@ async fn compaction_budget_exhaustion_fails_without_retry(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn restates_the_current_remainder_after_compaction() -> Result<()> {
     skip_if_no_network!(Ok(()));
 

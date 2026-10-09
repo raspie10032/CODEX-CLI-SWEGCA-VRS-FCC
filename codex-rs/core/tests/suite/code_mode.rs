@@ -1560,7 +1560,7 @@ await new Promise(() => {});
         r#"await tools.test_sync_tool({}); text("done");"#
     };
     // run_code_mode_turn_with_config enables this feature; production keeps it off by default.
-    let (test, follow_up) =
+    let (_test, follow_up) =
         run_code_mode_turn_with_config(&server, "Record a nested tool call", code, move |config| {
             if !metadata_enabled {
                 config
@@ -1598,69 +1598,6 @@ await new Promise(() => {});
         metadata.get("cell_id").and_then(Value::as_str),
         metadata_enabled.then_some("call-1"),
     );
-    if yielded || oversized {
-        let first_items = custom_tool_output_items(&request, "call-1");
-        let cell_id = extract_running_cell_id(text_item(&first_items, /*index*/ 0));
-
-        if oversized {
-            let compact = responses::mount_sse_once(
-                &server,
-                responses::sse(vec![
-                    serde_json::json!({
-                        "type": "response.output_item.done",
-                        "item": {
-                            "type": "compaction",
-                            "encrypted_content": "compacted history",
-                        },
-                    }),
-                    responses::ev_completed("resp-compact"),
-                ]),
-            )
-            .await;
-            test.codex.submit(Op::Compact).await?;
-            wait_for_event(&test.codex, |event| {
-                matches!(event, EventMsg::TurnComplete(_))
-            })
-            .await;
-
-            assert_eq!(
-                compact
-                    .single_request()
-                    .inputs_of_type("compaction_trigger")
-                    .len(),
-                1
-            );
-            assert_eq!(
-                compact.single_request().custom_tool_call_output("call-1")["internal_chat_message_metadata_passthrough"],
-                *metadata,
-            );
-
-            let wait = responses::mount_function_call_agent_response(
-                &server,
-                "call-2",
-                &serde_json::to_string(&serde_json::json!({
-                    "cell_id": cell_id,
-                    "terminate": true,
-                }))?,
-                "wait",
-            )
-            .await;
-            test.submit_turn("Finish the compacted cell").await?;
-            let final_request = wait.completion.single_request();
-            assert!(
-                final_request
-                    .input()
-                    .iter()
-                    .all(|item| item["call_id"] != "call-1")
-            );
-            assert!(
-                final_request.function_call_output("call-2")
-                    ["internal_chat_message_metadata_passthrough"]
-                    .get("tool_calls_complete")
-                    .is_none()
-            );
-        }
-    }
 
     Ok(())
 }
@@ -1668,6 +1605,7 @@ await new Promise(() => {});
 #[test_case(true; "enabled")]
 #[test_case(false; "disabled")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn code_mode_compaction_request_preserves_tool_inventory(
     metadata_enabled: bool,
 ) -> Result<()> {
@@ -1745,6 +1683,7 @@ async fn code_mode_compaction_request_preserves_tool_inventory(
 #[test_case("call-wait", None; "reused_wait_id")]
 #[test_case("call-fresh-wait", Some(true); "fresh_wait_id")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn code_mode_wait_id_stays_known_after_compaction(
     terminal_call_id: &str,
     expected_complete: Option<bool>,
@@ -2004,6 +1943,7 @@ fn result_metadata_apps_builder(base_url: String, account_email: &str) -> TestCo
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn code_mode_mcp_metadata_keeps_originating_window_after_compaction() -> Result<()> {
     skip_if_no_network!(Ok(()));
     let server = responses::start_mock_server().await;
@@ -7040,7 +6980,6 @@ await tools.exec_command({ cmd: "true", sandbox_permissions: "require_escalated"
 #[test_case("node_repl", true, true, false, Some("unbounded"); "text_fallback_without_context_bound")]
 #[test_case("node_repl", true, true, false, Some("small"); "text_fallback_with_insufficient_context")]
 #[test_case("node_repl", true, true, false, Some("large_prompt"); "images_resume_after_prompt_pressure")]
-#[test_case("node_repl", true, true, false, Some("compaction"); "multimodal_reviewer_compaction_preserves_evidence")]
 #[test_case("cua_repl", false, false, false, None; "cua_disabled")]
 #[test_case("cua_repl", true, false, false, None; "cua_manually_enabled_text_only")]
 #[test_case("cua_repl", true, true, false, None; "cua_manually_enabled_multimodal")]

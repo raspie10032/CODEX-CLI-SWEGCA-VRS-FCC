@@ -35,6 +35,7 @@ use pretty_assertions::assert_eq;
 use wiremock::MockServer;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn compressed_shared_fork_resume_preserves_checkpoint_and_frozen_history() -> Result<()> {
     skip_if_no_network!(Ok(()));
 

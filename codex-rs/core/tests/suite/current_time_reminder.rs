@@ -557,6 +557,7 @@ async fn sleep_tool_configuration_controls_registration(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn current_time_reminder_is_refreshed_after_compaction() -> Result<()> {
     skip_if_no_network!(Ok(()));
 

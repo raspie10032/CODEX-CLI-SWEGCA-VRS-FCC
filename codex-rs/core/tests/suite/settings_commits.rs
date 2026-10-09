@@ -293,6 +293,7 @@ async fn settings_notifications_keep_their_commit_across_postcommit_work(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn compaction_checkpoints_settings_changed_during_its_model_request() -> Result<()> {
     skip_if_no_network!(Ok(()));
 

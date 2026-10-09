@@ -548,6 +548,7 @@ async fn assert_responses_lite_custom_provider_web_search(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn responses_lite_compact_request_uses_lite_transport_contract() -> Result<()> {
     skip_if_no_network!(Ok(()));
 

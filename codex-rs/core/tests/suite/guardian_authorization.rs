@@ -51,8 +51,6 @@ enum PendingReviewChange {
 #[test_case(PendingReviewChange::VerifiedAnswer, GuardianContextMode::ThreadOwned, GuardianAssessmentStatus::Denied; "verified answer")]
 #[test_case(PendingReviewChange::UserInstruction, GuardianContextMode::Legacy, GuardianAssessmentStatus::Denied; "migration user instruction")]
 #[test_case(PendingReviewChange::VerifiedAnswer, GuardianContextMode::Legacy, GuardianAssessmentStatus::Denied; "migration verified answer")]
-#[test_case(PendingReviewChange::Compaction, GuardianContextMode::Legacy, GuardianAssessmentStatus::Aborted; "compaction promotes policy")]
-#[test_case(PendingReviewChange::Compaction, GuardianContextMode::ThreadOwned, GuardianAssessmentStatus::Approved; "ordinary compaction preserves review")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn guardian_revalidates_owning_session_before_allow(
     change: PendingReviewChange,

@@ -708,6 +708,7 @@ async fn synthetic_call_output_id_is_stable_across_resumes() -> anyhow::Result<(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn response_item_ids_are_sent_for_all_remote_v2_compaction_requests() -> anyhow::Result<()> {
     let server = MockServer::start().await;
     let response_mock = mount_sse_sequence(
@@ -757,6 +758,33 @@ async fn response_item_ids_are_sent_for_all_remote_v2_compaction_requests() -> a
         }
     }
 
+    Ok(())
+}
+
+// D7/I1 rejects the legacy command before starting a turn or calling a model.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn manual_compaction_is_rejected_without_model_request() -> anyhow::Result<()> {
+    let server = MockServer::start().await;
+    let test = test_codex().build(&server).await?;
+    let request_id = test.codex.submit(Op::Compact).await?;
+    let event = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let event = test.codex.next_event().await?;
+            if event.id == request_id {
+                return Ok::<_, codex_protocol::error::CodexErr>(event);
+            }
+        }
+    })
+    .await??;
+    let EventMsg::Error(error) = event.msg else {
+        panic!("manual compaction must return an error before starting a turn: {event:?}");
+    };
+    assert_eq!(
+        error.codex_error_info,
+        Some(codex_protocol::protocol::CodexErrorInfo::BadRequest)
+    );
+    assert!(error.message.contains("Context compaction is not available"));
+    assert!(server.received_requests().await.unwrap().is_empty());
     Ok(())
 }
 

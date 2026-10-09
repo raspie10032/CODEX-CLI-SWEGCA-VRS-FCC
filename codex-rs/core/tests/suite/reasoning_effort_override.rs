@@ -1285,6 +1285,7 @@ async fn reasoning_effort_override_resume_refreshes_selected_effort(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn reasoning_effort_override_compaction_fallback_uses_each_models_effort()
 -> anyhow::Result<()> {
     skip_if_no_network!(Ok(()));

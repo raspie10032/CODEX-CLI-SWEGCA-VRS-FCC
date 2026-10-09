@@ -420,6 +420,7 @@ enum InstructionSize {
 #[test_case(InstructionSize::Normal; "enabled paginated resume")]
 #[test_case(InstructionSize::Oversized; "oversized instruction resume")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn retained_instructions_keep_identity_across_compaction_and_resume(
     instruction_size: InstructionSize,
 ) -> Result<()> {
@@ -664,6 +665,7 @@ enum LegacyInstructionSource {
 #[test_case(ThreadHistoryMode::Legacy, LegacyInstructionSource::Missing; "legacy missing source")]
 #[test_case(ThreadHistoryMode::Paginated, LegacyInstructionSource::Missing; "paginated missing source")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn legacy_checkpoint_recovers_root_excerpt_before_discarding_backup(
     history_mode: ThreadHistoryMode,
     source_location: LegacyInstructionSource,

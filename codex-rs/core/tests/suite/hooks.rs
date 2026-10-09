@@ -2200,6 +2200,7 @@ async fn pre_tool_use_hook_spills_large_additional_context() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn compact_session_start_hook_records_additional_context_for_next_turn() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
