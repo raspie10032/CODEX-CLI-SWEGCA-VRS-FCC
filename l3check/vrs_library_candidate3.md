@@ -1,172 +1,198 @@
-# VI-27 library candidate and VI-28 publication audit
+# VI-27 diagnostic candidate and latest VI-28 publication audit
 
-Status: **review candidate only**. The patch has not been applied to the owner tree,
-compiled, linked, or executed. No replacement library was built. The inspected owner
-source still has both defects. `vrs_library_candidate3.json` records exact source,
-header, library, and patch hashes and the successful `git apply --check` on an
-isolated temporary copy. That check establishes patch applicability only.
+Status: **diagnostic candidate only, not real-library integration success**.
+The refreshed patch is applied only to the untracked local source copy at
+`l3check/library_candidate3/vrs_lib.cpp`. This agent did not compile, link, or run
+it and did not write anything under `$WORK/vrsint`. The parent may build the isolated
+copy for diagnosis; that result must remain separate from real-library results.
+Only this report, the patch, and the hash manifest are committed.
 
-During this audit the owner independently updated the source to SHA-256
-`c468087b1e7ef0e2c34f3199283e7ea97d76a4f583749abac59d4322076d0732` and the
-real library to `cc81fe7547cb8e9f1e0f1f06355ca661bec54ca41cb56c88fda15f8e383c0479`.
-The same candidate also passes `git apply --check` on a temporary copy of that
-updated source. Its VI-27 insertion condition is now line 3326 and VI-28 wait is
-line 3337; both remain in the source. The old runtime reproduction is not a
-runtime result for this updated binary. No owner file was written by this agent.
+The exact inspected owner inputs are:
 
-The existing `library_deferred3.cpp` / `library_deferred3.json` reproduction is the
-runtime evidence: insertion before the file exists returns 0, the caller writes
-and flushes the bytes, and `vrs_written` returns -3. This audit did not rerun it.
+| Input | SHA-256 |
+| --- | --- |
+| `$WORK/vrsint/vrs_lib.cpp` | `f741af0163ebc71d910321819ab4b8ff6aa2fc0fe2b88f7e36a09073d7a9388f` |
+| `$WORK/vrsint/vrs.h` | `2336f4c191c53157190d7e6edabb517a670de0e346eb697f81b0084547e0a5ab` |
+| `$WORK/vrsint/libvrs.a` | `75ce1177d15a8e01703aec8bb30fc2c7ac5192e7b581adbca059104bf6e3ff42` |
+| Refreshed patch | `3165615c15583350ed90dbecd74fc8dc99925f97a081cf53d1c5a85af6c9b280` |
+| Patched diagnostic source | `5057eea44557cab675cfc5a6204830735db1906ad465e30e076d4e4e74541645` |
+| Local design document at inspection | `e38d39e22457c2a799952c1ab081a5b6de26dfbdce4aa8ee5e568049814c7f1b` |
 
-## Source cause and why one changed condition is insufficient
+The owner source is copied unmodified to the untracked
+`l3check/library_candidate3/owner_f741af0.cpp`; the candidate header is an exact
+copy of the inspected header. `git apply --check` passed against a temporary
+copy of this owner source. Applying the patch there also produced bytes identical
+to the prepared candidate. These are patch applicability checks, not C++ checks.
+Protected source, header, and library hashes were rechecked before preparing the
+candidate. They can change independently after this audit.
 
-All source locations below refer to the unmodified owner source
-`$WORK/vrsint/vrs_lib.cpp`, SHA-256
-`21ba6146899e8d1b9673e1f78f74d5c9be3d4abd525eb915947d43d5cee485ea`.
+All owner-source line references below refer to **f741af0**, not older revisions.
+Prior source/library identities remain in `vrs_library_candidate3.json`. Prior
+`library_deferred3.cpp` / `library_deferred3.json` results are historical evidence;
+they are not runtime results for the new owner binary or this candidate.
 
-| Location | Existing behavior | Consequence for delayed creation |
+## VI-27 cause and candidate scope
+
+The new owner publication change did not remove VI-27:
+
+| Owner location | Behavior | Consequence |
 | --- | --- | --- |
-| 2875 | `make_sess` sets permanent `memmode` from initial file nonexistence | A normal delayed rollout is mistaken for a permanently ephemeral thread |
-| 3102 | `uw_add` runs only outside `memmode` | No pending copy exists for `vrs_written` to release |
-| 3126–3127 | `vrs_written` rejects an absent UW key with -3 | The normal persist/materialize acknowledgement fails |
-| 1643, 2360 | `memline` keeps another full original and `fetch` bypasses UW | Adding UW alone would leave a permanent duplicate after acknowledgement |
-| 2377, 2991 | Memory mode excludes disk-tail ingestion | Later file creation never enables the ordinary live reader |
-| 2142, 2170 | Memory mode excludes shard writes and confirmed watermarks | Delayed persistent sessions never acquire the normal index path |
-| 2222–2225 | Memory mode excludes closed turns from B | Ordinary delayed sessions are absent from the reference-turn set |
+| 3097 | `make_sess` permanently sets `memmode` from initial file absence | Delayed persistent rollouts become indistinguishable from permanently ephemeral ones |
+| 3324 | `vrs_insert` skips UW storage in `memmode` | No pending copy exists for the later persistence acknowledgement |
+| 3343 | `vrs_written` returns -3 for a missing UW key | Normal delayed materialization fails |
+| 879, 1667, 2583 | `memline` stores another original and bypasses UW on fetch | Merely adding UW leaves a permanent duplicate after acknowledgement |
+| 2600, 3213 | Memory mode disables file-tail paths | Later file creation does not enable the ordinary file reader |
+| 2166, 2194 | Memory mode disables shard creation and confirmed watermarks | Delayed persistent rows miss ordinary index persistence |
+| 2250, 2252 | Memory mode excludes closed turns from B | Reference-turn membership depends on file creation timing |
 
-The last exclusion also conflicts with the explicit current definitions:
-`VRS_코덱스일체화_v1.md:101` includes ephemeral rows in S, and line 353 defines B
-as all closed turns of S. Therefore the candidate changes B membership as a
-required semantic correction. This can change outputs; it is not a harmless
-bookkeeping edit and must be reviewed and tested against the definition.
+The candidate preserves the latest owner's D8 implementation, `InNode` without
+completion pointers, `want_count` scheduling, enqueue-and-return behavior,
+`insert_left` accounting, `vrs_dbg` ABI, and all publication comments. It neither
+restores the deleted completion wait nor silently substitutes the older source.
+The C ABI is unchanged. The patch only makes the following storage changes:
 
-## Review candidate
-
-`vrs_library_candidate3.patch` changes only the C++ implementation; the C ABI is
-unchanged.
-
-1. Remove permanent `memmode` and its duplicate `memline` originals. Every newly
+1. Remove permanent `memmode` and duplicate `memline` originals. Every newly
    inserted key retains its bytes in the existing per-session CAS UW set.
-2. `fetch` reads UW first for all paths, then the original file when UW no longer
-   holds the key. No source selection depends on whether the file existed when
-   the session was created.
-3. Keep `vrs_written` as the only normal release of a UW original. Ephemeral
-   callers never issue that acknowledgement, so their originals remain available
-   for the handle lifetime. Acknowledged persistent rows stop retaining a UW copy.
-4. Use the ordinary file-tail reader for any path; a missing file causes the
-   existing `open` failure return. The live NUL stop and restore-hole rules remain.
-5. Include every closed turn in B, following D1 and D3-prime.
-6. Defer disk index flushing while the original file does not exist. Keep the
-   existing owner's accumulated index records in its existing `wbuf`; flush on a
-   later ordinary owner batch after materialization. This avoids persisting an
-   ephemeral index and avoids discarding the prefix of a delayed file's index.
-   With index persistence disabled, discard `wbuf` as before. Neither this check
-   nor a later flush releases a UW original; only `vrs_written` does that.
+2. Read UW first for every path, then the original file after acknowledgement.
+   Source selection no longer depends on whether the file initially existed.
+3. Keep `vrs_written` as the only normal release of a pending original. Ephemeral
+   callers never acknowledge, so their pending originals survive for the handle
+   lifetime. Persistent originals are released after their write acknowledgement.
+4. Permit the ordinary file-tail reader for all paths. Missing files follow its
+   existing open-failure return; live NUL-stop and restore-hole rules remain.
+5. Include every closed turn in B, following D1 (`VRS_코덱스일체화_v1.md:101`) and
+   D3-prime (352–356). This includes ephemeral turns and can change outputs. It
+   is a semantic correction requiring owner review, not a bookkeeping claim.
+6. Keep existing `wbuf` index records while the original file is absent, and let
+   a later ordinary owner batch flush them after materialization. If index
+   persistence is disabled, discard `wbuf` as before. The existence check only
+   gates disk index persistence; it does not classify the session or choose raw
+   bytes, and it never releases UW originals.
 
-The source-level byte-lifetime argument is narrow and concrete. After insertion,
-`uw_add` owns the original at `(path, off)`. A reader that wins before acknowledgement
-copies the bytes through `uw_get` under the existing UW hazard protection. A reader
-that observes removal reads the flushed original file. Removal is valid because
-the caller promises that the bytes are already written and flushed before invoking
-`vrs_written`. A path that never materializes has no acknowledgement, so the pending
-original remains. No permanent second `memline` copy survives materialization.
+The byte-lifetime argument is limited to the caller's immutable-row contract:
+`uw_add` retains the original at `(path, off)`. A protected UW reader copies it
+before acknowledgement. A reader observing UW removal reads the already-written
+and flushed file. An ephemeral row is never acknowledged. This does not prove
+model visibility: assembly selects IDs from a published snapshot first, so bytes
+present in UW cannot make an unpublished item appear in A.
 
-The candidate introduces no lock, thread, queue, owner election, busy loop, or
-completion wait. It reuses the existing owner-only `wbuf` and the existing UW CAS
-operations. This is **not** an E3-3 pass: those existing library operations have the
-unresolved serialization described below.
+The patch adds no lock, thread, queue, owner election, polling, or completion wait.
+It reuses existing UW CAS operations and owner-only `wbuf`. This is not an E3-3
+pass; the existing library still serializes per-session publication and contains
+other waiting paths, detailed below.
 
-## Assumptions and limitations requiring owner review
+## Latest VI-28 change: removed wait, remaining stale-success path
 
-- A successful `vrs_written(path, off)` is called only after writing and flushing
-  exactly that previously inserted immutable row. The candidate does not try to
-  prove a caller's disk write from the acknowledgement itself.
-- A live path is not replaced, truncated, unlinked, or reused for different bytes.
-  Distinct ephemeral generations already have distinct paths on the Rust side.
-- All raw ephemeral rows remain in UW until handle destruction, as D1/P-4 require.
-  The patch also retains their unpersisted index records in `wbuf` when an index
-  directory is configured. This increases the volatile metadata constant factor
-  compared with the old `memmode` branch. It must be measured; it is not a claim
-  that ephemeral memory is bounded independently of its own retained rows.
-- A persistent row's raw bytes can be released by `vrs_written` before the next
-  owner batch flushes `wbuf`. The watcher or later normal insertion supplies that
-  batch; the patch does not add a synchronous flush or wait. If the process exits
-  first, the originals are present and startup can parse them, but the candidate
-  alone does not prove the 5-second restart condition for that case.
-- The `access` check controls only whether to persist an index. It no longer
-  classifies a path permanently or chooses the raw source. The patch preserves
-  existing handling of shard write failures after a file exists; it does not
-  claim to fix every shard I/O/error-propagation defect.
-- B now includes ephemeral closed turns, as the design requires. Differential
-  expected results must be derived from D1/D3-prime, not relaxed to accept whatever
-  the candidate produces. Owner review must include comparisons before and after
-  materializing the same persistent rows.
-- UW CAS contention/reclamation and the owner publication mechanism are reused,
-  not certified by this inspection. The source's `uw_slot` retries when all hazard
-  slots are occupied (1152–1157), and `get_sess` waits for pointer publication
-  (2887, 2902). They remain additional E3-3 audit concerns.
+The latest owner removed `InNode::done`, the caller's stack completion atomic,
+and the explicit yield-until-done loop. That fixes the dangling-pointer concern
+that would arise from deleting only the old wait. It does **not** establish the
+successful-insert visibility contract of P-3-prime.
 
-## Owner validation still required
+Current source flow:
 
-These are proposed checks, not executed checks:
+| Owner location | Operation |
+| --- | --- |
+| 845 | `InNode` has only offset, line, and next pointer |
+| 3330 | Insert publishes its node into the session inbox by CAS |
+| 3331 | A ready insert sets `want_count` |
+| 3047–3051 | `drain` returns false immediately if another thread holds `busy` |
+| 3332–3333 | Insert records `insert_left` on that false result and returns 0 |
+| 3025–3032 | The owner takes a batch, feeds rows, then calls `post_batch` |
+| 3017, 2800 | The owner eventually publishes a new immutable snapshot |
+| 3217–3221 | Assembly reads the last snapshot; only `lin_pending` causes rc 1 |
 
-- Rerun `library_deferred3.cpp` against the rebuilt real library. Require
-  `insert=0, written=0`, and then assemble the same direct utterance both before
-  creation and after acknowledgement.
-- Check UW debug counters before/after acknowledgement: one added live copy,
-  one release, no retained duplicate; a second acknowledgement remains -3 under
-  the unchanged C API contract.
-- Insert multiple rows into a never-created ephemeral path. Assemble them after
-  later rows and closed turns. Verify no rollout or shard file was created and
-  the pending bytes remain.
-- Insert a delayed persistent file with `index_dir` enabled, materialize it, let
-  the ordinary watcher process it, and reopen. Verify original rows, ordinals,
-  closed turns, contributions, and assembly across restart. Include materialize
-  then immediate close before another owner batch.
-- Compare a file created before insertion with the same rows created afterward;
-  verify the intended B membership and reference-turn results. Include a fork of
-  the delayed path and an ephemeral lineage parent where the definition applies.
-- Exercise concurrent insert/fetch/written on separate and shared paths, including
-  acknowledgement concurrent with a protected UW read, reordered disk writes,
-  live NUL holes, restart holes, and duplicate insertion. Run memory/race tooling
-  in the owner's supported environment. Do not read a failed test as proof that
-  its expected result should change.
+A concrete permitted execution is enough to identify the source defect:
 
-## VI-28 cannot be hidden by Rust
+1. A ready session already has a nonempty published snapshot and `curA > 0`.
+2. Thread O holds `busy`, has exchanged the inbox at 3025, and is descheduled.
+3. Thread I inserts the next user row, wins the inbox CAS, loses `busy`, and
+   returns 0 at 3333. No owner has yet applied that new row.
+4. The same caller immediately assembles. Because `curA > 0`, the one-time
+   file-read branch at 3213 does not run. The snapshot has no lineage pending
+   condition and contains only the prior rows; assembly can return rc 0 without
+   the just-accepted direct utterance.
+5. O can publish the missing row later. That does not repair the request already
+   assembled from the stale snapshot.
 
-The current `vrs_insert` publishes an `InNode` carrying a pointer to its own stack
-`std::atomic<int> done` (3105–3109), calls `drain` (3110), and then yields until the
-pointer is signaled (3113). `drain` (2829–2832) returns immediately when another
-thread owns `Sess::busy`. That other owner later takes the inbox, feeds rows and
-sets `want_count`, then publishes the batch and finally stores through every saved
-completion pointer (`run_batch`, 2802–2811).
+This is a source interleaving, **not an executed concurrency reproduction**.
+Neither the candidate nor the new owner `insert_left` counter closes this gap.
+The local contract says that on insert return the row is in S (442), closing-turn
+contributions are counted within the call (452), and A corresponds to completed
+inserts (454). D3 defines model input from the current S (109–110), and I5 requires
+all direct utterances (26). Returning success before this publication violates
+those contracts; classifying enqueue acceptance as completion changes them.
 
-Deleting only the loop is unsafe for two separate reasons:
+There is a second independent source path even without a competing owner:
+`feed` at 2650–2653 places a row beyond the current byte cursor into `held`.
+The batch can then publish an unchanged prefix and insert returns success. P-3
+atomic reservation does not force callers to invoke FFI in reservation order:
+a caller holding the earlier reservation may be descheduled. A later accepted
+row can therefore be invisible until that earlier caller inserts. UW preserves
+its bytes but not its membership in the snapshot. This is not the permitted
+other-process live-file NUL rule; the same-process input already returned success.
 
-1. The caller's `done` goes out of scope while a later owner still holds its
-   address. `run_batch` can then write through a dangling stack pointer.
-2. Even if completion pointers are removed too, successful return would no longer
-   mean the row and any closed-turn contribution are published. `assemble_impl`
-   reads the last immutable snapshot (2994–3002), which can omit that row. Returning
-   stale success violates P-3-prime's successful-insert contract and D3/I5.
+The owner comments cite `§5.6 P-7` at 3325 and `§5.6 D8` at 337/2267. The inspected
+local design ends at §5.5 and has no §5.6 or P-7. That unavailable reference cannot
+establish a reviewed local change to the return contract. A pure aggregation
+representation by itself also does not prove publication visibility: the live
+path still invokes it through offset-ordered `feed` and one `busy` owner.
 
-The current wait also does not establish full out-of-order publication: `feed`
-(2428–2431) puts a row beyond the current cursor into `held`; `run_batch` still
-signals its completion after `post_batch`. Thus the wait is not proof that a
-successfully inserted row beyond a missing earlier row already participates in A.
-This follows from source inspection; this audit did not run a concurrency repro.
+`insert_waits == 0` is not evidence that insertion never waits. The field is
+initialized at 1076 and read at 3400, with no increment sites. Both insertion and
+assembly can still yield waiting for a newly-created session pointer (3109,
+3124); UW hazard acquisition can yield when all slots are occupied (1177–1182),
+and assembly snapshot hazard acquisition likewise yields (2805–2810). The restore
+worker separately loops on `busy` (3070). The old explicit completion loop is
+gone, but a zero counter does not certify these paths or the absence of a single
+per-session publishing owner (870, 3034–3051).
 
-Rust cannot supply the missing library linearization point. `vrs_ready` only
-reports startup readiness, `vrs_written` only acknowledges disk ownership, and a
-Rust counter does not expose which immutable C++ snapshot contains which rows or
-contributions. Waiting for writer flush, retrying until publication, serializing
-all inserts, or falling back to live history would violate the fixed contract.
-Moving the FFI call to another worker merely moves the wait.
+Rust cannot make snapshot membership true by waiting for disk flush, checking
+`vrs_ready`, adding retries, or falling back to accumulated live history. Nor
+would restoring the old completion wait solve the held-gap case or I6. The
+library needs a publication procedure that meets both the accepted-set contract
+and the no-wait/no-single-writer requirement. This storage candidate deliberately
+does not attempt to substitute a new publication definition.
 
-The library owner must revise its publication procedure so accepted rows and their
-required derived state have the promised visibility without waiting for a separate
-owner. That includes the per-session owner and ordered `held` structures, not just
-line 3113. The VI-27 candidate deliberately does not claim to solve VI-28 and does
-not remove the wait or alter the ABI. The real owner library must be rebuilt and
-relinked, and both publication and byte-lifetime checks must pass before reporting
-E3-3 or the integration as complete.
+## Assumptions and limits requiring owner review
+
+- `vrs_written(path, off)` is called only after writing and flushing exactly that
+  previously inserted immutable row. The acknowledgement is a caller promise,
+  not an independent disk verification.
+- A live path is not replaced, truncated, unlinked, or reused for different rows;
+  distinct ephemeral generations already have distinct Rust paths.
+- Ephemeral originals remain in UW until handle destruction, as D1/P-4 require.
+  When index persistence is configured, their unpersisted metadata also remains
+  in `wbuf`; this constant-factor cost needs measurement.
+- Persistent bytes can be acknowledged before the next owner batch flushes the
+  accumulated index. A watcher or later insert provides that batch. Immediate
+  process exit leaves originals to parse at startup; the candidate does not
+  prove I8's five-second recovery bound for that case.
+- Existing shard write failures, key idempotence, file replacement semantics,
+  CAS reclamation, and snapshot consistency are preserved, not certified here.
+- B now includes ephemeral closed turns. Expected outputs must be derived from
+  D1/D3-prime and compared across early/late materialization, not loosened to
+  accept whatever this candidate emits.
+
+## Diagnostic and real-library validation still needed
+
+The following are proposed checks; this agent did not execute them:
+
+- Build the prepared candidate with the required CPU and job limits, then run
+  the deferred-write reproduction. Require `insert=0, written=0` and identical
+  direct utterances before file creation and after acknowledgement.
+- Verify UW counters: one pending copy per key, release after acknowledgement,
+  no `memline` duplicate; repeated acknowledgement retains the unchanged -3
+  contract.
+- Insert ephemeral rows, close turns, and assemble later. Verify B membership,
+  original bytes, no rollout/shard creation, and no accidental acknowledgement.
+- Materialize a delayed file with index persistence, let the ordinary watcher
+  process it, reopen, and verify rows, ordinals, contributions, and assembly.
+  Include immediate close after materialization and early-file/late-file pairs.
+- Reproduce the busy-owner interleaving deterministically and the out-of-order
+  reservation/insert gap. Compare the first assembly after successful return,
+  not eventual assembly after waiting for background work.
+- Check concurrent insert/fetch/written, live NUL gaps, restore holes, duplicate
+  keys, lineage, and races with protected UW readers under memory/race tooling.
+- Repeat relevant integration tests against an owner-built, hash-identified real
+  library after its changes. Candidate success cannot substitute for this step
+  or for the full E3-2/E3-3/I1–I8 evidence.

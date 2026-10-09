@@ -1,6 +1,6 @@
 --- a/vrs_lib.cpp
 +++ b/vrs_lib.cpp
-@@ -856,8 +856,6 @@
+@@ -875,8 +875,6 @@
    std::atomic<int> want_count{0}, count_q{0};  // a task asked for the counting of the closed turns / a counting task is queued
    std::atomic<int> meta_pub{0};               // id / fpar / fk are set (published by the owner at the first line)
    bool is_base = false;                       // the file existed when the library was opened
@@ -9,7 +9,7 @@
    // ---- owner state (D1 per-file side: the lines are applied in position order of the file)
    uint64_t cur = 0;                           // byte offset after the last applied line
    uint64_t rho = 0, last_ts = 0, last_r = 0, chain_last = 0; bool have_last = false; uint64_t lastth = 0;
-@@ -1640,7 +1638,6 @@
+@@ -1664,7 +1662,6 @@
    int fd = -1; uint32_t cur = UINT32_MAX;  // one open per run of items from the same file
    for (uint32_t z : ids) {
      const Item& m = S.it[z];
@@ -17,7 +17,7 @@
      { std::string mem; if (uw_get(S, S.sx(m.sess), m.off, mem)) { out.push_back(std::move(mem)); continue; } }  // P-3': not confirmed written yet: the copy from vrs_insert
      if (m.sess != cur) { if (fd >= 0) close(fd); fd = open(S.sx(m.sess).path.c_str(), O_RDONLY | O_CLOEXEC); cur = m.sess; }
      std::string buf(m.len, '\0');
-@@ -2139,7 +2136,7 @@
+@@ -2163,7 +2160,7 @@
 
  std::string shard_path(const Store& S, const Sess& ss) { return S.idir + "/" + ss.rel + ".vx"; }
  int shard_fd(Store& S, Sess& ss) {
@@ -26,7 +26,7 @@
    int fd = ss.shard_fd.load(std::memory_order_acquire);
    if (fd >= 0) return fd;
    const std::string p = shard_path(S, ss);
-@@ -2167,7 +2164,12 @@
+@@ -2191,7 +2188,12 @@
  // applied lines, or the first line still held in memory
  void wflush(Store& S, Sess& ss) {
    if (ss.wbuf.empty()) return;
@@ -40,7 +40,7 @@
    shard_write(S, ss, ss.wbuf); ss.wbuf.clear();
  }
 
-@@ -2219,10 +2221,10 @@
+@@ -2247,10 +2249,10 @@
    ss.tl.push_back(id);
    for (uint64_t h : t->D) S.pt_add(ss.sg, h, tpos);  // after tl holds tpos; readers only walk tpos < a published cut
  #ifdef VRS_NEG_FREEZE_B  // negative control for the tests only: 𝔅 stops growing once the library is ready (the 42f base/tail split that VI-08 removes)
@@ -54,7 +54,7 @@
    ss.pending.push_back(id); S.pend_total.fetch_add(1);
    {
      Wr w;
-@@ -2357,7 +2359,6 @@
+@@ -2580,7 +2582,6 @@
      if (m.kind == K_DEV) { m.ch = content_hash(line); parts_of(line, m); m.rs = ss.ist.run.empty() ? m.th : S.it[ss.ist.run[0]].th; }
      const std::string c = sval(line, "call_id");
      if (!c.empty()) { const uint64_t h = fnv(c.data(), c.size()); m.cid = h ? h : 1; link_call(S, ss, id); }
@@ -62,7 +62,7 @@
      ss.sess.push_back(id);
      if (m.kind == K_USER) ss.usr.push_back(id);
      ss.curpos++;
-@@ -2374,7 +2375,6 @@
+@@ -2597,7 +2598,6 @@
  // (watcher, request path) the read stops there and tries again at the next change event; at restore (`restore`) a range that is NUL only is skipped
  // (a hole a dead process left) provided a complete line follows it, and counted in holes_skipped.
  void ingest_file_tail(Store& S, Sess& ss, bool restore = false) {
@@ -70,7 +70,7 @@
    const int fd = ::open(ss.path.c_str(), O_RDONLY | O_CLOEXEC);
    if (fd < 0) return;
    struct stat st;
-@@ -2872,7 +2872,6 @@
+@@ -3094,7 +3094,6 @@
    Sess* s = new Sess;
    s->sg = sg; s->path = path; s->rel = rel; s->root32 = uint32_t(fnv(rel.data(), rel.size()) & 0x7fffffffu);
    s->is_base = base;
@@ -78,7 +78,7 @@
    s->restored.store(base ? 0 : 1);
    return s;
  }
-@@ -2988,7 +2987,7 @@
+@@ -3210,7 +3209,7 @@
    if (!path || !*path || B == 0) return -1;
    Sess* ss = get_sess(S, path, true);
    if (!ss) return -3;
@@ -87,7 +87,7 @@
    Asm A; bool lemma = false;
    {
      const int slot = haz_slot(S);
-@@ -3099,7 +3098,10 @@
+@@ -3321,7 +3320,10 @@
    Sess* ss = get_sess(S, path, true);
    if (!ss) return -2;
    if (off + len + 1 <= ss->curA.load(std::memory_order_acquire)) return 0;  // the key is in already (idempotent)
@@ -96,6 +96,6 @@
 +  // inserted line stays in UW until this exact key is acknowledged by vrs_written.
 +  // An ephemeral session never acknowledges its keys, so its bytes remain here.
 +  uw_add(S, *ss, off, line, len);
-   // Ready: the call returns when the batch that took the line (and counted the turns it closed, unless the lineage is pending) is over.
-   // Before ready nothing can be asked for and the lines wait in the inbox as before.
-   const bool sync = S.ready.load(std::memory_order_acquire) != 0;
+   // Nobody waits for anybody (§5.6 P-7). The thread that takes the file applies the line, builds the turn it closes and counts it before it returns
+   // (ready: the closed turns are counted inside the batch); a thread that finds the file taken leaves its line in the inbox and returns at once, the taker
+   // applies it before it lets go (owner_loop) - insert_left counts those calls, insert_waits (calls that blocked or yielded for another thread) is 0 by construction.

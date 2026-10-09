@@ -1,26 +1,75 @@
 {
-  "artifact_status": "source_review_candidate_not_applied_or_compiled",
+  "artifact_status": "diagnostic_candidate_applied_only_to_untracked_local_copy_not_compiled",
+  "observed_at_utc": "2026-10-09T12:24:58.893040+00:00",
   "source": "$WORK/vrsint/vrs_lib.cpp",
-  "source_sha256": "21ba6146899e8d1b9673e1f78f74d5c9be3d4abd525eb915947d43d5cee485ea",
-  "header_sha256": "692968b42a8b61bf7641a91043b3c663e4a2d478ae41bd3460d508da32746c45",
-  "library_sha256": "493759a11d4cf341cf13c70ea4548ffa285b182e9ef405fa404f60924845c61a",
-  "patch_sha256": "144330c52f128a3bdca7bfeb55cad36ff19dce8092a95e143c3b0e2b0e285ee6",
+  "source_sha256": "f741af0163ebc71d910321819ab4b8ff6aa2fc0fe2b88f7e36a09073d7a9388f",
+  "header_sha256": "2336f4c191c53157190d7e6edabb517a670de0e346eb697f81b0084547e0a5ab",
+  "library_sha256": "75ce1177d15a8e01703aec8bb30fc2c7ac5192e7b581adbca059104bf6e3ff42",
+  "patch_sha256": "3165615c15583350ed90dbecd74fc8dc99925f97a081cf53d1c5a85af6c9b280",
+  "candidate_source": "l3check/library_candidate3/vrs_lib.cpp",
+  "candidate_source_sha256": "5057eea44557cab675cfc5a6204830735db1906ad465e30e076d4e4e74541645",
+  "candidate_header": "l3check/library_candidate3/vrs.h",
+  "owner_source_copy": "l3check/library_candidate3/owner_f741af0.cpp",
+  "design_sha256": "e38d39e22457c2a799952c1ab081a5b6de26dfbdce4aa8ee5e568049814c7f1b",
   "patch_check": {
-    "command": "git apply --check l3check/vrs_library_candidate3.patch (isolated temporary source copy)",
+    "command": "git apply --check l3check/vrs_library_candidate3.patch (isolated temporary owner-source copy)",
     "exit_code": 0,
     "stdout": "",
     "stderr": ""
+  },
+  "patch_application": {
+    "command": "git apply l3check/vrs_library_candidate3.patch (isolated temporary owner-source copy)",
+    "exit_code": 0,
+    "applied_bytes_equal_candidate": true
   },
   "compiled": false,
   "linked": false,
   "tested": false,
   "original_library_modified": false,
-  "owner_update_observed": {
-    "source_sha256": "c468087b1e7ef0e2c34f3199283e7ea97d76a4f583749abac59d4322076d0732",
-    "library_sha256": "cc81fe7547cb8e9f1e0f1f06355ca661bec54ca41cb56c88fda15f8e383c0479",
-    "patch_check_exit_code": 0,
-    "patch_check_stderr": "",
-    "vi27_insert_line": 3326,
-    "vi28_wait_line": 3337
-  }
+  "latest_owner_publication_preserved": true,
+  "vi27": {
+    "memmode_initialization_line": 3097,
+    "insert_skips_uw_line": 3324,
+    "written_rejects_missing_uw_line": 3343,
+    "candidate_removes_memmode": true
+  },
+  "vi28": {
+    "status": "done_pointer_and_explicit_completion_loop_removed_but_success_visibility_unproven_and_source_counterexample_exists",
+    "source_evidence": {
+      "insert_enqueue": 3330,
+      "insert_success_after_failed_drain": 3332,
+      "drain_busy_returns_false": 3049,
+      "assembly_snapshot": 3217,
+      "assembly_only_checks_lineage_pending": 3218,
+      "assembly_uses_snapshot": 3221,
+      "snapshot_publication": 2800,
+      "post_batch_publication": 3017,
+      "held_gap": 2653,
+      "session_pointer_waits": [
+        3109,
+        3124
+      ],
+      "uw_hazard_slot_wait": 1181,
+      "snapshot_hazard_slot_wait": 2809
+    },
+    "local_design_section_5_6_present": false,
+    "local_design_P7_present": false,
+    "latest_runtime_reproduction": false,
+    "insert_waits_counter": "initialized to 0 and read for reporting; no increment sites, not absence-of-waits evidence"
+  },
+  "previous_observations": [
+    {
+      "source_sha256": "21ba6146899e8d1b9673e1f78f74d5c9be3d4abd525eb915947d43d5cee485ea",
+      "library_sha256": "493759a11d4cf341cf13c70ea4548ffa285b182e9ef405fa404f60924845c61a"
+    },
+    {
+      "source_sha256": "c468087b1e7ef0e2c34f3199283e7ea97d76a4f583749abac59d4322076d0732",
+      "library_sha256": "cc81fe7547cb8e9f1e0f1f06355ca661bec54ca41cb56c88fda15f8e383c0479"
+    }
+  ],
+  "latest_owner_sections_byte_compared": [
+    "InNode",
+    "ownership",
+    "vrs_insert publication"
+  ]
 }
