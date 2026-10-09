@@ -395,14 +395,19 @@ async fn schedule_startup_prewarm_inner(
         ),
     )?;
     let build_prompt_started_at = Instant::now();
+    let base_instructions = BaseInstructions {
+        text: base_instructions,
+        provenance: None,
+    };
     let prompt_input = match input {
         PrewarmInput::Base => Vec::new(),
         PrewarmInput::History => {
             // Use the same history projection and tool metadata as a sampling request.
             // The real turn still checks this prefix before reusing the prepared response.
-            let mut history = super::vrs_input::vrs_prompt_snapshot(
+            let mut history = super::vrs_input::vrs_prompt_input(
                 session.as_ref(),
-                &step_context.settings.model_info.input_modalities,
+                step_context.as_ref(),
+                &base_instructions,
             )
             .await?;
             session
@@ -412,14 +417,8 @@ async fn schedule_startup_prewarm_inner(
             history
         }
     };
-    let startup_prompt = build_prompt(
-        prompt_input,
-        step_context.as_ref(),
-        BaseInstructions {
-            text: base_instructions,
-            provenance: None,
-        },
-    );
+    let startup_prompt = build_prompt(prompt_input, step_context.as_ref(), base_instructions);
+    super::vrs_input::check_prompt_window(&session, &step_context, &startup_prompt).await?;
     startup_turn_context.session_telemetry.record_startup_phase(
         "startup_prewarm_build_prompt",
         build_prompt_started_at.elapsed(),

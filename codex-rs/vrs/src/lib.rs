@@ -86,6 +86,13 @@ mod ffi {
             json: *mut *mut c_char,
             len: *mut usize,
         ) -> c_int;
+        pub fn vrs_assemble_b(
+            h: *mut VrsH,
+            path: *const c_char,
+            budget: u64,
+            json: *mut *mut c_char,
+            len: *mut usize,
+        ) -> c_int;
         pub fn vrs_free(p: *mut c_char);
     }
 }
@@ -255,15 +262,31 @@ pub fn written(_path: &Path, _off: u64) -> Result<(), VrsError> {
     handle().map(|_| ())
 }
 
-/// Assembles the model input of the thread whose rollout is `path`.
-#[cfg(target_os = "linux")]
+/// Assembles a diagnostic snapshot using the store's default input budget.
 pub fn assemble(path: &Path) -> Result<Assembled, VrsError> {
+    assemble_with_budget(path, None)
+}
+
+/// Assembles with the current request's input allowance, without changing shared store options.
+/// A zero allowance is an overflow, never a request to use the default budget.
+#[cfg(target_os = "linux")]
+pub fn assemble_with_budget(path: &Path, budget: Option<u64>) -> Result<Assembled, VrsError> {
+    if budget == Some(0) {
+        return Err(VrsError::OverWindow);
+    }
     let handle = handle()?;
     let path = c_path(path)?;
     let mut json: *mut c_char = std::ptr::null_mut();
     let mut len: usize = 0;
     // SAFETY: the handle is live for the process lifetime; the out pointers are valid.
-    let rc = unsafe { ffi::vrs_assemble(handle.raw, path.as_ptr(), &mut json, &mut len) };
+    let rc = unsafe {
+        match budget {
+            Some(budget) => {
+                ffi::vrs_assemble_b(handle.raw, path.as_ptr(), budget, &mut json, &mut len)
+            }
+            None => ffi::vrs_assemble(handle.raw, path.as_ptr(), &mut json, &mut len),
+        }
+    };
     // The library may return a JSON body (an error message) with a non-zero code too.
     let body = if json.is_null() {
         None
@@ -292,7 +315,10 @@ pub fn assemble(path: &Path) -> Result<Assembled, VrsError> {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn assemble(_path: &Path) -> Result<Assembled, VrsError> {
+pub fn assemble_with_budget(_path: &Path, budget: Option<u64>) -> Result<Assembled, VrsError> {
+    if budget == Some(0) {
+        return Err(VrsError::OverWindow);
+    }
     handle().map(|_| Assembled::default())
 }
 
@@ -336,6 +362,14 @@ mod tests {
         assert!(matches!(insert(path, 0, b"{}\n"), Err(VrsError::NotReady)));
         assert!(matches!(written(path, 0), Err(VrsError::NotReady)));
         assert!(matches!(assemble(path), Err(VrsError::NotReady)));
+        assert!(matches!(
+            assemble_with_budget(path, Some(512)),
+            Err(VrsError::NotReady)
+        ));
+        assert!(matches!(
+            assemble_with_budget(path, Some(0)),
+            Err(VrsError::OverWindow)
+        ));
         assert!(!OPEN_STARTED.load(Ordering::Acquire));
         assert!(HANDLE.load(Ordering::Acquire).is_null());
     }

@@ -46,6 +46,11 @@ int vrs_assemble(vrs_h* h, const char* path, char** json, size_t* len) {
     return 1; /* not ready */
 }
 
+int vrs_assemble_b(vrs_h* h, const char* path, uint64_t budget, char** json, size_t* len) {
+    (void)budget;
+    return vrs_assemble(h, path, json, len);
+}
+
 void vrs_free(char* p) { free(p); }
 
 void vrs_close(vrs_h* h) { (void)h; }

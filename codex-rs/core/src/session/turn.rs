@@ -422,22 +422,12 @@ pub(crate) async fn run_turn(
             sess.record_reasoning_effort_override(step_context.as_ref())
                 .await;
 
-            // Construct the input that we will send to the model: the VRS assembly of this
-            // thread (design D3 A1). There is no fallback; an assembly error ends the turn.
-            let sampling_request_input: Vec<ResponseItem> = super::vrs_input::vrs_prompt_input(
-                sess.as_ref(),
-                &step_context.settings.model_info.input_modalities,
-            )
-            .instrument(trace_span!("run_turn.prepare_sampling_request_input"))
-            .await?;
-
             run_sampling_request(
                 Arc::clone(&sess),
                 Arc::clone(&step_context),
                 Arc::clone(&turn_context.extension_data),
                 Arc::clone(&turn_diff_tracker),
                 &mut client_session,
-                sampling_request_input,
                 cancellation_token.child_token(),
             )
             .await
@@ -1171,7 +1161,6 @@ async fn run_sampling_request(
     turn_store: Arc<codex_extension_api::ExtensionData>,
     turn_diff_tracker: SharedTurnDiffTracker,
     client_session: &mut ModelClientSession,
-    input: Vec<ResponseItem>,
     cancellation_token: CancellationToken,
 ) -> CodexResult<(SamplingRequestResult, Vec<ResponseItem>)> {
     let turn_context = Arc::clone(&step_context.turn);
@@ -1197,22 +1186,20 @@ async fn run_sampling_request(
     );
     let max_retries = turn_context.provider.info().stream_max_retries();
     let mut retry_state = ResponsesStreamRetryState::default();
-    let mut initial_input = Some(input);
     let mut original_input = None;
     let mut executed_tool_calls_by_output = HashMap::new();
     loop {
         // Running code-mode cells can request review while this response is in flight.
         // Keep the latest received ID until response.created replaces it.
-        let prompt_input = if let Some(input) = initial_input.take() {
-            input
-        } else {
-            // A retry assembles again (design D3 A2); the accumulated history is never sent.
-            super::vrs_input::vrs_prompt_input(
-                sess.as_ref(),
-                &step_context.settings.model_info.input_modalities,
-            )
-            .await?
-        };
+        // Both A1 and every A2 retry use this captured model's allowance and the exact
+        // instructions used below. The store's process default never governs a request.
+        let prompt_input = super::vrs_input::vrs_prompt_input(
+            sess.as_ref(),
+            step_context.as_ref(),
+            &base_instructions,
+        )
+        .instrument(trace_span!("run_turn.prepare_sampling_request_input"))
+        .await?;
         let mut prompt_input = prompt_input;
         sess.services
             .executed_tool_calls
@@ -1234,6 +1221,7 @@ async fn run_sampling_request(
             )
             .await?;
         }
+        super::vrs_input::check_prompt_window(&sess, &step_context, &prompt).await?;
         let err = match try_run_sampling_request(
             tool_runtime.clone(),
             Arc::clone(&sess),

@@ -10954,7 +10954,7 @@ async fn in_memory_live_thread_publishes_model_items_to_vrs() {
         .collect::<Vec<_>>();
     assert!(session.persist_rollout_items(&rollout).await);
     assert_eq!(store.calls().await.append_items, 1);
-    let assembled = super::vrs_input::vrs_input(&session).await.unwrap();
+    let assembled = super::vrs_input::vrs_input(&session, None).await.unwrap();
     assert_eq!(assembled, items);
     assert!(session.state.lock().await.vrs_recording_error.is_none());
 }
@@ -10975,7 +10975,7 @@ async fn same_thread_non_local_resume_seeds_a_distinct_vrs_generation() {
     ];
     assert!(first.persist_rollout_items(&old_rollout).await);
     assert_eq!(
-        super::vrs_input::vrs_input(&first).await.unwrap(),
+        super::vrs_input::vrs_input(&first, None).await.unwrap(),
         vec![old_item.clone()]
     );
     let first_path = first.ephemeral_vrs_path().unwrap();
@@ -11001,7 +11001,7 @@ async fn same_thread_non_local_resume_seeds_a_distinct_vrs_generation() {
         .await;
     assert!(resumed.state.lock().await.vrs_recording_error.is_none());
     assert_eq!(
-        super::vrs_input::vrs_input(&resumed).await.unwrap(),
+        super::vrs_input::vrs_input(&resumed, None).await.unwrap(),
         vec![old_item.clone()]
     );
     // Only the new settings checkpoint is appended; supplied history is already in the backend.
@@ -11022,7 +11022,7 @@ async fn same_thread_non_local_resume_seeds_a_distinct_vrs_generation() {
     );
     assert!(resumed.ephemeral_vrs_offset.load(Ordering::Relaxed) > next_offset);
     assert_eq!(
-        super::vrs_input::vrs_input(&resumed).await.unwrap(),
+        super::vrs_input::vrs_input(&resumed, None).await.unwrap(),
         vec![old_item.clone(), new_item]
     );
     // No old (path, offset) key was overwritten and no resumed record leaked into it.
@@ -11034,7 +11034,7 @@ async fn same_thread_non_local_resume_seeds_a_distinct_vrs_generation() {
 
 #[tokio::test]
 async fn non_local_resume_seed_failure_prevents_model_input() {
-    let (mut session, _) = make_session_and_context().await;
+    let (mut session, turn) = make_session_and_context().await;
     attach_in_memory_thread_store(&mut session).await;
     session
         .ephemeral_vrs_offset
@@ -11053,7 +11053,8 @@ async fn non_local_resume_seed_failure_prevents_model_input() {
     );
     let error = super::vrs_input::vrs_prompt_input(
         &session,
-        &[codex_protocol::openai_models::InputModality::Text],
+        &StepContext::for_test(Arc::new(turn)),
+        &codex_protocol::models::BaseInstructions::default(),
     )
     .await
     .expect_err("failed D1 seeding must prevent a model request");
