@@ -1208,15 +1208,15 @@ impl Session {
     ///
     /// `ModelClient` is session-scoped and intentionally does not depend on the full `Config`, so
     /// we precompute the comma-separated list of enabled experimental feature keys at session
-    /// creation time and thread it into the client. Remote compaction stays advertised unconditionally.
+    /// creation time and thread it into the client. Removed compatibility keys do not advertise
+    /// capabilities that this build cannot execute.
     fn build_model_client_beta_features_header(config: &Config) -> Option<String> {
         Some(
             FEATURES
                 .iter()
                 .filter(|spec| {
-                    spec.id == Feature::RemoteCompactionV2
-                        || (spec.stage.experimental_menu_description().is_some()
-                            && config.features.enabled(spec.id))
+                    spec.stage.experimental_menu_description().is_some()
+                        && config.features.enabled(spec.id)
                 })
                 .map(|spec| spec.key)
                 .collect::<Vec<_>>()
