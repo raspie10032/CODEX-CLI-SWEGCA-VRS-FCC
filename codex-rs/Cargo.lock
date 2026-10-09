@@ -3007,6 +3007,7 @@ dependencies = [
  "codex-utils-redacted-string",
  "codex-utils-stream-parser",
  "codex-utils-string",
+ "codex-vrs",
  "codex-web-search-extension",
  "codex-windows-sandbox",
  "codex-windows-sandbox-test-support",
@@ -4469,6 +4470,7 @@ dependencies = [
  "codex-utils-absolute-path",
  "codex-utils-path",
  "codex-utils-process",
+ "codex-vrs",
  "memchr",
  "pretty_assertions",
  "regex",
@@ -5257,6 +5259,15 @@ dependencies = [
  "tempfile",
  "tokio",
  "webrtc",
+]
+
+[[package]]
+name = "codex-vrs"
+version = "0.162.0-alpha.2"
+dependencies = [
+ "codex-utils-home-dir",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]

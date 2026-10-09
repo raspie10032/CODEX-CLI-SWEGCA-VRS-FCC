@@ -19,8 +19,6 @@ use crate::agent::control::AgentControlInit;
 use crate::agent::status::is_final;
 use crate::agents_md_manager::SessionInstructions;
 use crate::attestation::AttestationProvider;
-use crate::compact;
-use crate::compact::CompactedHistoryMetadata;
 use crate::config::ManagedFeatures;
 use crate::context::ContextualUserFragment;
 use crate::context::DeveloperInstructions;
@@ -106,7 +104,6 @@ use codex_protocol::approvals::ExecPolicyAmendment;
 use codex_protocol::approvals::NetworkPolicyAmendment;
 use codex_protocol::approvals::NetworkPolicyRuleAction;
 use codex_protocol::config_types::ApprovalsReviewer;
-use codex_protocol::config_types::AutoCompactTokenLimitScope;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::config_types::WebSearchMode;
@@ -206,8 +203,6 @@ use uuid::Uuid;
 use crate::client::ModelClient;
 use crate::codex_thread::CodexThreadSettingsOverrides;
 use crate::codex_thread::ThreadConfigSnapshot;
-#[cfg(test)]
-use crate::compact::collect_user_messages;
 use crate::config::Config;
 use crate::config::ConstraintResult;
 use crate::config::PermissionProfileSnapshot;
@@ -267,6 +262,7 @@ pub(crate) mod turn;
 pub(crate) mod turn_context;
 mod turn_input;
 mod turn_suspension;
+pub(crate) mod vrs_input;
 mod world_state;
 use self::code_mode_warning::unsupported_code_mode_warning;
 pub(crate) use self::environment::ThreadEnvironmentDefaults;
@@ -1474,11 +1470,6 @@ impl Session {
         state.get_total_token_usage(state.server_reasoning_included())
     }
 
-    pub(crate) async fn auto_compact_window_snapshot(&self) -> AutoCompactWindowSnapshot {
-        let state = self.state.lock().await;
-        state.auto_compact_window_snapshot()
-    }
-
     pub(crate) async fn estimated_tokens_after_last_model_generated_item(&self) -> i64 {
         let state = self.state.lock().await;
         state
@@ -1647,6 +1638,7 @@ impl Session {
                 // turn/start overrides can be merged before we write model-visible context.
                 if !is_subagent {
                     let _ = self.flush_rollout().await;
+                    self.restore_history_from_vrs().await;
                 }
                 None
             }
@@ -1705,6 +1697,7 @@ impl Session {
                 // Flush after seeding history and any persisted rollout copy.
                 if !is_subagent {
                     let _ = self.flush_rollout().await;
+                    self.restore_history_from_vrs().await;
                 }
                 Some(turn_context)
             }
@@ -1737,7 +1730,6 @@ impl Session {
         rollout_items: &[RolloutItem],
     ) -> Option<PreviousTurnSettings> {
         let rollout_reconstruction::RolloutReconstruction {
-            mut history,
             retained_context,
             guardian_history,
             last_started_turn_id,
@@ -1751,37 +1743,9 @@ impl Session {
         } = self
             .reconstruct_history_from_rollout(turn_context, rollout_items)
             .await;
-        // Keep the recorded rollout unchanged. Prepare its reconstructed history before
-        // installing it, so legacy media is processed once for this resume or fork and
-        // will be processed again if the rollout is reconstructed in a future session.
-        // Replay disables image-resize notices, so media preparation remains one-to-one. Keep
-        // the prior batch behavior and carry history-only metadata in a positional sidecar.
-        let (mut prepared_history, metadata): (Vec<_>, Vec<_>) = history
-            .into_iter()
-            .map(|envelope| (envelope.item, envelope.metadata))
-            .unzip();
-        // Replay must not upload or migrate recorded history. The inline store returns prepared
-        // inline bytes, while existing file references bypass preparation and remain unchanged.
-        // Bound replay future size now that image preparation can await storage.
-        let _ = Box::pin(prepare_image_response_items(
-            &self.thread_id.to_string(),
-            &mut prepared_history,
-            ImagePreparationMode::DetailBased,
-            ImageResizeNoticeMode::Disabled,
-            &InlineAttachmentStore,
-        ))
-        .await;
-        prepare_audio_response_items(&mut prepared_history);
-        assert_eq!(
-            prepared_history.len(),
-            metadata.len(),
-            "replay media preparation must remain one-to-one when resize notices are disabled"
-        );
-        history = prepared_history
-            .into_iter()
-            .zip(metadata)
-            .map(|(item, metadata)| ResponseItemEnvelope { item, metadata })
-            .collect();
+        // The model-visible history is not replayed from the rollout (design D4). It is
+        // installed from the VRS store once this thread's lines are in it.
+        let history: Vec<ResponseItemEnvelope> = Vec::new();
         let context = crate::guardian::GuardianReviewContext::from(turn_context);
         let (_, reviewer) = crate::guardian::resolve_review_model(self, &context).await;
         let reviewer_compaction_hash = reviewer.comp_hash.clone();
@@ -1813,37 +1777,7 @@ impl Session {
             );
             state.set_previous_turn_settings(previous_turn_settings.clone());
         }
-        let prefix_tokens = if matches!(
-            turn_context.config.model_auto_compact_token_limit_scope,
-            AutoCompactTokenLimitScope::BodyAfterPrefix
-        ) {
-            let history = self.clone_history().await;
-            let base_instructions = self.get_base_instructions().await;
-            history.estimate_token_count_with_base_instructions(&base_instructions)
-        } else {
-            None
-        };
-        if let Some(prefix_tokens) = prefix_tokens {
-            self.set_auto_compact_window_estimated_prefill_for_scope(turn_context, prefix_tokens)
-                .await;
-        }
         previous_turn_settings
-    }
-
-    async fn set_auto_compact_window_estimated_prefill_for_scope(
-        &self,
-        turn_context: &TurnContext,
-        tokens: i64,
-    ) {
-        if !matches!(
-            turn_context.config.model_auto_compact_token_limit_scope,
-            AutoCompactTokenLimitScope::BodyAfterPrefix
-        ) {
-            return;
-        }
-
-        let mut state = self.state.lock().await;
-        state.set_auto_compact_window_estimated_prefill(tokens);
     }
 
     fn last_token_info_from_rollout(rollout_items: &[RolloutItem]) -> Option<TokenUsageInfo> {
@@ -3987,134 +3921,6 @@ impl Session {
         state.replace_history(items, reference_context_item);
     }
 
-    pub(crate) async fn replace_compacted_history(
-        &self,
-        mut items: Vec<ResponseItemEnvelope>,
-        reference_context_item: Option<TurnContextItem>,
-        world_state_baseline: Option<WorldStateSnapshot>,
-        metadata: CompactedHistoryMetadata,
-    ) {
-        for envelope in &mut items {
-            Self::assign_missing_response_item_id(&mut envelope.item);
-        }
-        let mcp_revision = self
-            .services
-            .executed_tool_calls
-            .mcp_attribution_checkpoint(/*force*/ true)
-            .and_then(|(attribution, revision)| {
-                items.last_mut().map(|envelope| {
-                    envelope.metadata.get_or_insert_default().mcp_attribution = Some(attribution);
-                    revision
-                })
-            });
-        if let Some(checkpoint) = items.iter_mut().rev().find(|envelope| {
-            matches!(
-                envelope.item,
-                ResponseItem::Compaction { .. } | ResponseItem::ContextCompaction { .. }
-            )
-        }) {
-            checkpoint
-                .metadata
-                .get_or_insert_default()
-                .compaction_model_hash = metadata.compaction_model_hash;
-        }
-        // Wait for accepted updates to finish persisting, then keep later updates from
-        // overtaking the current settings snapshot while its checkpoint is written.
-        let _settings_guard = thread_settings::acquire_persistence_lock(self).await;
-        // A new history window needs a full checkpoint, even when it contains only
-        // extension metadata and model-visible context will be rebuilt on the next turn.
-        let mut world_state_item = None;
-        let compacted_item = {
-            let mut state = self.state.lock().await;
-            let snapshot = world_state_baseline.or_else(|| {
-                let previous = state.history.world_state_checkpoint()?;
-                let mut retained = serde_json::Map::new();
-                for contributor in self.services.extensions.context_contributors() {
-                    retained
-                        .extend(contributor.retain_world_state_after_compaction(&previous.state));
-                }
-                (!retained.is_empty()).then(|| WorldStateSnapshot::from(&retained))
-            });
-            // Goal edits are published outside the running task. Keep edits accepted after
-            // the compaction input snapshot, in their original order, after its replacement.
-            let replacement_goal_ids = crate::context::UserGoalUpdate::message_ids(
-                items.iter().map(|envelope| &envelope.item),
-            );
-            items.extend(
-                state
-                    .history
-                    .annotated_items()
-                    .iter()
-                    .filter(|envelope| {
-                        crate::context::UserGoalUpdate::message_text(&envelope.item).is_some()
-                            && envelope.item.id().is_some_and(|id| {
-                                !metadata.input_goal_ids.contains(id)
-                                    && !replacement_goal_ids.contains(id)
-                            })
-                    })
-                    .cloned(),
-            );
-            let replacement_history = items.clone();
-            state.replace_annotated_history(
-                items,
-                reference_context_item.clone(),
-                HistoryReplacement::Compaction {
-                    reviewer_compaction_hash: metadata.reviewer_compaction_hash,
-                },
-            );
-            state.reasoning_effort_pin = ReasoningEffortPin::Compacted;
-            if let Some(snapshot) = snapshot {
-                world_state_item = Some(WorldStateItem::full(snapshot.clone().into_object()));
-                state.history.set_world_state_baseline(snapshot);
-            }
-            CompactedItem {
-                message: metadata.message,
-                replacement_history: Some(replacement_history),
-                guardian_history: state.history.guardian_history_checkpoint(),
-                retained_context: Some(state.history.retained_context().clone()),
-                mcp_resource_origins: self.services.mcp_runtime.resource_origin_checkpoint(),
-                window_number: Some(metadata.window_number),
-                first_window_id: Some(metadata.window_ids.first_window_id.to_string()),
-                previous_window_id: metadata
-                    .window_ids
-                    .previous_window_id
-                    .map(|id| id.to_string()),
-                window_id: Some(metadata.window_ids.window_id.to_string()),
-                compaction_response_id: metadata.compaction_response_id,
-                latest_token_usage_record: state.latest_token_usage_record.clone(),
-                resume_metadata: Some(CompactionResumeMetadata {
-                    multi_agent_version: self.multi_agent_version(),
-                    last_started_turn_id: state.last_started_turn_id.clone(),
-                    previous_turn_settings: state.previous_turn_settings(),
-                }),
-            }
-        };
-
-        let mut rollout_items = vec![RolloutItem::Compacted(compacted_item)];
-        // Persist the baseline after the replacement history that established it.
-        if let Some(world_state_item) = world_state_item {
-            rollout_items.push(RolloutItem::WorldState(world_state_item));
-        }
-        if let Some(turn_context_item) = reference_context_item {
-            rollout_items.push(RolloutItem::TurnContext(turn_context_item));
-        }
-        // The frozen turn context must not override current settings in persisted metadata.
-        rollout_items.push(RolloutItem::EventMsg(
-            thread_settings::applied_event(self).await,
-        ));
-        if self.persist_rollout_items(&rollout_items).await
-            && let Some(revision) = mcp_revision
-        {
-            self.services
-                .executed_tool_calls
-                .mark_mcp_attribution_persisted(revision);
-        }
-        {
-            let mut state = self.state.lock().await;
-            state.queue_pending_session_start_source(codex_hooks::SessionStartSource::Compact);
-        }
-    }
-
     pub fn enabled(&self, feature: Feature) -> bool {
         self.features.enabled(feature)
     }
@@ -4443,11 +4249,14 @@ impl Session {
 
     #[tracing::instrument(level = "trace", skip_all, fields(item_count = items.len()))]
     pub(crate) async fn persist_rollout_items(&self, items: &[RolloutItem]) -> bool {
-        if let Some(live_thread) = self.live_thread()
-            && let Err(e) = live_thread.append_items(items).await
-        {
-            error!("failed to record rollout items: {e:#}");
-            return false;
+        if let Some(live_thread) = self.live_thread() {
+            if let Err(e) = live_thread.append_items(items).await {
+                error!("failed to record rollout items: {e:#}");
+                return false;
+            }
+        } else {
+            // A thread without a rollout file still lives in the VRS store (design D1).
+            self.insert_ephemeral_vrs_lines(items).await;
         }
         true
     }
@@ -4469,8 +4278,15 @@ impl Session {
     pub(crate) async fn conversation_history_snapshot(
         &self,
     ) -> Arc<dyn ConversationHistorySnapshot> {
-        let state = self.state.lock().await;
-        state.history.conversation_history_snapshot()
+        // The snapshot is built from the VRS assembly (design D3 A14). When it cannot be
+        // assembled the snapshot is empty; the accumulated history is never used instead.
+        match self.vrs_history().await {
+            Ok(history) => history.conversation_history_snapshot(),
+            Err(err) => {
+                warn!("conversation history snapshot unavailable: {err}");
+                ContextManager::new().conversation_history_snapshot()
+            }
+        }
     }
 
     pub(crate) async fn current_window_id(&self) -> String {
@@ -4489,76 +4305,9 @@ impl Session {
         )
     }
 
-    pub(crate) async fn advance_auto_compact_window(&self) -> (u64, AutoCompactWindowIds) {
-        let mut state = self.state.lock().await;
-        state.advance_auto_compact_window()
-    }
-
     pub(crate) async fn request_new_context_window(&self) {
         let mut state = self.state.lock().await;
         state.request_new_context_window();
-    }
-
-    pub(crate) async fn take_new_context_window_request(&self) -> bool {
-        let mut state = self.state.lock().await;
-        state.take_new_context_window_request()
-    }
-
-    pub(crate) async fn start_new_context_window(
-        &self,
-        step_context: &StepContext,
-        world_state: Arc<WorldState>,
-    ) -> u64 {
-        let turn_context = step_context.turn.as_ref();
-        let history = self.clone_history().await;
-        let input_goal_ids = crate::context::UserGoalUpdate::message_ids(history.raw_items());
-        let retained_client_developer_messages =
-            if self.enabled(Feature::RetainClientDeveloperMessages) {
-                crate::compact_remote_v2::truncate_retained_messages_for_remote_compaction(
-                    history
-                        .annotated_items()
-                        .iter()
-                        .filter(|item| {
-                            crate::compact_remote_v2::is_client_authored_developer_message(item)
-                        })
-                        .cloned()
-                        .collect(),
-                    crate::compact_remote_v2::RETAINED_MESSAGE_TOKEN_BUDGET,
-                )
-            } else {
-                Vec::new()
-            };
-        let window = {
-            let mut state = self.state.lock().await;
-            state.start_new_context_window()
-        };
-        let (window_number, window_ids) = window;
-        let (context_items, world_state_snapshot) = self
-            .build_initial_context_with_world_state(step_context, world_state.as_ref())
-            .await;
-        let context_items = context_items
-            .into_iter()
-            .map(ResponseItemEnvelope::new)
-            .chain(retained_client_developer_messages)
-            .collect();
-        let turn_context_item = step_context.to_turn_context_item();
-        self.replace_compacted_history(
-            context_items,
-            Some(turn_context_item),
-            Some(world_state_snapshot),
-            CompactedHistoryMetadata {
-                input_goal_ids,
-                message: String::new(),
-                window_number,
-                window_ids,
-                compaction_response_id: None,
-                compaction_model_hash: None,
-                reviewer_compaction_hash: None,
-            },
-        )
-        .await;
-        self.recompute_token_usage(turn_context).await;
-        window_number
     }
 
     pub(crate) async fn reference_context_item(&self) -> Option<TurnContextItem> {
@@ -4716,12 +4465,6 @@ impl Session {
                 let mut state = self.state.lock().await;
                 state
                     .update_token_info_from_usage(token_usage, turn_context.model_context_window());
-                if matches!(
-                    turn_context.config.model_auto_compact_token_limit_scope,
-                    AutoCompactTokenLimitScope::BodyAfterPrefix
-                ) {
-                    state.ensure_auto_compact_window_server_prefill_from_usage(token_usage);
-                }
                 state.token_info()
             };
             let turn_state = self
@@ -4751,46 +4494,6 @@ impl Session {
             budget_result?;
         }
         Ok(())
-    }
-
-    pub(crate) async fn recompute_token_usage(&self, turn_context: &TurnContext) {
-        let history = self.clone_history().await;
-        let base_instructions = self.get_base_instructions().await;
-        let Some(estimated_total_tokens) =
-            history.estimate_token_count_with_base_instructions(&base_instructions)
-        else {
-            return;
-        };
-        {
-            let mut state = self.state.lock().await;
-            let mut info = state.token_info().unwrap_or(TokenUsageInfo {
-                total_token_usage: TokenUsage::default(),
-                last_token_usage: TokenUsage::default(),
-                model_context_window: None,
-            });
-
-            info.last_token_usage = TokenUsage {
-                input_tokens: 0,
-                cached_input_tokens: 0,
-                cache_write_input_tokens: 0,
-                output_tokens: 0,
-                reasoning_output_tokens: 0,
-                total_tokens: estimated_total_tokens.max(0),
-                codex_rollout_budget_units: None,
-            };
-
-            if let Some(model_context_window) = turn_context.model_context_window() {
-                info.model_context_window = Some(model_context_window);
-            }
-
-            state.set_token_info(Some(info));
-        }
-        self.set_auto_compact_window_estimated_prefill_for_scope(
-            turn_context,
-            estimated_total_tokens,
-        )
-        .await;
-        self.send_token_count_event(turn_context).await;
     }
 
     pub(crate) async fn update_rate_limits(

@@ -153,6 +153,7 @@ members = [
     "thread-manager-sample",
     "thread-store",
     "uds",
+    "vrs",
     "codex-experimental-api-macros",
     "plugin",
     "model-provider",
@@ -287,6 +288,7 @@ codex-tools = { path = "tools" }
 codex-tcp-tunnel = { path = "tcp-tunnel" }
 codex-tui = { path = "tui" }
 codex-uds = { path = "uds" }
+codex-vrs = { path = "vrs" }
 codex-utils-absolute-path = { path = "utils/absolute-path" }
 codex-utils-approval-presets = { path = "utils/approval-presets" }
 codex-utils-audio = { path = "utils/audio" }

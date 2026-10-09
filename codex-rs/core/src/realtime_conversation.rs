@@ -1512,6 +1512,7 @@ pub(crate) async fn build_realtime_session_config(
             None => {
                 build_realtime_startup_context(sess.as_ref(), REALTIME_STARTUP_CONTEXT_TOKEN_BUDGET)
                     .await
+                    .map_err(crate::session::vrs_input::vrs_error_to_codex)?
                     .unwrap_or_default()
             }
         }

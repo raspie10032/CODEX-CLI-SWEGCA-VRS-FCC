@@ -982,7 +982,7 @@ impl RolloutRecorder {
                 let (path, file, ordinal_state) =
                     open_rollout_for_append(path.as_path(), writer_lock.clone()).await?;
                 RolloutWriterState {
-                    writer: Some(JsonlWriter { file }),
+                    writer: Some(JsonlWriter::new(file, path.clone())),
                     deferred_creation: false,
                     pending_items: Vec::new(),
                     meta: None,
@@ -1867,9 +1867,10 @@ impl RolloutWriterState {
         }
 
         let file = open_log_file(self.rollout_path.as_path())?;
-        self.writer = Some(JsonlWriter {
-            file: tokio::fs::File::from_std(file),
-        });
+        self.writer = Some(JsonlWriter::new(
+            tokio::fs::File::from_std(file),
+            compression::plain_rollout_path(self.rollout_path.as_path()),
+        ));
         self.deferred_creation = false;
         Ok(())
     }
@@ -2007,10 +2008,10 @@ pub async fn append_rollout_item_to_path(
     rollout_path: &Path,
     item: &RolloutItem,
 ) -> std::io::Result<()> {
-    let (_rollout_path, file, ordinal_state) =
+    let (rollout_path, file, ordinal_state) =
         open_rollout_for_append(rollout_path, /*writer_lock*/ None).await?;
     let ordinal = ordinal_state.current()?;
-    let mut writer = JsonlWriter { file };
+    let mut writer = JsonlWriter::new(file, rollout_path);
     writer.write_rollout_item(item, ordinal).await
 }
 
@@ -2057,6 +2058,8 @@ fn ensure_rollout_is_newline_terminated(file: &mut File) -> std::io::Result<()> 
 
 struct JsonlWriter {
     file: tokio::fs::File,
+    /// Plain `.jsonl` path of `file`; the key under which written lines are inserted into VRS.
+    path: PathBuf,
 }
 
 #[derive(serde::Serialize)]
@@ -2068,31 +2071,54 @@ struct RolloutLineRef<'a> {
     item: &'a RolloutItem,
 }
 
+/// Encodes one rollout item as a JSONL line (timestamped, newline-terminated).
+pub fn encode_rollout_line(
+    rollout_item: &RolloutItem,
+    ordinal: Option<u64>,
+) -> std::io::Result<String> {
+    let timestamp_format: &[FormatItem] = format_description!(
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z"
+    );
+    let timestamp = OffsetDateTime::now_utc()
+        .format(timestamp_format)
+        .map_err(|e| IoError::other(format!("failed to format timestamp: {e}")))?;
+
+    let line = RolloutLineRef {
+        timestamp,
+        ordinal,
+        item: rollout_item,
+    };
+    let mut json = serde_json::to_string(&line)?;
+    json.push('\n');
+    Ok(json)
+}
+
 impl JsonlWriter {
+    fn new(file: tokio::fs::File, path: PathBuf) -> Self {
+        Self { file, path }
+    }
+
     async fn write_rollout_item(
         &mut self,
         rollout_item: &RolloutItem,
         ordinal: Option<u64>,
     ) -> std::io::Result<()> {
-        let timestamp_format: &[FormatItem] = format_description!(
-            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z"
-        );
-        let timestamp = OffsetDateTime::now_utc()
-            .format(timestamp_format)
-            .map_err(|e| IoError::other(format!("failed to format timestamp: {e}")))?;
-
-        let line = RolloutLineRef {
-            timestamp,
-            ordinal,
-            item: rollout_item,
-        };
-        self.write_line(&line).await
+        let json = encode_rollout_line(rollout_item, ordinal)?;
+        self.write_line(json.as_bytes()).await
     }
-    async fn write_line(&mut self, item: &impl serde::Serialize) -> std::io::Result<()> {
-        let mut json = serde_json::to_string(item)?;
-        json.push('\n');
-        self.file.write_all(json.as_bytes()).await?;
+
+    async fn write_line(&mut self, line: &[u8]) -> std::io::Result<()> {
+        // The file is opened for append, so the line lands at the current end of file.
+        let offset = self.file.metadata().await?.len();
+        self.file.write_all(line).await?;
         self.file.flush().await?;
+        // Insert into the in-process VRS store where the line is written (union on (path, offset)).
+        if let Err(err) = codex_vrs::insert(self.path.as_path(), offset, line) {
+            warn!(
+                "vrs insert failed for {} at byte {offset}: {err}",
+                self.path.display()
+            );
+        }
         Ok(())
     }
 }

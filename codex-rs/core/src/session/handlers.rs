@@ -20,7 +20,6 @@ use crate::context::ContextualUserFragment;
 use crate::context::GuardianApprovedAction;
 use crate::review_prompts::resolve_review_request;
 use crate::session::spawn_review_thread;
-use crate::tasks::CompactTask;
 use crate::tasks::UserShellCommandMode;
 use crate::tasks::UserShellCommandTask;
 use crate::tasks::execute_user_shell_command;
@@ -242,14 +241,18 @@ pub async fn reload_user_config(sess: &Arc<Session>) {
     Box::pin(sess.reload_user_config_layer()).await;
 }
 
-pub async fn compact(sess: &Arc<Session>, sub_id: String) {
-    // Stop the old turn before the compact task picks up the next turn's environments.
-    sess.abort_all_tasks(TurnAbortReason::Replaced).await;
-    let turn_context = sess
-        .new_turn_with_default_settings(sub_id, Default::default())
-        .await;
-
-    sess.spawn_task(turn_context, Vec::new(), CompactTask).await;
+/// Context compaction was removed: model input is always assembled from the VRS store.
+pub async fn compact_unsupported(sess: &Arc<Session>, sub_id: String) {
+    sess.send_event_raw(Event {
+        id: sub_id,
+        msg: EventMsg::Error(ErrorEvent {
+            misalignment: None,
+            message: "Context compaction is not available: model input is assembled from the VRS store."
+                .to_string(),
+            codex_error_info: Some(CodexErrorInfo::BadRequest),
+        }),
+    })
+    .await;
 }
 
 pub(super) async fn persist_thread_memory_mode_update(
@@ -648,7 +651,7 @@ pub(super) async fn submission_loop(
                     false
                 }
                 Op::Compact => {
-                    compact(&sess, sub.id.clone()).await;
+                    compact_unsupported(&sess, sub.id.clone()).await;
                     false
                 }
                 Op::SetThreadMemoryMode { mode } => {

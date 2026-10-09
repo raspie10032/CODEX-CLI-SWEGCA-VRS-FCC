@@ -400,10 +400,11 @@ async fn schedule_startup_prewarm_inner(
         PrewarmInput::History => {
             // Use the same history projection and tool metadata as a sampling request.
             // The real turn still checks this prefix before reusing the prepared response.
-            let mut history = session
-                .clone_history()
-                .await
-                .for_prompt(&step_context.settings.model_info.input_modalities);
+            let mut history = super::vrs_input::vrs_prompt_snapshot(
+                session.as_ref(),
+                &step_context.settings.model_info.input_modalities,
+            )
+            .await?;
             session
                 .services
                 .executed_tool_calls

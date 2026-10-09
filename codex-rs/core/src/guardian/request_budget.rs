@@ -73,7 +73,10 @@ pub(crate) async fn prepare_prompt(
     let model = &step.settings.model_info;
     let maximum = effective_input_token_limit(model, step.turn.config.model_context_window)
         .saturating_sub(INPUT_TOKEN_MARGIN);
-    let history = session.clone_history().await;
+    let history = session
+        .vrs_history()
+        .await
+        .map_err(crate::session::vrs_input::vrs_error_to_codex)?;
     let history_version = history.history_version();
     let retained = step.turn.extension_data.get::<RetainedReviewContext>();
     let mut restored = Vec::new();

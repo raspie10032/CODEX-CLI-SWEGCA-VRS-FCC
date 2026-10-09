@@ -75,9 +75,14 @@ impl ToolExecutor<ToolInvocation> for ExtensionToolAdapter {
                     )
                 })
                 .collect();
-            self.0
-                .handle(to_extension_call(&invocation, environments).await)
+            let call = to_extension_call(&invocation, environments)
                 .await
+                .map_err(|err| {
+                    codex_tools::FunctionCallError::RespondToModel(format!(
+                        "conversation history unavailable: {err}"
+                    ))
+                })?;
+            self.0.handle(call).await
         })
     }
 }
@@ -179,11 +184,11 @@ impl TurnItemEmitter for CoreTurnItemEmitter {
 async fn to_extension_call<'a>(
     invocation: &ToolInvocation,
     environments: Vec<ToolEnvironment<'a>>,
-) -> ExtensionToolCall<'a> {
+) -> Result<ExtensionToolCall<'a>, codex_vrs::VrsError> {
     let history = invocation
         .session
-        .clone_history()
-        .await
+        .vrs_history()
+        .await?
         .into_shared_annotated_items();
     let conversation_history = ConversationHistory::new_deferred(move || {
         Arc::unwrap_or_clone(history)
@@ -199,7 +204,7 @@ async fn to_extension_call<'a>(
             &invocation.step_context.settings,
         ))
         .and_then(|metadata| to_ascii_json_string(&metadata).ok());
-    ExtensionToolCall {
+    Ok(ExtensionToolCall {
         turn_id: invocation.turn.sub_id.clone(),
         call_id: invocation.call_id.clone(),
         tool_name: invocation.tool_name.clone(),
@@ -214,7 +219,7 @@ async fn to_extension_call<'a>(
         }),
         environments,
         payload: invocation.payload.clone(),
-    }
+    })
 }
 
 #[cfg(test)]

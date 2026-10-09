@@ -32,7 +32,6 @@ use codex_guardian_reviewer::SessionDisposition;
 use codex_history::InitialHistory;
 use codex_history::RolloutItem;
 use codex_protocol::ThreadId;
-use codex_protocol::config_types::AutoCompactTokenLimitScope;
 use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::models::ContentItem;
@@ -183,8 +182,6 @@ pub struct GuardianReviewSessionReuseKey {
     model_provider_id: String,
     model_provider: ModelProviderInfo,
     model_context_window: Option<i64>,
-    model_auto_compact_token_limit: Option<i64>,
-    model_auto_compact_token_limit_scope: AutoCompactTokenLimitScope,
     model_reasoning_effort: Option<ReasoningEffortConfig>,
     model_reasoning_summary: Option<ReasoningSummaryConfig>,
     personality: Option<Personality>,
@@ -227,8 +224,6 @@ impl GuardianReviewSessionReuseKey {
             model_provider_id: spawn_config.model_provider_id.clone(),
             model_provider: spawn_config.model_provider.clone(),
             model_context_window: spawn_config.model_context_window,
-            model_auto_compact_token_limit: spawn_config.model_auto_compact_token_limit,
-            model_auto_compact_token_limit_scope: spawn_config.model_auto_compact_token_limit_scope,
             model_reasoning_effort: spawn_config.model_reasoning_effort.clone(),
             model_reasoning_summary: spawn_config.model_reasoning_summary,
             personality: spawn_config.personality,
@@ -383,67 +378,6 @@ async fn run_review_on_session(
                 disposition: SessionDisposition::Discard,
                 analytics: analytics_result,
             };
-        }
-    }
-
-    if params.spawn_config.features.enabled(Feature::TokenBudget)
-        && crate::session::context_window::context_window_token_status_for_model(
-            review_session.session.as_ref(),
-            &params.spawn_config,
-            params.parent_context.turn(),
-            &model_info,
-        )
-        .await
-        .token_limit_reached
-    {
-        let compact_submission = run_before_review_deadline(
-            deadline,
-            params.external_cancel.as_ref(),
-            review_session.io.submit(Op::Compact),
-        )
-        .await;
-        let compact_turn_id = match compact_submission {
-            Ok(Ok(turn_id)) => turn_id,
-            Ok(Err(error)) => {
-                return ReviewSessionResult {
-                    outcome: GuardianReviewSessionOutcome::SessionFailed {
-                        error: error.into(),
-                        error_info: None,
-                        retry_at: None,
-                    },
-                    disposition: SessionDisposition::Discard,
-                    analytics: analytics_result,
-                };
-            }
-            Err(outcome) => {
-                return ReviewSessionResult {
-                    outcome,
-                    disposition: SessionDisposition::Discard,
-                    analytics: analytics_result,
-                };
-            }
-        };
-        let result = wait_for_guardian_review(
-            review_session,
-            &compact_turn_id,
-            deadline,
-            params.external_cancel.as_ref(),
-            &mut analytics_result,
-        )
-        .await;
-        if !matches!(
-            result.outcome,
-            GuardianReviewSessionOutcome::Completed(Ok(_))
-        ) {
-            return ReviewSessionResult {
-                outcome: result.outcome,
-                disposition: result.disposition,
-                analytics: analytics_result,
-            };
-        }
-
-        if prior_review_count > 0 {
-            ensure_guardian_followup_reminder(review_session).await;
         }
     }
 

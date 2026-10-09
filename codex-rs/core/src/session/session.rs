@@ -97,6 +97,8 @@ pub(crate) struct Session {
     pub(super) fork_persistence: ForkPersistence,
     pub(super) forked_from_ordinal_exclusive: Option<u64>,
     pub(super) next_internal_sub_id: AtomicU64,
+    /// Next byte offset of this thread's virtual rollout when it has no rollout file.
+    pub(super) ephemeral_vrs_offset: AtomicU64,
 }
 
 #[derive(Clone)]
@@ -1373,7 +1375,7 @@ impl Session {
                     .model_reasoning_summary
                     .unwrap_or(ReasoningSummaryConfig::Auto),
                 config.model_context_window,
-                config.model_auto_compact_token_limit,
+                /*auto_compact_token_limit*/ None,
                 config.permissions.approval_policy.value(),
                 config
                     .permissions
@@ -1848,6 +1850,7 @@ impl Session {
                 fork_persistence,
                 forked_from_ordinal_exclusive,
                 next_internal_sub_id: AtomicU64::new(0),
+                ephemeral_vrs_offset: AtomicU64::new(0),
             });
             if let Some(startup) = &startup {
                 let _ = startup.session.set(Arc::clone(&sess));

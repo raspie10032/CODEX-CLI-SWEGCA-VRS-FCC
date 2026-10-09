@@ -163,7 +163,6 @@ pub(super) async fn guardian_review_session_config(
     }
     if review_model.model != context.model_info.slug {
         spawn_config.model_context_window = None;
-        spawn_config.model_auto_compact_token_limit = None;
     }
     Ok(GuardianReviewSessionConfig {
         spawn_config,
@@ -218,7 +217,17 @@ async fn run_guardian_review_session_before_deadline(
             GuardianReviewSessionParams {
                 parent_session: Arc::clone(&session),
                 parent_context: context.clone(),
-                parent_history: session.clone_history().await,
+                parent_history: match session.vrs_history().await {
+                    Ok(history) => history,
+                    Err(err) => {
+                        return (
+                            GuardianReviewOutcome::Error(GuardianReviewError::prompt_build(
+                                anyhow::anyhow!("parent history unavailable: {err}"),
+                            )),
+                            GuardianReviewAnalyticsResult::without_session(),
+                        );
+                    }
+                },
                 spawn_config: session_config.spawn_config,
                 node_repl_policy: session_config.node_repl_policy,
                 request,

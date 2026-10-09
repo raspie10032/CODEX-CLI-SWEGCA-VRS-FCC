@@ -98,7 +98,6 @@ use codex_model_provider_info::merge_configured_model_providers;
 use codex_models_manager::ModelsManagerConfig;
 use codex_prompts::ResolvedModelMessages;
 use codex_protocol::config_types::AltScreenMode;
-use codex_protocol::config_types::AutoCompactTokenLimitScope;
 use codex_protocol::config_types::ForcedLoginMethod;
 use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::ReasoningSummary;
@@ -635,17 +634,6 @@ pub struct Config {
 
     /// Size of the context window for the model, in tokens.
     pub model_context_window: Option<i64>,
-
-    /// Token usage threshold triggering auto-compaction of conversation history.
-    pub model_auto_compact_token_limit: Option<i64>,
-
-    /// Controls whether `model_auto_compact_token_limit` applies to the full
-    /// active context or only tokens after the carried compaction-window prefix.
-    pub model_auto_compact_token_limit_scope: AutoCompactTokenLimitScope,
-
-    /// Percentage of the usable context window that triggers turn-end compaction.
-    /// Zero disables turn-end compaction.
-    pub model_post_turn_compact_threshold_percent: u8,
 
     /// Key into the model_providers map that specifies which provider to use.
     pub model_provider_id: String,
@@ -1677,7 +1665,6 @@ impl Config {
     pub fn to_models_manager_config(&self) -> ModelsManagerConfig {
         ModelsManagerConfig {
             model_context_window: self.model_context_window,
-            model_auto_compact_token_limit: self.model_auto_compact_token_limit,
             tool_output_token_limit: self.tool_output_token_limit,
             base_instructions: self.base_instructions.clone().filter(|_| {
                 !matches!(
@@ -3254,12 +3241,6 @@ impl Config {
 
         validate_model_providers(&cfg.model_providers)
             .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidInput, message))?;
-        if cfg.model_post_turn_compact_threshold_percent.is_some_and(|percent| percent > 100) {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "model_post_turn_compact_threshold_percent must be between 0 and 100",
-            ));
-        }
         if let Some(responses_api_metadata) = cfg.responses_api_metadata.as_ref() {
             validate_extra_metadata(responses_api_metadata.iter()).map_err(|message| {
                 std::io::Error::new(std::io::ErrorKind::InvalidInput, message)
@@ -4289,13 +4270,6 @@ impl Config {
             service_tier,
             review_model,
             model_context_window: cfg.model_context_window,
-            model_auto_compact_token_limit: cfg.model_auto_compact_token_limit,
-            model_auto_compact_token_limit_scope: cfg
-                .model_auto_compact_token_limit_scope
-                .unwrap_or_default(),
-            model_post_turn_compact_threshold_percent: cfg
-                .model_post_turn_compact_threshold_percent
-                .unwrap_or_default(),
             model_provider_id,
             model_provider,
             cwd: resolved_cwd,

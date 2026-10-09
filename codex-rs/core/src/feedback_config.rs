@@ -22,8 +22,6 @@ pub(crate) fn usage_tags(
         "model_context_window": config.model_context_window,
         "model_context_window_override": config.model_context_window.is_some(),
         "model_context_window_effective": model_info.usable_context_window(),
-        "model_auto_compact_token_limit": config.model_auto_compact_token_limit,
-        "model_auto_compact_token_limit_scope": config.model_auto_compact_token_limit_scope,
         "tool_output_token_limit": config.tool_output_token_limit,
         "project_doc_max_bytes": config.project_doc_max_bytes,
         "model_verbosity": config.model_verbosity,

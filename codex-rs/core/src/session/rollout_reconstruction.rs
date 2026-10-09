@@ -6,11 +6,10 @@ use codex_protocol::protocol::SessionContextWindow;
 use codex_protocol::protocol::ThreadHistoryMode;
 use uuid::Uuid;
 
-// Return value of `Session::reconstruct_history_from_rollout`, bundling the rebuilt history with
-// the resume/fork hydration metadata derived from the same replay.
+// Return value of `Session::reconstruct_history_from_rollout`: the resume/fork hydration metadata
+// derived from the rollout. The model-visible history is not rebuilt here (it comes from VRS).
 #[derive(Debug, PartialEq)]
 pub(super) struct RolloutReconstruction {
-    pub(super) history: Vec<ResponseItemEnvelope>,
     pub(super) retained_context: codex_history::RetainedContext,
     pub(super) guardian_history: Option<codex_history::GuardianHistoryCheckpoint>,
     pub(super) last_started_turn_id: Option<String>,
@@ -392,81 +391,15 @@ impl Session {
         )
         .unwrap_or(u64::MAX);
 
-        // Build model-visible history from the selected compaction and its newer suffix.
+        // The model-visible history is not replayed (design D4); `Compacted` items of rollouts
+        // written before compaction was removed are ignored. Only the retained context is kept.
         let mut history = ContextManager::for_session(
             &turn_context.session_source,
             &turn_context.config.features,
         );
-        let mut saw_legacy_compaction_without_replacement_history = false;
-        if let Some(checkpoint) = history_checkpoint
-            && let Some(items) = &checkpoint.compacted.replacement_history
-        {
-            history.replace_annotated(items.clone());
-            history.restore_review_context(
-                checkpoint.compacted.retained_context.as_ref(),
-                checkpoint.compacted.guardian_history.as_ref(),
-                // Keep the backup during replay; the installing session resolves its reviewer.
-                /*reviewer_compaction_hash*/
-                None,
-            );
-        }
-        let rollout_suffix =
-            history_checkpoint.map_or(rollout_items, |checkpoint| checkpoint.suffix);
-        for item in rollout_suffix {
-            match item {
-                RolloutItem::RetainedContext(event) => {
-                    history.record_retained_context(event);
-                }
-                RolloutItem::ResponseItem(response_item) => {
-                    history.replay_annotated_item(
-                        response_item,
-                        turn_context.model_info().truncation_policy.into(),
-                    );
-                }
-                RolloutItem::InterAgentCommunication(communication) => {
-                    let response_item = communication.to_model_input_item();
-                    history.record_items(
-                        std::iter::once(&response_item),
-                        turn_context.model_info().truncation_policy.into(),
-                    );
-                }
-                RolloutItem::InterAgentCommunicationMetadata { .. } => {}
-                RolloutItem::Compacted(compacted) => {
-                    // Reverse replay already chose the newest surviving compaction. Any newer
-                    // replacement compaction belongs to a rolled-back turn; replay its original
-                    // items so the rollback can still find the removed user boundary.
-                    if compacted.replacement_history.is_none() {
-                        saw_legacy_compaction_without_replacement_history = true;
-                        // Legacy rollouts without `replacement_history` should rebuild the
-                        // historical TurnContext at the correct insertion point from persisted
-                        // `TurnContextItem`s. These are rare enough that we currently just clear
-                        // `reference_context_item`, reinject canonical context at the end of the
-                        // resumed conversation, and accept the temporary out-of-distribution
-                        // prompt shape.
-                        // TODO(ccunningham): if we drop support for None replacement_history compaction items,
-                        // we can get rid of this second loop entirely and just build `history` directly in the first loop.
-                        let user_messages =
-                            compact::collect_annotated_user_messages(history.annotated_items());
-                        let rebuilt = compact::build_compacted_history(
-                            Vec::new(),
-                            &user_messages,
-                            &compacted.message,
-                        );
-                        let retained_context = history.retained_context().clone();
-                        history.replace_annotated(rebuilt);
-                        history.restore_retained_context(Some(&retained_context));
-                    }
-                }
-                RolloutItem::EventMsg(EventMsg::ThreadRolledBack(rollback)) => {
-                    history.drop_last_n_user_turns(rollback.num_turns);
-                }
-                RolloutItem::EventMsg(_)
-                | RolloutItem::TurnContext(_)
-                | RolloutItem::RealtimeItem(_)
-                | RolloutItem::WorldState(_)
-                | RolloutItem::SecurityRiskScore(_)
-                | RolloutItem::TokenUsageRecord(_)
-                | RolloutItem::SessionMeta(_) => {}
+        for item in rollout_items {
+            if let RolloutItem::RetainedContext(event) = item {
+                history.record_retained_context(event);
             }
         }
 
@@ -475,11 +408,6 @@ impl Session {
             TurnReferenceContextItem::Latest(turn_reference_context_item) => {
                 Some(*turn_reference_context_item)
             }
-        };
-        let reference_context_item = if saw_legacy_compaction_without_replacement_history {
-            None
-        } else {
-            reference_context_item
         };
 
         // Replay the collected world-state records chronologically so compaction resets and merge
@@ -524,7 +452,6 @@ impl Session {
             retained_context: history.retained_context().clone(),
             guardian_history: history.guardian_history_checkpoint(),
             last_started_turn_id,
-            history: history.into_annotated_items(),
             previous_turn_settings,
             reference_context_item,
             world_state_baseline,

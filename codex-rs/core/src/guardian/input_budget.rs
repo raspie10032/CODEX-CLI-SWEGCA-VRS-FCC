@@ -53,8 +53,9 @@ pub(crate) async fn check_pending(session: &Session, turn: &TurnContext) -> Code
     let mut context = pending.0.clone();
     context.retain_new_instructions(
         &session
-            .clone_history()
+            .vrs_history()
             .await
+            .map_err(crate::session::vrs_input::vrs_error_to_codex)?
             .for_prompt_annotated(&turn.model_info().input_modalities),
     );
     if context.estimated_tokens().saturating_add(minimum_prefix) > maximum {
@@ -98,11 +99,13 @@ pub(crate) async fn finalize(
     };
     let mut context = pending.0.clone();
     let model = &step.settings.model_info;
-    let history = session.clone_history().await;
+    let history = session
+        .vrs_history()
+        .await
+        .map_err(crate::session::vrs_input::vrs_error_to_codex)?;
     let history_version = history.history_version();
     let history = history.for_prompt_annotated(&model.input_modalities);
-    // Use the history that will actually reach the model. Recompute after every
-    // compaction retry; evidence removed by compaction must be delivered again.
+    // Use the history that will actually reach the model.
     context.retain_new_instructions(&history);
     let prompt = build_prompt(
         history

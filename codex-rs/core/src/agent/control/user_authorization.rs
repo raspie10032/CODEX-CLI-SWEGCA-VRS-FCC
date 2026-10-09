@@ -19,7 +19,7 @@ use std::hash::Hasher;
 use super::LocalAgentControl;
 use crate::codex_thread::GuardianRootMessage;
 use crate::codex_thread::GuardianRootSnapshot;
-use crate::compact::is_summary_message;
+use crate::message_text::is_summary_message;
 use crate::context::ContextualUserFragment;
 use crate::context::GuardianReviewEvidence;
 use crate::context::UserGoalUpdate;
@@ -71,7 +71,13 @@ impl LocalAgentControl {
                     .agent_path
             })
             .flatten();
-        let root_history = root_thread.session.clone_history().await;
+        let root_history = match root_thread.session.vrs_history().await {
+            Ok(history) => history,
+            Err(err) => {
+                tracing::warn!("root history unavailable for guardian handoff: {err}");
+                return None;
+            }
+        };
         let history = root_history.conversation_history_snapshot();
         // Join calls to host-confirmed outputs in this snapshot. Older outputs without
         // captured text cannot establish what was sent, including after a hook rewrite.

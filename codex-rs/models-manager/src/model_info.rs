@@ -26,9 +26,6 @@ pub fn with_config_overrides(mut model: ModelInfo, config: &ModelsManagerConfig)
                 }),
         );
     }
-    if let Some(auto_compact_token_limit) = config.model_auto_compact_token_limit {
-        model.auto_compact_token_limit = Some(auto_compact_token_limit);
-    }
     if let Some(token_limit) = config.tool_output_token_limit {
         model.truncation_policy = match model.truncation_policy.mode {
             TruncationMode::Bytes => {

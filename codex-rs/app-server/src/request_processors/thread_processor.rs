@@ -2370,18 +2370,12 @@ impl ThreadRequestProcessor {
         request_id: &ConnectionRequestId,
         params: ThreadCompactStartParams,
     ) -> Result<ThreadCompactStartResponse, JSONRPCErrorError> {
+        // Context compaction was removed: model input is assembled from the VRS store.
         let ThreadCompactStartParams { thread_id } = params;
-
-        let (_, thread) = self.load_thread(&thread_id).await?;
-        ensure_direct_input_allowed(thread.as_ref()).await?;
-        self.config_manager
-            .check_thread_model_provider(thread.config().await.as_ref())
-            .await
-            .map_err(|error| config_load_error(&error))?;
-        self.submit_core_op(request_id, thread.as_ref(), Op::Compact)
-            .await
-            .map_err(|err| internal_error(format!("failed to start compaction: {err}")))?;
-        Ok(ThreadCompactStartResponse {})
+        let _ = (request_id, thread_id);
+        Err(invalid_request(
+            "thread/compact/start is not available: model input is assembled from the VRS store",
+        ))
     }
 
     async fn thread_background_terminals_clean_inner(

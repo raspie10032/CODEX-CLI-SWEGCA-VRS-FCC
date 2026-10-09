@@ -1,4 +1,4 @@
-use crate::compact::content_items_to_text;
+use crate::message_text::content_items_to_text;
 use crate::event_mapping::is_contextual_user_message_content;
 use crate::session::session::Session;
 use chrono::Utc;
@@ -59,11 +59,11 @@ const NOISY_DIR_NAMES: &[&str] = &[
 pub(crate) async fn build_realtime_startup_context(
     sess: &Session,
     budget_tokens: usize,
-) -> Option<String> {
+) -> Result<Option<String>, codex_vrs::VrsError> {
     let config = sess.get_config().await;
     let cwd = config.cwd.clone();
     let current_thread_section = {
-        let history = sess.clone_history().await;
+        let history = sess.vrs_history().await?;
         build_current_thread_section(history.raw_items())
     };
     let recent_threads = load_recent_threads(sess).await;
@@ -75,7 +75,7 @@ pub(crate) async fn build_realtime_startup_context(
         && workspace_section.is_none()
     {
         debug!("realtime startup context unavailable; skipping injection");
-        return None;
+        return Ok(None);
     }
 
     let mut parts = vec![STARTUP_CONTEXT_HEADER.to_string()];
@@ -124,7 +124,7 @@ pub(crate) async fn build_realtime_startup_context(
         "built realtime startup context"
     );
     info!("realtime startup context: {context}");
-    Some(context)
+    Ok(Some(context))
 }
 
 async fn load_recent_threads(sess: &Session) -> Vec<StoredThread> {

@@ -261,7 +261,7 @@ pub(super) fn prepare_prewarm(
     Box::pin(async move {
         let context = GuardianReviewContext::from(turn);
         let config = guardian_review_session_config(&parent, &context).await?;
-        let history = parent.clone_history().await;
+        let history = parent.vrs_history().await?;
         PreparedGuardianContext::prepare(
             Arc::clone(&parent),
             context,

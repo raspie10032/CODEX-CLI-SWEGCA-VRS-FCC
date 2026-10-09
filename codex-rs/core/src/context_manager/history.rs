@@ -683,6 +683,45 @@ impl ContextManager {
         self.replace_annotated(items.into_iter().map(ResponseItemEnvelope::new).collect());
     }
 
+    /// Installs items assembled by VRS as the history (design D4).
+    ///
+    /// The assembler already applied truncation and residue rules, so nothing is truncated here.
+    /// Retained context, review mode and the world-state baseline describe the same thread and
+    /// are kept.
+    pub(crate) fn replace_assembled(&mut self, items: Vec<ResponseItem>) {
+        // Items that were already in the history keep their harness metadata (matched by id).
+        let known: std::collections::HashMap<String, &CodexHarnessMetadata> = self
+            .items
+            .iter()
+            .filter_map(|envelope| {
+                Some((
+                    envelope.item.id()?.as_str().to_owned(),
+                    envelope.metadata.as_ref()?,
+                ))
+            })
+            .collect();
+        let items = items
+            .into_iter()
+            .filter(|item| is_api_message(item, /*metadata*/ None))
+            .map(|item| {
+                let metadata = item
+                    .id()
+                    .and_then(|id| known.get(id.as_str()))
+                    .map(|metadata| (*metadata).clone());
+                ResponseItemEnvelope { item, metadata }
+            })
+            .collect();
+        self.items = Arc::new(items);
+        self.history_version = self.history_version.saturating_add(1);
+    }
+
+    /// A copy of this history whose items are `items` (design D3).
+    pub(crate) fn with_assembled_items(&self, items: Vec<ResponseItem>) -> Self {
+        let mut copy = self.clone();
+        copy.replace_assembled(items);
+        copy
+    }
+
     pub(crate) fn replace_annotated(&mut self, items: Vec<ResponseItemEnvelope>) {
         self.retained_context = Arc::default();
         self.user_message_revision = self.user_message_revision.saturating_add(1);
@@ -1361,7 +1400,7 @@ pub(crate) fn is_user_turn_boundary(item: &ResponseItem) -> bool {
         // Local compaction persists its synthetic summary as a user-role message.
         // It must not consume a rollback turn or become the transcript boundary.
         && !content.iter().any(|part| matches!(part,
-            ContentItem::InputText { text } if crate::compact::is_summary_message(text))))
+            ContentItem::InputText { text } if crate::message_text::is_summary_message(text))))
         || (role == "assistant" && is_inter_agent_instruction_content(content))
 }
 
