@@ -2255,7 +2255,7 @@ async fn direct_result_metadata_retained_budget_preserves_resource_access() -> R
         assert_eq!(call["params"]["arguments"], arguments);
     }
     // Inspect retained history directly to isolate the Direct admission budget.
-    let history = test.codex.conversation_history_snapshot().await;
+    let history = test.codex.conversation_history_snapshot().await.unwrap();
     assert!(
         history
             .items()
@@ -9027,7 +9027,6 @@ async fn code_mode_oversized_websocket_yield_keeps_later_wait_incomplete() -> Re
     let configure = |config: &mut Config, instructions: String| {
         config.base_instructions = Some(instructions);
         config.model_context_window = Some(20_000_000);
-        config.model_auto_compact_token_limit = Some(20_000_000);
         config.features.disable(Feature::TokenBudget).unwrap();
         config.features.enable(Feature::CodeMode).unwrap();
         config
@@ -9143,7 +9142,7 @@ await new Promise(() => {});
 
     // Compare ordinary outputs against the live session history. No actual
     // invocation, output, or wait request is changed by metadata trimming.
-    let history = test.codex.conversation_history_snapshot().await;
+    let history = test.codex.conversation_history_snapshot().await.unwrap();
     let history = serde_json::to_value(history.items().collect::<Vec<_>>())?;
     let history_request = serde_json::json!({"input": history});
     for (call_id, actual) in [("exec-a", yielded), ("wait-a", terminal)] {
