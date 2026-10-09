@@ -27,7 +27,6 @@ pub(super) fn sampler_failure_reason(error: &LunaSamplerError) -> &'static str {
         LunaSamplerError::MissingOutput => "missing_output",
         LunaSamplerError::OutputTooLarge => "output_too_large",
         LunaSamplerError::Superseded => "superseded",
-        LunaSamplerError::IncompatibleCompaction => "incompatible_compaction",
         LunaSamplerError::InputTooLarge => "input_too_large",
         LunaSamplerError::QueueFull => "queue_full",
         LunaSamplerError::Api(error) => match error {

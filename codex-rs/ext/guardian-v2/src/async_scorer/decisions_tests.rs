@@ -25,15 +25,7 @@ fn adapter_rejects_unsupported_evidence() {
         *role = "developer".into();
     }
     assert_eq!(
-        request_body(
-            &rubric,
-            &[user.clone(), trusted],
-            /*parent_compaction*/ None
-        ),
-        Err(DecisionsError::UnsupportedEvidence)
-    );
-    assert_eq!(
-        request_body(&rubric, std::slice::from_ref(&user), Some(&user)),
+        request_body(&rubric, &[user.clone(), trusted],),
         Err(DecisionsError::UnsupportedEvidence)
     );
     let image: ResponseItem =
@@ -42,7 +34,7 @@ fn adapter_rejects_unsupported_evidence() {
         ]}))
         .unwrap();
     assert_eq!(
-        request_body(&rubric, &[image], /*parent_compaction*/ None),
+        request_body(&rubric, &[image],),
         Err(DecisionsError::UnsupportedEvidence)
     );
 }
@@ -140,12 +132,7 @@ fn adapter_preserves_inline_images_and_bounds_image_bytes() {
         ]}))
         .unwrap();
     request.input = vec![image];
-    let body = request_body(
-        &request.instructions,
-        &request.input,
-        /*parent_compaction*/ None,
-    )
-    .unwrap();
+    let body = request_body(&request.instructions, &request.input).unwrap();
     assert_eq!(
         body["input"],
         json!([{"role":"user", "content":[
@@ -160,11 +147,7 @@ fn adapter_preserves_inline_images_and_bounds_image_bytes() {
         .unwrap(),
     ];
     assert_eq!(
-        request_body(
-            &request.instructions,
-            &request.input,
-            /*parent_compaction*/ None
-        ),
+        request_body(&request.instructions, &request.input,),
         Err(DecisionsError::InputTooLarge)
     );
 }

@@ -59,7 +59,6 @@ pub(super) struct ConversationRequest {
 struct ReuseKey {
     authorization: ScoreAuthorization,
     instructions: RenderedFragment,
-    parent_compaction: Option<ResponseItem>,
 }
 
 impl ConversationBackend {
@@ -142,7 +141,6 @@ async fn run(
         let key = ReuseKey {
             authorization: request.authorization.clone(),
             instructions: request.sampling.instructions.clone(),
-            parent_compaction: request.sampling.parent_compaction.clone(),
         };
         let mut state = committed
             .take()

@@ -146,12 +146,7 @@ impl DecisionsSampler {
         request: &LunaSamplingRequest,
         max_input_tokens: usize,
     ) -> DecisionsTask {
-        let body = request_body(
-            &request.instructions,
-            &request.input,
-            request.parent_compaction.as_ref(),
-        )
-        .and_then(|body| {
+        let body = request_body(&request.instructions, &request.input).and_then(|body| {
             // Reuse Guardian's complete budget without changing its sampling path.
             // The temporary copy is dropped before admission; Responses prepares again.
             let (_, tokens) = LunaSampler::prepare_input(
@@ -238,11 +233,7 @@ impl DecisionsSampler {
 fn request_body(
     instructions: &RenderedFragment,
     evidence: &[ResponseItem],
-    parent_compaction: Option<&ResponseItem>,
 ) -> Result<Value, DecisionsError> {
-    if parent_compaction.is_some() {
-        return Err(DecisionsError::UnsupportedEvidence);
-    }
     let ContentItem::InputText { text: rubric } = instructions.annotated_content().content() else {
         return Err(DecisionsError::UnsupportedEvidence);
     };

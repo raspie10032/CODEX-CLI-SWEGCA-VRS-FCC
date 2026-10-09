@@ -73,7 +73,6 @@ pub(super) async fn sampler_config(
                     model, /*configured_window*/ None,
                 )
             });
-    let luna_compaction_hash = luna_model.and_then(|model| model.comp_hash);
     LunaSamplerConfig {
         workspace_routing: input
             .thread_store
@@ -95,7 +94,6 @@ pub(super) async fn sampler_config(
             .get::<ThreadOriginator>()
             .map(|originator| originator.0.clone()),
         service_tier: input.config.service_tier.clone(),
-        luna_compaction_hash,
         max_input_tokens,
         metrics: input.extension_metrics.clone(),
     }

@@ -240,8 +240,6 @@ impl GuardianV2Extension {
             .thread_store
             .get_or_init(GuardianReviewEvidence::default);
         // The input is assembled from VRS, which carries no parent compaction checkpoint.
-        let parent_compaction = None;
-        let parent_compaction_hash = None;
         let call_id = input.call_id.to_owned();
         let mcp_tool = input.mcp_tool.cloned();
         let action = GuardianAction {
@@ -379,8 +377,6 @@ impl GuardianV2Extension {
             thread,
             config,
             context_mode,
-            parent_compaction,
-            parent_compaction_hash,
             call_id,
             mcp_tool,
             planned_action,

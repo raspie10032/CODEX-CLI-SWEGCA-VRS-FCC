@@ -210,17 +210,12 @@ fn rejected_preparation_preserves_committed_history_and_cursor() {
 }
 
 #[test]
-fn complete_budget_counts_setup_checkpoint_images_and_trusted_evidence() {
+fn complete_budget_counts_setup_images_and_trusted_evidence() {
     let history = History {
         items: vec![responses::user_message_item("Inspect README.md.")],
         version: 1,
     };
-    let mut config = sample_request("parent");
-    config.parent_compaction = Some(ResponseItem::ContextCompaction {
-        id: Some(ResponseItemId::from_server("cmp_parent".to_owned())),
-        encrypted_content: Some("opaque checkpoint".repeat(/*n*/ 100)),
-        internal_chat_message_metadata_passthrough: None,
-    });
+    let config = sample_request("parent");
     let images = [ContentItem::InputImage {
         image: ImageReference::Inline {
             image_url: "data:image/png;base64,aGVsbG8=".to_owned(),
@@ -232,10 +227,10 @@ fn complete_budget_counts_setup_checkpoint_images_and_trusted_evidence() {
     let request = config
         .prepare_retained(&evidence, &mut state, INPUT_BUDGET)
         .unwrap();
-    assert_eq!(
-        Some(&request.input[2].item),
-        config.parent_compaction.as_ref()
-    );
+    assert!(request.input.iter().all(|entry| !matches!(
+        entry.item,
+        ResponseItem::Compaction { .. } | ResponseItem::ContextCompaction { .. }
+    )));
     assert!(request.input_tokens > 10_000);
     assert!(
         config

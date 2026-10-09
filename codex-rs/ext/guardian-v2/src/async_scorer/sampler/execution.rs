@@ -160,7 +160,6 @@ impl SamplingExecution {
             | LunaSamplerError::MissingOutput
             | LunaSamplerError::OutputTooLarge
             | LunaSamplerError::Superseded
-            | LunaSamplerError::IncompatibleCompaction
             | LunaSamplerError::InputTooLarge
             | LunaSamplerError::QueueFull
             | LunaSamplerError::Api(

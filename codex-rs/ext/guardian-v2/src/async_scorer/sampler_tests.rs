@@ -221,7 +221,6 @@ pub(in crate::async_scorer) fn sampler_config(base_url: String) -> LunaSamplerCo
         originator: Some("guardian-v2-test".to_owned()),
 
         service_tier: None,
-        luna_compaction_hash: None,
         max_input_tokens: codex_guardian_context::DEFAULT_MAX_INPUT_TOKENS,
         metrics: None,
     }
@@ -269,8 +268,6 @@ pub(in crate::async_scorer) fn sample_request(parent_turn_id: &str) -> LunaSampl
         input: vec![responses::user_message_item(
             "The user requested a README summary.",
         )],
-        parent_compaction: None,
-        parent_compaction_hash: None,
         reasoning_effort: ReasoningEffort::None,
         parent_turn_id: parent_turn_id.to_owned(),
         root_turn_id: None,
@@ -529,7 +526,6 @@ async fn preconnected_sampler_reuses_authenticated_websocket_for_classifications
         originator: Some("guardian-v2-test".to_owned()),
 
         service_tier: None,
-        luna_compaction_hash: None,
         max_input_tokens: codex_guardian_context::DEFAULT_MAX_INPUT_TOKENS,
         metrics: None,
     })
@@ -579,8 +575,6 @@ async fn preconnected_sampler_reuses_authenticated_websocket_for_classifications
                 phase: None,
                 internal_chat_message_metadata_passthrough: None,
             }],
-            parent_compaction: None,
-            parent_compaction_hash: None,
             reasoning_effort: ReasoningEffort::None,
             parent_turn_id: "turn-1".to_owned(),
             root_turn_id: Some("turn-1".to_owned()),
@@ -609,8 +603,6 @@ async fn preconnected_sampler_reuses_authenticated_websocket_for_classifications
             input: vec![responses::user_message_item(
                 "The user requested a source review.",
             )],
-            parent_compaction: None,
-            parent_compaction_hash: None,
             reasoning_effort: ReasoningEffort::Medium,
             parent_turn_id: "turn-2".to_owned(),
             root_turn_id: Some("root-2".to_owned()),
@@ -665,92 +657,6 @@ async fn preconnected_sampler_reuses_authenticated_websocket_for_classifications
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn sampler_reuses_parent_compaction_only_for_matching_model_hashes() -> Result<()> {
-    skip_if_no_network!(Ok(()));
-
-    for (parent_hash, luna_hash, should_reuse) in [
-        (Some("compatible"), Some("compatible"), true),
-        (Some("parent"), Some("luna"), false),
-        (None, Some("compatible"), false),
-        (Some("compatible"), None, false),
-        (Some(""), Some(""), false),
-    ] {
-        let events = vec![
-            ev_assistant_message("sample", "low"),
-            ev_completed("response-1"),
-        ];
-        let mut connections = vec![Vec::new(); INITIAL_WEBSOCKET_CONNECTIONS - 1];
-        connections.push(vec![events.clone(), events]);
-        let server = responses::start_websocket_server(connections).await;
-        let mut config = sampler_config(format!(
-            "http://{}/v1",
-            server.uri().trim_start_matches("ws://")
-        ));
-        config.luna_compaction_hash = luna_hash.map(str::to_owned);
-        let sampler = connect_sampler(config).await?;
-        let parent_compaction = ResponseItem::Compaction {
-            id: Some(ResponseItemId::from_server("cmp_parent".to_owned())),
-            encrypted_content: "opaque encrypted summary".to_owned(),
-            internal_chat_message_metadata_passthrough: None,
-        };
-        let mut request = sample_request("turn-1");
-        request.parent_compaction = Some(parent_compaction.clone());
-        request.parent_compaction_hash = parent_hash.map(str::to_owned);
-        request.input.insert(
-            /*index*/ 0,
-            PreviousReviews::try_from_fragments(vec![codex_guardian_context::PreviousReview {
-                id: ResponseItemId::from_server("review-trusted".to_owned()),
-                fragment: "trusted review".to_owned(),
-            }])?
-            .into_annotated_message()
-            .into_item(),
-        );
-
-        let result = sampler.sample(request).await;
-        if !should_reuse {
-            assert!(matches!(
-                result,
-                Err(LunaSamplerError::IncompatibleCompaction)
-            ));
-            assert!(server.connections().iter().all(Vec::is_empty));
-            assert_eq!(
-                sampler.sample(sample_request("uncompacted-turn")).await?,
-                "low"
-            );
-            continue;
-        }
-        assert_eq!(result?, "low");
-
-        let request = server
-            .wait_for_request(
-                /*connection_index*/ INITIAL_WEBSOCKET_CONNECTIONS - 1,
-                /*request_index*/ 0,
-            )
-            .await
-            .body_json();
-        let input = request["input"].as_array().expect("input items");
-        assert_eq!(input[0]["type"], "additional_tools");
-        assert_eq!(input[1]["role"], "developer");
-        assert_eq!(input.len(), 5);
-        assert_eq!(input[2], serde_json::to_value(&parent_compaction)?);
-        assert_eq!(input[3]["role"], "developer");
-        assert_eq!(input[3]["content"][1]["text"], "trusted review");
-        assert_eq!(input[4]["role"], "user");
-
-        let mut switched_request = sample_request("turn-2");
-        switched_request.parent_compaction = Some(parent_compaction);
-        switched_request.parent_compaction_hash = Some("incompatible".to_owned());
-        assert!(matches!(
-            sampler.sample(switched_request).await,
-            Err(LunaSamplerError::IncompatibleCompaction)
-        ));
-        assert_eq!(server.connections().iter().map(Vec::len).sum::<usize>(), 1);
-    }
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sampler_returns_classification_token_before_terminal_response_events() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
@@ -782,7 +688,6 @@ async fn sampler_returns_classification_token_before_terminal_response_events() 
         originator: None,
 
         service_tier: None,
-        luna_compaction_hash: None,
         max_input_tokens: codex_guardian_context::DEFAULT_MAX_INPUT_TOKENS,
         metrics: None,
     })
@@ -796,8 +701,6 @@ async fn sampler_returns_classification_token_before_terminal_response_events() 
             input: vec![responses::user_message_item(
                 "The user requested a README summary.",
             )],
-            parent_compaction: None,
-            parent_compaction_hash: None,
             reasoning_effort: ReasoningEffort::None,
             parent_turn_id: "turn-1".to_owned(),
             root_turn_id: Some("turn-1".to_owned()),

@@ -60,8 +60,6 @@ pub struct LunaSamplerConfig {
     pub originator: Option<String>,
     /// Optional inference service tier.
     pub service_tier: Option<String>,
-    /// Luna model's host-resolved encrypted-compaction compatibility hash.
-    pub luna_compaction_hash: Option<String>,
     /// Complete input allowance resolved for the classifier model.
     pub max_input_tokens: usize,
     /// Host-provided metrics capability with the owning session's attribution.
@@ -76,10 +74,6 @@ pub struct LunaSamplingRequest {
     pub instructions: RenderedFragment,
     /// Composed evidence messages, with roles, annotations and content order intact.
     pub input: Vec<ResponseItem>,
-    /// Opaque parent compaction to reuse only for compatible model configurations.
-    pub parent_compaction: Option<ResponseItem>,
-    /// Host-selected compatibility hash for the supplied parent checkpoint.
-    pub parent_compaction_hash: Option<String>,
     /// Reasoning budget explicitly selected for this request.
     pub reasoning_effort: ReasoningEffort,
     /// Owning turn that initiated this classification, not the classifier turn.
@@ -112,9 +106,6 @@ pub enum LunaSamplerError {
     /// A newer classification replaced this request when the pool was full.
     #[error("Luna request was superseded by a newer classification")]
     Superseded,
-    /// The supplied parent checkpoint cannot be consumed by this Luna configuration.
-    #[error("parent compaction is incompatible with Luna")]
-    IncompatibleCompaction,
     /// The complete classifier input exceeded the model allowance.
     #[error("Luna input exceeds the complete request budget")]
     InputTooLarge,
@@ -136,15 +127,6 @@ pub struct LunaSampler {
 }
 
 impl LunaSampler {
-    /// A checkpoint is reusable only when both models declare the same nonempty hash.
-    pub(super) fn supports_parent_compaction(&self, parent_hash: Option<&str>) -> bool {
-        parent_hash
-            .zip(self.config.luna_compaction_hash.as_deref())
-            .is_some_and(|(parent_hash, luna_hash)| {
-                !parent_hash.is_empty() && parent_hash == luna_hash
-            })
-    }
-
     pub(super) fn new(config: LunaSamplerConfig) -> Self {
         let config = Arc::new(config);
         Self {
@@ -180,21 +162,14 @@ impl LunaSampler {
         mut evidence: Vec<ResponseItemEnvelope>,
     ) -> (Vec<ResponseItemEnvelope>, usize) {
         let mut input = history.unwrap_or_else(|| {
-            let mut input = vec![
+            vec![
                 ResponseItemEnvelope::new(ResponseItem::AdditionalTools {
                     id: None,
                     role: "developer".to_owned(),
                     tools: Vec::new(),
                 }),
                 ResponseItemEnvelope::new(ResponseItem::from(request.instructions.clone())),
-            ];
-            input.extend(
-                request
-                    .parent_compaction
-                    .clone()
-                    .map(ResponseItemEnvelope::new),
-            );
-            input
+            ]
         });
         // Normalize only new evidence; never rewrite the committed prefix.
         for item in &mut evidence {
@@ -269,11 +244,6 @@ impl LunaSampler {
         mut request: LunaSamplingRequest,
     ) -> Result<String, LunaSamplerError> {
         let auth_owner_generation = self.auth_owner_generation();
-        if request.parent_compaction.is_some()
-            && !self.supports_parent_compaction(request.parent_compaction_hash.as_deref())
-        {
-            return Err(LunaSamplerError::IncompatibleCompaction);
-        }
         let evidence = std::mem::take(&mut request.input)
             .into_iter()
             .map(ResponseItemEnvelope::new)
