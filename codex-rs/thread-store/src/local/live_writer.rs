@@ -72,6 +72,31 @@ pub(super) async fn resume_thread(
             message: format!("thread {} is archived", params.thread_id),
         });
     }
+    let cwd = params
+        .metadata
+        .cwd
+        .clone()
+        .ok_or_else(|| ThreadStoreError::InvalidRequest {
+            message: "local thread store requires a cwd".to_string(),
+        })?;
+    let config = RolloutConfig {
+        codex_home: store.config.codex_home.clone(),
+        sqlite: store.config.sqlite.clone(),
+        cwd,
+        model_provider_id: params.metadata.model_provider.clone(),
+        generate_memories: matches!(params.metadata.memory_mode, ThreadMemoryMode::Enabled),
+    };
+    let recorder = RolloutRecorder::new_with_writer_lock(
+        &config,
+        RolloutRecorderParams::resume(rollout_path.clone()),
+        writer_lock.clone(),
+    )
+    .await
+    .map_err(|err| ThreadStoreError::Internal {
+        message: format!("failed to resume local thread recorder: {err}"),
+    })?;
+    // Opening under the existing exclusive writer guard seals abandoned NUL reservations.
+    // Load history only after recovery, so all subsequent live reads share the durable prefix.
     let history = match params.history {
         Some(history)
             if !matches!(
@@ -95,34 +120,11 @@ pub(super) async fn resume_thread(
         ),
     };
     let history_mode = canonical_history_mode_from_rollout_items(&history);
-    let cwd = params
-        .metadata
-        .cwd
-        .clone()
-        .ok_or_else(|| ThreadStoreError::InvalidRequest {
-            message: "local thread store requires a cwd".to_string(),
-        })?;
-    let config = RolloutConfig {
-        codex_home: store.config.codex_home.clone(),
-        sqlite: store.config.sqlite.clone(),
-        cwd,
-        model_provider_id: params.metadata.model_provider.clone(),
-        generate_memories: matches!(params.metadata.memory_mode, ThreadMemoryMode::Enabled),
-    };
     let rollout_id = super::thread_rollout_resolver::rollout_id_from_path_or_legacy_thread_id(
         rollout_path.as_path(),
         params.thread_id,
         history_mode,
     )?;
-    let recorder = RolloutRecorder::new_with_writer_lock(
-        &config,
-        RolloutRecorderParams::resume(rollout_path),
-        writer_lock.clone(),
-    )
-    .await
-    .map_err(|err| ThreadStoreError::Internal {
-        message: format!("failed to resume local thread recorder: {err}"),
-    })?;
     store
         .insert_live_recorder(
             params.thread_id,

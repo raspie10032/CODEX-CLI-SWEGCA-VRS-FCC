@@ -2013,6 +2013,7 @@ async fn open_rollout_for_append(
         if refresh_modified_time {
             file.set_times(std::fs::FileTimes::new().set_modified(std::time::SystemTime::now()))?;
         }
+        seal_abandoned_rollout_holes(&mut file)?;
         ensure_rollout_is_newline_terminated(&mut file)?;
         let ordinal_state = ordinal_state_for_rollout(&mut file, path_for_open.as_path())?;
         Ok::<_, std::io::Error>((file, ordinal_state))
@@ -2020,6 +2021,60 @@ async fn open_rollout_for_append(
     .await
     .map_err(IoError::other)??;
     Ok((path, file, ordinal_state))
+}
+
+/// Called only while opening an exclusively owned, inactive rollout for append. Persisting
+/// blank lines in abandoned reservations preserves the file size and every valid record's byte
+/// offset. Subsequent live readers can therefore stop at new NUL holes without confusing them
+/// with holes from a previous writer. Interior NUL bytes remain corruption, not reservations.
+fn seal_abandoned_rollout_holes(file: &mut File) -> std::io::Result<()> {
+    file.seek(SeekFrom::Start(0))?;
+    let mut bytes = [0; 64 * 1024];
+    let mut offset = 0;
+    let mut at_record_start = true;
+    loop {
+        let len = file.read(&mut bytes)?;
+        if len == 0 {
+            break;
+        }
+        let mut position = 0;
+        while position < len {
+            if at_record_start && bytes[position] == 0 {
+                let start = position;
+                while position < len && bytes[position] == 0 {
+                    bytes[position] = b'\n';
+                    position += 1;
+                }
+                write_all_at(file, &bytes[start..position], offset + start as u64)?;
+            } else {
+                at_record_start = bytes[position] == b'\n';
+                position += 1;
+            }
+        }
+        offset += len as u64;
+    }
+    file.flush()
+}
+
+fn write_all_at(file: &File, bytes: &[u8], offset: u64) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileExt;
+        file.write_all_at(bytes, offset)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::FileExt;
+        let mut written = 0;
+        while written < bytes.len() {
+            let n = file.seek_write(&bytes[written..], offset + written as u64)?;
+            if n == 0 {
+                return Err(IoError::from(std::io::ErrorKind::WriteZero));
+            }
+            written += n;
+        }
+        Ok(())
+    }
 }
 
 fn ensure_rollout_is_newline_terminated(file: &mut File) -> std::io::Result<()> {
@@ -2043,43 +2098,72 @@ struct ReservedLine {
     bytes: Arc<[u8]>,
 }
 
+const RESERVATION_OFFSET_BITS: u32 = 40;
+const RESERVATION_OFFSET_MAX: u64 = (1 << RESERVATION_OFFSET_BITS) - 1;
+const RESERVATION_ORDINAL_MAX: u64 = (1 << (64 - RESERVATION_OFFSET_BITS)) - 1;
+
 struct RolloutReservations {
-    end: AtomicU64,
-    next_ordinal: Option<AtomicU64>,
-    ordinal_exhausted: std::sync::atomic::AtomicBool,
+    /// The next ordinal and byte offset are one linearizable reservation. A caller losing the
+    /// CAS re-encodes with the winning ordinal before trying again, so physical and ordinal
+    /// prefixes cannot disagree even when calls or positional writes finish out of order.
+    next: AtomicU64,
+    paginated: bool,
+    initial_overflow: bool,
 }
 
 impl RolloutReservations {
     fn new(state: RolloutOrdinalState, end: u64) -> Self {
-        let (next_ordinal, exhausted) = match state {
-            RolloutOrdinalState::Legacy => (None, false),
-            RolloutOrdinalState::Paginated { next } => (
-                Some(AtomicU64::new(next.unwrap_or(u64::MAX))),
-                next.is_none(),
-            ),
+        let (ordinal, paginated) = match state {
+            RolloutOrdinalState::Legacy => (Some(0), false),
+            RolloutOrdinalState::Paginated { next } => (next, true),
         };
+        let initial_overflow = end > RESERVATION_OFFSET_MAX
+            || ordinal.is_none_or(|ordinal| ordinal > RESERVATION_ORDINAL_MAX);
+        let ordinal = ordinal.unwrap_or(0).min(RESERVATION_ORDINAL_MAX);
         Self {
-            end: AtomicU64::new(end),
-            next_ordinal,
-            ordinal_exhausted: std::sync::atomic::AtomicBool::new(exhausted),
+            next: AtomicU64::new(
+                (ordinal << RESERVATION_OFFSET_BITS) | end.min(RESERVATION_OFFSET_MAX),
+            ),
+            paginated,
+            initial_overflow,
         }
     }
 
     fn insert(&self, path: &Path, item: &RolloutItem) -> std::io::Result<ReservedLine> {
-        if self.ordinal_exhausted.load(Ordering::Relaxed) {
-            return Err(IoError::other("paginated rollout record ordinal overflow"));
+        if self.initial_overflow {
+            return Err(IoError::other(
+                "rollout reservation ordinal or byte offset overflow",
+            ));
         }
-        let ordinal = self
-            .next_ordinal
-            .as_ref()
-            .map(|next| next.fetch_add(1, Ordering::Relaxed));
-        if ordinal == Some(u64::MAX) {
-            self.ordinal_exhausted.store(true, Ordering::Relaxed);
+        let mut previous = self.next.load(Ordering::Relaxed);
+        loop {
+            let ordinal = previous >> RESERVATION_OFFSET_BITS;
+            let offset = previous & RESERVATION_OFFSET_MAX;
+            let next_ordinal = ordinal
+                .checked_add(1)
+                .filter(|next| *next <= RESERVATION_ORDINAL_MAX)
+                .ok_or_else(|| IoError::other("rollout reservation ordinal overflow"))?;
+            let bytes: Arc<[u8]> = encode_rollout_line(item, self.paginated.then_some(ordinal))?
+                .into_bytes()
+                .into();
+            let end = offset
+                .checked_add(bytes.len() as u64)
+                .filter(|end| *end <= RESERVATION_OFFSET_MAX)
+                .ok_or_else(|| IoError::other("rollout reservation byte offset overflow"))?;
+            let next = (next_ordinal << RESERVATION_OFFSET_BITS) | end;
+            match self.next.compare_exchange_weak(
+                previous,
+                next,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    codex_vrs::insert(path, offset, &bytes).map_err(IoError::other)?;
+                    return Ok(ReservedLine { offset, bytes });
+                }
+                Err(observed) => previous = observed,
+            }
         }
-        let bytes: Arc<[u8]> = encode_rollout_line(item, ordinal)?.into_bytes().into();
-        let offset = self.end.fetch_add(bytes.len() as u64, Ordering::Relaxed);
-        codex_vrs::insert(path, offset, &bytes).map_err(IoError::other)?;
-        Ok(ReservedLine { offset, bytes })
     }
 }
 
@@ -2132,23 +2216,7 @@ impl JsonlWriter {
         let bytes = Arc::clone(&line.bytes);
         let offset = line.offset;
         tokio::task::spawn_blocking(move || {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::FileExt;
-                file.write_all_at(&bytes, offset)?;
-            }
-            #[cfg(windows)]
-            {
-                use std::os::windows::fs::FileExt;
-                let mut written = 0;
-                while written < bytes.len() {
-                    let n = file.seek_write(&bytes[written..], offset + written as u64)?;
-                    if n == 0 {
-                        return Err(IoError::from(std::io::ErrorKind::WriteZero));
-                    }
-                    written += n;
-                }
-            }
+            write_all_at(&file, &bytes, offset)?;
             // Positional writes have no userspace buffer. Flush before releasing the VRS line.
             (&*file).flush()
         })

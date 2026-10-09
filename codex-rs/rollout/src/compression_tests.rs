@@ -31,7 +31,7 @@ use crate::read_session_meta_line;
 use crate::search_rollout_matches;
 
 #[tokio::test]
-async fn rollout_readers_skip_reserved_holes_for_resume_and_listing() -> anyhow::Result<()> {
+async fn live_rollout_readers_stop_at_holes_until_resume_seals_them() -> anyhow::Result<()> {
     for compressed in [false, true] {
         let home = TempDir::new()?;
         let uuid = Uuid::from_u128(81);
@@ -47,31 +47,37 @@ async fn rollout_readers_skip_reserved_holes_for_resume_and_listing() -> anyhow:
             contents.push('\n');
         }
         contents.push_str(&hole);
-        fs::write(&path, contents)?;
+        fs::write(&path, &contents)?;
         if compressed {
             compress_now(&path)?;
         }
 
+        let mut reader = open_rollout_line_reader(&path).await?;
+        assert_eq!(reader.next_line().await?, None);
+        let reader = open_rollout_line_reader(&path).await?;
+        assert_eq!(reader.find_map(|_| Some(())).await?, None);
+
+        let config = RolloutConfig {
+            codex_home: home.path().to_path_buf(),
+            sqlite: codex_state::SqliteConfig::new_for_testing(home.path().abs()),
+            cwd: home.path().to_path_buf(),
+            model_provider_id: "test-provider".to_string(),
+            generate_memories: false,
+        };
+        let recorder =
+            RolloutRecorder::new(&config, RolloutRecorderParams::resume(path.clone())).await?;
+        recorder.shutdown().await?;
+        let recovered = fs::read(&path)?;
+        assert_eq!(recovered.len(), contents.len());
+        for (before, after) in contents.bytes().zip(recovered) {
+            assert_eq!(after, if before == 0 { b'\n' } else { before });
+        }
         let (items, loaded_thread_id, parse_errors) =
             RolloutRecorder::load_rollout_items(&path).await?;
         assert_eq!(loaded_thread_id, Some(thread_id));
         assert_eq!(parse_errors, 0);
         assert_eq!(items.len(), 2);
         assert_eq!(read_session_meta_line(&path).await?.meta.id, thread_id);
-
-        let mut reader = open_rollout_line_reader(&path).await?;
-        for expected in original.lines() {
-            assert_eq!(reader.next_line().await?.as_deref(), Some(expected));
-        }
-        assert_eq!(reader.next_line().await?, None);
-
-        let reader = open_rollout_line_reader(&path).await?;
-        assert_eq!(
-            reader
-                .find_map(|line| line.contains('\0').then_some(()))
-                .await?,
-            None
-        );
     }
     Ok(())
 }

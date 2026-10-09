@@ -52,9 +52,32 @@ where
                 "reverse JSONL scan end is past the file",
             ));
         }
+        // A reverse scan must still respect the same durable prefix as forward/live readers.
+        // Later positional writes can be present beyond an unwritten earlier reservation.
+        // Scan bounded chunks to freeze the prefix before the first NUL, without retaining it.
+        reader.seek(SeekFrom::Start(0))?;
+        let mut offset = 0;
+        let mut complete_prefix = 0;
+        let mut prefix_end = end_byte_offset;
+        let mut probe = [0; READ_CHUNK_SIZE];
+        'prefix: while offset < end_byte_offset {
+            let size = usize::try_from((end_byte_offset - offset).min(READ_CHUNK_SIZE as u64))
+                .map_err(io::Error::other)?;
+            reader.read_exact(&mut probe[..size])?;
+            for (index, byte) in probe[..size].iter().enumerate() {
+                if *byte == 0 {
+                    prefix_end = complete_prefix;
+                    break 'prefix;
+                }
+                if *byte == b'\n' {
+                    complete_prefix = offset + index as u64 + 1;
+                }
+            }
+            offset += size as u64;
+        }
         Ok(Self {
             reader,
-            next_chunk_end: end_byte_offset,
+            next_chunk_end: prefix_end,
             chunk_position: 0,
             chunk: vec![0; READ_CHUNK_SIZE],
             record_reversed: Vec::new(),

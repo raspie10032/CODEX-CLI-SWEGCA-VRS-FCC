@@ -157,7 +157,11 @@ fn read_projection_steps_sync(
             .ok_or_else(|| ThreadStoreError::Internal {
                 message: "durable rollout byte offset overflow".to_string(),
             })?;
-        let line_bytes = codex_rollout::trim_rollout_hole_prefix_bytes(line_bytes);
+        // A live positional writer may have persisted a later reservation first. Keep both
+        // checkpoints before the unwritten record; the next pass must retry this same prefix.
+        if line_bytes.contains(&0) {
+            break;
+        }
         if line_bytes.iter().all(u8::is_ascii_whitespace) {
             next_offset = line_end_offset;
             line_start_offset = line_end_offset;

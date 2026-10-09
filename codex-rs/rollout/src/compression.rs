@@ -87,7 +87,11 @@ pub async fn open_rollout_line_reader(path: &Path) -> io::Result<RolloutLineRead
     .await;
     metrics.duration = started_at.elapsed();
     match result {
-        Ok(inner) => Ok(RolloutLineReader { inner, metrics }),
+        Ok(inner) => Ok(RolloutLineReader {
+            inner,
+            metrics,
+            stopped_at_hole: false,
+        }),
         Err(err) => {
             metrics.failed("open", ReadFailureSource::Stream, &err);
             Err(err)
@@ -257,52 +261,52 @@ impl RolloutFile {
 pub struct RolloutLineReader {
     inner: RolloutLineReaderInner,
     metrics: ReadMetrics,
+    stopped_at_hole: bool,
 }
 
 enum RolloutLineReaderInner {
-    Plain(tokio::io::Lines<tokio::io::BufReader<tokio::fs::File>>),
+    Plain(LivePlainReader),
     Blocking(Option<BlockingLineReader>),
 }
 
 impl RolloutLineReader {
     /// Reads the next JSONL record from the rollout.
     pub async fn next_line(&mut self) -> io::Result<Option<String>> {
+        if self.stopped_at_hole {
+            return Ok(None);
+        }
         let started_at = Instant::now();
         self.metrics.reached_eof = false;
         let mut failure_source = ReadFailureSource::Stream;
         let result = async {
-            loop {
-                let line = match &mut self.inner {
-                    RolloutLineReaderInner::Plain(lines) => lines.next_line().await,
-                    RolloutLineReaderInner::Blocking(slot) => {
-                        let Some(mut reader) = slot.take() else {
-                            failure_source = ReadFailureSource::ReaderBusy;
-                            return Err(io::Error::other("compressed rollout reader is busy"));
-                        };
-                        let (line, reader) = tokio::task::spawn_blocking(move || {
-                            (reader.next().transpose(), reader)
-                        })
-                        .await
-                        .map_err(|err| {
-                            failure_source = ReadFailureSource::TaskJoin;
-                            io::Error::other(err)
-                        })?;
-                        *slot = Some(reader);
-                        line
-                    }
-                }?;
-                let Some(mut line) = line else {
-                    return Ok(None);
-                };
-                let hole_len = line.len() - crate::trim_rollout_hole_prefix(&line).len();
-                if hole_len > 0 {
-                    line.drain(..hole_len);
-                    if line.is_empty() {
-                        continue;
-                    }
+            let line = match &mut self.inner {
+                RolloutLineReaderInner::Plain(reader) => reader.next_line().await,
+                RolloutLineReaderInner::Blocking(slot) => {
+                    let Some(mut reader) = slot.take() else {
+                        failure_source = ReadFailureSource::ReaderBusy;
+                        return Err(io::Error::other("compressed rollout reader is busy"));
+                    };
+                    let (line, reader) =
+                        tokio::task::spawn_blocking(move || (reader.next().transpose(), reader))
+                            .await
+                            .map_err(|err| {
+                                failure_source = ReadFailureSource::TaskJoin;
+                                io::Error::other(err)
+                            })?;
+                    *slot = Some(reader);
+                    line
                 }
-                return Ok(Some(line));
+            }?;
+            let Some(line) = line else {
+                return Ok(None);
+            };
+            if line.contains('\0') {
+                // Compressed files cannot be filled in place; reopening after recovery is
+                // required. Plain readers rewind and retry inside LivePlainReader.
+                self.stopped_at_hole = true;
+                return Ok(None);
             }
+            Ok(Some(line))
         }
         .await;
         self.metrics.duration = self.metrics.duration.saturating_add(started_at.elapsed());
@@ -332,17 +336,86 @@ impl RolloutLineReader {
         blocking_reader::scan_lines(reader, self.metrics, move |lines| {
             for line in lines {
                 let line = line?;
-                let trimmed = crate::trim_rollout_hole_prefix(&line);
-                if trimmed.is_empty() && !line.is_empty() {
-                    continue;
+                if line.contains('\0') {
+                    return Ok(None);
                 }
-                if let Some(found) = find(trimmed) {
+                if let Some(found) = find(&line) {
                     return Ok(Some(found));
                 }
             }
             Ok(None)
         })
         .await
+    }
+}
+
+/// Reads at most the next line, returning an incomplete live prefix at the first NUL. Rewinding
+/// the buffered reader discards cached sparse bytes so the same reader sees a later positional
+/// write on its next call. Scanning chunks avoids allocating an entire sparse reservation.
+struct LivePlainReader {
+    reader: tokio::io::BufReader<tokio::fs::File>,
+    offset: u64,
+    pending: Vec<u8>,
+    retry_hole: bool,
+}
+
+impl LivePlainReader {
+    fn new(file: tokio::fs::File) -> Self {
+        Self {
+            reader: tokio::io::BufReader::new(file),
+            offset: 0,
+            pending: Vec::new(),
+            retry_hole: false,
+        }
+    }
+
+    async fn next_line(&mut self) -> io::Result<Option<String>> {
+        use tokio::io::AsyncBufReadExt;
+        use tokio::io::AsyncSeekExt;
+
+        // Preserve partial lines and a pending rewind across cancellation just as Lines did.
+        if self.retry_hole {
+            self.reader
+                .seek(std::io::SeekFrom::Start(self.offset))
+                .await?;
+            self.pending.clear();
+            self.retry_hole = false;
+        }
+        loop {
+            let available = self.reader.fill_buf().await?;
+            if available.is_empty() {
+                if self.pending.is_empty() {
+                    return Ok(None);
+                }
+                break;
+            }
+            let count = available
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(available.len(), |index| index + 1);
+            if available[..count].contains(&0) {
+                // Rewind on the next call so this call never consumes an incomplete prefix.
+                self.retry_hole = true;
+                return Ok(None);
+            }
+            let complete = available[count - 1] == b'\n';
+            self.pending.extend_from_slice(&available[..count]);
+            self.reader.consume(count);
+            if complete {
+                break;
+            }
+        }
+        let mut line = std::mem::take(&mut self.pending);
+        self.offset += line.len() as u64;
+        if line.last() == Some(&b'\n') {
+            line.pop();
+            if line.last() == Some(&b'\r') {
+                line.pop();
+            }
+        }
+        String::from_utf8(line)
+            .map(Some)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
     }
 }
 
@@ -1382,7 +1455,6 @@ mod reader {
     use super::ReadMetrics;
     use super::RolloutLineReaderInner;
     use super::path;
-    use tokio::io::AsyncBufReadExt;
 
     pub(super) async fn open_once(
         path: &Path,
@@ -1407,9 +1479,9 @@ mod reader {
         }
         metrics.format = "plain";
         let file = tokio::fs::File::open(path).await?;
-        Ok(RolloutLineReaderInner::Plain(
-            tokio::io::BufReader::new(file).lines(),
-        ))
+        Ok(RolloutLineReaderInner::Plain(super::LivePlainReader::new(
+            file,
+        )))
     }
 }
 

@@ -1944,3 +1944,145 @@ fn insertion_errors_are_returned_before_queueing_disk_writes() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn packed_reservations_keep_concurrent_ordinals_in_byte_order() -> std::io::Result<()> {
+    let home = TempDir::new().expect("temp dir");
+    let config = test_config(home.path());
+    let recorder = RolloutRecorder::new(
+        &config,
+        RolloutRecorderParams::new(
+            ThreadId::new(),
+            None,
+            None,
+            SessionSource::Exec,
+            None,
+            "test".to_string(),
+            BaseInstructions::default(),
+            Vec::new(),
+        )
+        .with_history_mode(ThreadHistoryMode::Paginated),
+    )
+    .await?;
+    let path = recorder.rollout_path().to_path_buf();
+    let barrier = Arc::new(std::sync::Barrier::new(4));
+    let mut tasks = Vec::new();
+    for worker in 0..4 {
+        let recorder = recorder.clone();
+        let barrier = Arc::clone(&barrier);
+        let runtime = tokio::runtime::Handle::current();
+        tasks.push(tokio::task::spawn_blocking(move || {
+            barrier.wait();
+            for item in 0..32 {
+                let payload = format!("worker-{worker}-item-{item}:{}", "x".repeat(item * 41));
+                runtime
+                    .block_on(recorder.record_canonical_items(&[agent_message_item(&payload)]))?;
+            }
+            Ok::<_, IoError>(())
+        }));
+    }
+    for task in tasks {
+        task.await.map_err(IoError::other)??;
+    }
+    recorder.persist().await?;
+    recorder.shutdown().await?;
+    let lines = read_rollout_lines(&path)?;
+    assert_eq!(lines.len(), 129);
+    assert_eq!(
+        lines.iter().map(|line| line.ordinal).collect::<Vec<_>>(),
+        (0..129).map(Some).collect::<Vec<_>>()
+    );
+    let messages = lines
+        .iter()
+        .filter_map(|line| match &line.item {
+            RolloutItem::EventMsg(EventMsg::AgentMessage(message)) => Some(message.message.clone()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    assert_eq!(messages.len(), 128);
+    let old_len = fs::metadata(&path)?.len();
+    let resumed =
+        RolloutRecorder::new(&config, RolloutRecorderParams::resume(path.clone())).await?;
+    assert_eq!(
+        resumed.reservations.next.load(Ordering::Relaxed),
+        (129 << RESERVATION_OFFSET_BITS) | old_len
+    );
+    resumed
+        .record_canonical_items(&[agent_message_item("after concurrent resume")])
+        .await?;
+    resumed.shutdown().await?;
+    assert_eq!(
+        read_rollout_lines(&path)?
+            .last()
+            .and_then(|line| line.ordinal),
+        Some(129)
+    );
+    Ok(())
+}
+
+#[test]
+fn packed_reservation_limits_fail_without_changing_the_tuple() {
+    let home = TempDir::new().expect("temp dir");
+    let path = home.path().join("rollout.jsonl");
+    for (ordinal, end) in [
+        (Some(RESERVATION_ORDINAL_MAX), 0),
+        (Some(RESERVATION_ORDINAL_MAX + 1), 0),
+        (None, 0),
+        (Some(0), RESERVATION_OFFSET_MAX),
+        (Some(0), RESERVATION_OFFSET_MAX + 1),
+    ] {
+        let reservations =
+            RolloutReservations::new(RolloutOrdinalState::Paginated { next: ordinal }, end);
+        let before = reservations.next.load(Ordering::Relaxed);
+        let error = reservations
+            .insert(&path, &agent_message_item("overflow"))
+            .err()
+            .expect("overflow");
+        assert!(error.to_string().contains("overflow"));
+        assert_eq!(reservations.next.load(Ordering::Relaxed), before);
+        assert!(!path.exists());
+    }
+}
+
+#[tokio::test]
+async fn live_line_reader_retries_same_hole_after_positional_write() -> std::io::Result<()> {
+    let home = TempDir::new().expect("temp dir");
+    let path = home.path().join("rollout.jsonl");
+    let reservations =
+        RolloutReservations::new(RolloutOrdinalState::Paginated { next: Some(0) }, 0);
+    let first = reservations.insert(&path, &agent_message_item("first"))?;
+    let second = reservations.insert(&path, &agent_message_item("second"))?;
+    let file = File::options()
+        .write(true)
+        .read(true)
+        .create_new(true)
+        .open(&path)?;
+    let mut writer = JsonlWriter::new(file, path.clone());
+    writer.write_reserved_line(&second).await?;
+    let mut reader = crate::open_rollout_line_reader(&path).await?;
+    assert_eq!(reader.next_line().await?, None);
+    assert_eq!(reader.next_line().await?, None);
+    writer.write_reserved_line(&first).await?;
+    assert_eq!(
+        crate::parse_rollout_line(&reader.next_line().await?.expect("first line"))?.ordinal,
+        Some(0)
+    );
+    assert_eq!(
+        crate::parse_rollout_line(&reader.next_line().await?.expect("second line"))?.ordinal,
+        Some(1)
+    );
+    assert_eq!(reader.next_line().await?, None);
+    Ok(())
+}
+
+#[test]
+fn resume_sealing_keeps_interior_nul_corruption_and_valid_bytes_unchanged() -> std::io::Result<()> {
+    let home = TempDir::new().expect("temp dir");
+    let path = home.path().join("rollout.jsonl");
+    let bytes = b"\0\0{\"value\":\"bad\0json\"}\n\0\0";
+    fs::write(&path, bytes)?;
+    let mut file = File::options().read(true).write(true).open(&path)?;
+    seal_abandoned_rollout_holes(&mut file)?;
+    assert_eq!(fs::read(&path)?, b"\n\n{\"value\":\"bad\0json\"}\n\n\n");
+    Ok(())
+}

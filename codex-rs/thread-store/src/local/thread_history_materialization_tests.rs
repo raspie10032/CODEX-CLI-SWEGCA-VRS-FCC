@@ -61,30 +61,51 @@ use crate::ThreadSortKey;
 use crate::ThreadStore;
 
 #[test]
-fn projection_keeps_source_byte_offsets_when_skipping_reserved_holes() {
+fn live_projection_retries_reserved_holes_without_advancing_either_checkpoint() {
+    use std::io::Seek;
     let home = TempDir::new().expect("temp dir");
     let path = home.path().join("rollout-holes.jsonl");
-    let mut contents = vec![0; 37];
-    let line = RolloutLine {
-        timestamp: "2025-01-03T12:00:00Z".to_string(),
-        ordinal: Some(0),
-        item: turn_started("turn-after-hole"),
-    };
-    contents.extend_from_slice(&serde_json::to_vec(&line).expect("serialize rollout line"));
-    contents.push(b'\n');
-    let expected_end = contents.len() as u64;
-    fs::write(&path, contents).expect("write rollout with hole");
-
+    let first = format!(
+        "{}\n",
+        rollout_line(Some(0), turn_started("turn-before-hole"))
+    );
+    let second = format!(
+        "{}\n",
+        rollout_line(Some(1), turn_completed("turn-before-hole"))
+    );
+    let third = format!(
+        "{}\n",
+        rollout_line(Some(2), turn_started("turn-after-hole"))
+    );
+    let contents = [first.as_bytes(), &vec![0; second.len()], third.as_bytes()].concat();
+    fs::write(&path, &contents).expect("write rollout with hole");
     let (steps, end) = super::read_projection_steps_sync(&path, 0, 0, ThreadId::default(), None)
-        .expect("project after hole");
-    assert_eq!(end, expected_end);
+        .expect("project prefix before hole");
+    assert_eq!(end, first.len() as u64);
     assert_eq!(steps.len(), 1);
-    let super::RolloutProjectionStep::Line(projected) = &steps[0] else {
-        panic!("expected projected rollout line");
-    };
-    assert_eq!(projected.ordinal, 0);
-    assert_eq!(projected.start_byte_offset, 0);
-    assert_eq!(projected.end_byte_offset, expected_end);
+    let (steps, same_end) =
+        super::read_projection_steps_sync(&path, end, 1, ThreadId::default(), None)
+            .expect("retry incomplete prefix");
+    assert!(steps.is_empty());
+    assert_eq!(same_end, end);
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .expect("open live file");
+    file.seek(std::io::SeekFrom::Start(end))
+        .expect("seek reservation");
+    file.write_all(second.as_bytes())
+        .expect("complete reserved record");
+    let (steps, end) = super::read_projection_steps_sync(&path, end, 1, ThreadId::default(), None)
+        .expect("retry filled reservation");
+    assert_eq!(end, contents.len() as u64);
+    assert_eq!(steps.len(), 2);
+    for (step, ordinal) in steps.iter().zip([1, 2]) {
+        let super::RolloutProjectionStep::Line(projected) = step else {
+            panic!("expected line");
+        };
+        assert_eq!(projected.ordinal, ordinal);
+    }
 }
 
 #[tokio::test]
@@ -2819,4 +2840,252 @@ fn append_suffix(rollout_path: &std::path::Path, suffix: &str) {
         .expect("open rollout suffix");
     file.write_all(suffix.as_bytes()).expect("append suffix");
     file.flush().expect("flush suffix");
+}
+
+#[tokio::test]
+async fn concurrent_recorder_calls_preserve_pagination_resume_and_fork_boundaries() {
+    let home = TempDir::new().expect("temp dir");
+    let store = projection_store(home.path()).await;
+    let thread_id = ThreadId::new();
+    create_paginated_thread(&store, thread_id).await;
+    let recorder = store
+        .live_recorders
+        .lock()
+        .await
+        .get(&thread_id)
+        .expect("live recorder")
+        .recorder
+        .clone();
+    let path = recorder.rollout_path().to_path_buf();
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(4));
+    let mut tasks = Vec::new();
+    for worker in 0..4 {
+        let recorder = recorder.clone();
+        let barrier = std::sync::Arc::clone(&barrier);
+        let runtime = tokio::runtime::Handle::current();
+        tasks.push(tokio::task::spawn_blocking(move || {
+            barrier.wait();
+            for turn in 0..8 {
+                let id = format!("concurrent-{worker}-{turn}");
+                runtime
+                    .block_on(
+                        recorder.record_canonical_items(&[turn_started(&id), turn_completed(&id)]),
+                    )
+                    .expect("record concurrent turn");
+            }
+        }));
+    }
+    for task in tasks {
+        task.await.expect("join recording caller");
+    }
+    store
+        .persist_thread(thread_id, PersistContext::Standard)
+        .await
+        .expect("persist all reservations");
+    store
+        .flush_thread(thread_id)
+        .await
+        .expect("project all reservations");
+    let bytes = fs::read(&path).expect("read complete rollout");
+    let mut offset = 0u64;
+    let mut selected_turn_end = None;
+    let lines = bytes
+        .split_inclusive(|byte| *byte == b'\n')
+        .collect::<Vec<_>>();
+    assert_eq!(lines.len(), 65);
+    for (ordinal, bytes) in lines.iter().enumerate() {
+        let line = codex_rollout::parse_rollout_line_bytes(bytes).expect("decode line");
+        assert_eq!(line.ordinal, Some(ordinal as u64));
+        offset += bytes.len() as u64;
+        if matches!(line.item, RolloutItem::EventMsg(EventMsg::TurnComplete(ref done)) if done.turn_id == "concurrent-0-0")
+        {
+            selected_turn_end = Some(HistoryPosition {
+                thread_id,
+                end_ordinal_exclusive: ordinal as u64 + 1,
+                end_byte_offset: offset,
+            });
+        }
+    }
+    let pool = store.thread_history_db().await.expect("history db");
+    assert_eq!(
+        projection_state(&pool, thread_id).await,
+        (bytes.len() as i64, 65)
+    );
+    let turn_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM thread_turns WHERE thread_id = ?")
+            .bind(thread_id.to_string())
+            .fetch_one(pool)
+            .await
+            .expect("read projected turns");
+    assert_eq!(turn_count, 32);
+    let latest = prepare_paginated_fork(&store, thread_id, ForkBoundary::Latest).await;
+    assert_eq!(
+        latest.history_base,
+        Some(HistoryPosition {
+            thread_id,
+            end_ordinal_exclusive: 65,
+            end_byte_offset: bytes.len() as u64
+        })
+    );
+    drop(latest);
+    let through_turn = prepare_paginated_fork(
+        &store,
+        thread_id,
+        ForkBoundary::ThroughTurn("concurrent-0-0".to_string()),
+    )
+    .await;
+    assert_eq!(through_turn.history_base, selected_turn_end);
+    drop(through_turn);
+    drop(recorder);
+    store
+        .shutdown_thread(thread_id)
+        .await
+        .expect("close recording before resume");
+    store
+        .resume_thread(ResumeThreadParams {
+            history_revision: None,
+            thread_id,
+            rollout_path: Some(path.clone()),
+            history: None,
+            include_archived: false,
+            metadata: ThreadPersistenceMetadata {
+                cwd: Some(home.path().to_path_buf()),
+                model_provider: "test-provider".to_string(),
+                memory_mode: ThreadMemoryMode::Enabled,
+            },
+        })
+        .await
+        .expect("resume concurrent rollout");
+    store
+        .append_items(AppendThreadItemsParams {
+            thread_id,
+            items: vec![turn_started("after-resume"), turn_completed("after-resume")],
+        })
+        .await
+        .expect("append resumed turn");
+    store
+        .flush_thread(thread_id)
+        .await
+        .expect("flush resumed turn");
+    let resumed = fs::read(&path).expect("read resumed bytes");
+    assert_eq!(&resumed[..bytes.len()], bytes.as_slice());
+    let resumed_ordinals = resumed[bytes.len()..]
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            codex_rollout::parse_rollout_line_bytes(line)
+                .expect("resumed record")
+                .ordinal
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(resumed_ordinals, vec![Some(65), Some(66)]);
+    store
+        .shutdown_thread(thread_id)
+        .await
+        .expect("shutdown resumed thread");
+}
+
+#[tokio::test]
+async fn resume_seals_old_holes_but_live_projection_stops_at_new_holes() {
+    use std::io::Seek;
+    let home = TempDir::new().expect("temp dir");
+    let store = projection_store(home.path()).await;
+    let thread_id = ThreadId::new();
+    create_paginated_thread(&store, thread_id).await;
+    store
+        .persist_thread(thread_id, PersistContext::Standard)
+        .await
+        .expect("persist metadata");
+    let path = store.live_rollout_path(thread_id).await.expect("path");
+    store
+        .shutdown_thread(thread_id)
+        .await
+        .expect("exclusive inactive rollout");
+    let metadata_len = fs::metadata(&path).expect("metadata").len();
+    append_suffix(
+        &path,
+        &format!(
+            "{}{}\n{}\n",
+            "\0".repeat(70 * 1024),
+            rollout_line(Some(3), turn_started("recovered")),
+            rollout_line(Some(4), turn_completed("recovered"))
+        ),
+    );
+    let before = fs::read(&path).expect("crashed rollout");
+    let (steps, end) = super::read_projection_steps_sync(&path, metadata_len, 1, thread_id, None)
+        .expect("live read before recovery");
+    assert!(steps.is_empty());
+    assert_eq!(end, metadata_len);
+    store
+        .resume_thread(ResumeThreadParams {
+            history_revision: None,
+            thread_id,
+            rollout_path: Some(path.clone()),
+            history: None,
+            include_archived: false,
+            metadata: ThreadPersistenceMetadata {
+                cwd: Some(home.path().to_path_buf()),
+                model_provider: "test-provider".to_string(),
+                memory_mode: ThreadMemoryMode::Enabled,
+            },
+        })
+        .await
+        .expect("recover inactive holes");
+    let after = fs::read(&path).expect("sealed holes");
+    assert_eq!(before.len(), after.len());
+    for (before, after) in before.iter().zip(&after) {
+        assert_eq!(*after, if *before == 0 { b'\n' } else { *before });
+    }
+    let (steps, end) = super::read_projection_steps_sync(&path, metadata_len, 1, thread_id, None)
+        .expect("recovered projection");
+    assert_eq!(end, before.len() as u64);
+    assert!(matches!(
+        steps.first(),
+        Some(super::RolloutProjectionStep::SkippedOrdinalRange {
+            start_ordinal: 1,
+            end_ordinal_exclusive: 3
+        })
+    ));
+    store
+        .flush_thread(thread_id)
+        .await
+        .expect("apply skipped ordinal range");
+    let fork = prepare_paginated_fork(
+        &store,
+        thread_id,
+        ForkBoundary::ThroughTurn("recovered".to_string()),
+    )
+    .await;
+    assert_eq!(
+        fork.history_base,
+        Some(HistoryPosition {
+            thread_id,
+            end_ordinal_exclusive: 5,
+            end_byte_offset: before.len() as u64
+        })
+    );
+    drop(fork);
+    let fifth = format!("{}\n", rollout_line(Some(5), turn_started("live")));
+    let sixth = format!("{}\n", rollout_line(Some(6), turn_completed("live")));
+    append_suffix(&path, &format!("{}{sixth}", "\0".repeat(fifth.len())));
+    let (steps, stopped) =
+        super::read_projection_steps_sync(&path, end, 5, thread_id, None).expect("new live hole");
+    assert!(steps.is_empty());
+    assert_eq!(stopped, end);
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .expect("file");
+    file.seek(std::io::SeekFrom::Start(end))
+        .expect("hole offset");
+    file.write_all(fifth.as_bytes())
+        .expect("fill new live reservation");
+    let (steps, final_end) = super::read_projection_steps_sync(&path, end, 5, thread_id, None)
+        .expect("filled live hole");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(final_end, end + fifth.len() as u64 + sixth.len() as u64);
+    store
+        .shutdown_thread(thread_id)
+        .await
+        .expect("shutdown recovered recorder");
 }

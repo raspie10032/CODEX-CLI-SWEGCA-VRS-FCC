@@ -129,42 +129,27 @@ fn skips_blank_lines_with_or_without_termination() -> std::io::Result<()> {
 }
 
 #[test]
-fn skips_holes_larger_than_chunks_without_rejecting_the_following_record() -> std::io::Result<()> {
+fn live_reverse_scan_freezes_before_holes_larger_than_chunks() -> std::io::Result<()> {
     let hole = "\0".repeat(super::READ_CHUNK_SIZE * 3 + 17);
     let input = format!(
-        "{hole}{}\n{hole}{}\n{hole}",
+        "{}\n{hole}{}\n",
         serde_json::to_string(&record("first"))?,
-        serde_json::to_string(&record("second"))?
+        serde_json::to_string(&record("later reservation"))?
     );
     let mut scanner = ReverseJsonlScanner::new(Cursor::new(input.into_bytes()))?
         .with_max_record_bytes(/*max_record_bytes*/ 32);
-
-    assert_records(&mut scanner, &["second", "first"])
-}
-
-#[test]
-fn preserves_invalid_nul_bytes_inside_records() -> std::io::Result<()> {
-    let input = b"{\"value\":\"first\"}\n{\"value\":\"damaged\0record\"}\n";
-    let mut scanner = ReverseJsonlScanner::new(Cursor::new(input))?;
-
-    assert!(matches!(
-        scanner.scan_next::<TestRecord>()?,
-        Some(ScanOutcome::Rejected(_))
-    ));
     assert_records(&mut scanner, &["first"])
 }
 
 #[test]
-fn preserves_invalid_nul_bytes_across_chunk_boundaries() -> std::io::Result<()> {
-    let hole = "\0".repeat(super::READ_CHUNK_SIZE * 2);
-    let input = format!("{{\"value\":\"first\"}}\n{{\"value\":\"damaged{hole}record\"}}\n");
-    let mut scanner = ReverseJsonlScanner::new(Cursor::new(input.into_bytes()))?;
-
-    assert!(matches!(
-        scanner.scan_next::<TestRecord>()?,
-        Some(ScanOutcome::Rejected(_))
-    ));
-    assert_records(&mut scanner, &["first"])
+fn live_reverse_scan_excludes_a_partial_record_containing_nul() -> std::io::Result<()> {
+    for hole_len in [1, super::READ_CHUNK_SIZE * 2] {
+        let hole = "\0".repeat(hole_len);
+        let input = format!("{{\"value\":\"first\"}}\n{{\"value\":\"incomplete{hole}record\"}}\n");
+        let mut scanner = ReverseJsonlScanner::new(Cursor::new(input.into_bytes()))?;
+        assert_records(&mut scanner, &["first"])?;
+    }
+    Ok(())
 }
 
 #[test]
