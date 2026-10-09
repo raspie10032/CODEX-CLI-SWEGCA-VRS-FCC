@@ -399,7 +399,10 @@ mod tests {
         let original = super::vrs_prompt_input(&session, &large, &base)
             .await
             .unwrap();
-        assert_eq!(original, vec![item]);
+        assert_eq!(
+            original,
+            super::normalize_for_prompt(vec![item], &large.settings.model_info.input_modalities)
+        );
         assert!(matches!(
             super::vrs_prompt_input(&session, &small, &base).await,
             Err(err) if matches!(err.details(), CodexErrorDetails::ContextWindowExceeded)
@@ -447,6 +450,9 @@ mod tests {
             let mut step = crate::session::step_context::StepContext::for_test(Arc::clone(&turn));
             set_window(&mut step, 128, lite);
             let mut prompt = crate::client_common::Prompt::default();
+            // This fixture measures tool/schema overhead from an actually empty prompt.
+            // Prompt::default() otherwise includes the full bundled base instructions.
+            prompt.base_instructions.text.clear();
             super::check_prompt_window(&session, &step, &prompt)
                 .await
                 .unwrap();
