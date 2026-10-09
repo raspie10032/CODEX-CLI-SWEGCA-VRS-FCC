@@ -870,7 +870,7 @@ async fn token_budget_reminder_emits_after_crossing_compaction_threshold() -> Re
     assert_eq!(requests.len(), 2);
     let initial_context = token_budget_contexts(&requests[0]);
     assert_eq!(initial_context.len(), 1);
-    let reminder = "Your context window is nearly exhausted (only 1000 tokens remaining) and will be automatically reset for you soon. Once reset, message items in current context window will be cleared in the new window, but notes and history items will be persistent across windows.";
+    let reminder = "Your context window is nearly exhausted (only 1000 tokens remaining). Requests whose required input exceeds the context window will return an error.";
     assert_eq!(
         requests[1]
             .message_input_texts("developer")
