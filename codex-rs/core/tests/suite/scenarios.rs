@@ -561,7 +561,7 @@ async fn astra_switches_environments_for_the_rest_of_the_active_turn() -> Result
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn astra_kickoff_with_skills_plugins_and_remote_compaction() -> Result<()> {
+async fn astra_kickoff_with_skills_plugins_and_original_history() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -577,16 +577,6 @@ async fn astra_kickoff_with_skills_plugins_and_remote_compaction() -> Result<()>
             sse(vec![
                 ev_assistant_message("notes", "The team chose Friday and assigned owners."),
                 ev_completed("notes-response"),
-            ]),
-            sse(vec![
-                json!({
-                    "type": "response.output_item.done",
-                    "item": {
-                        "type": "compaction",
-                        "encrypted_content": "SCENARIO_REMOTE_CHECKPOINT",
-                    }
-                }),
-                ev_completed("compact-response"),
             ]),
             sse(vec![
                 ev_assistant_message("final", "Here is the checked kickoff brief."),
@@ -639,12 +629,6 @@ async fn astra_kickoff_with_skills_plugins_and_remote_compaction() -> Result<()>
         .await;
     }
 
-    test.codex.submit(Op::Compact).await?;
-    wait_for_event(&test.codex, |event| {
-        matches!(event, EventMsg::TurnComplete(_))
-    })
-    .await;
-
     test.codex
         .start_or_steer_turn(TurnInputRequest::user_input(vec![
             text("Check the final kickoff brief and attached sketch with $final-check and $calendar:agenda."),
@@ -665,9 +649,9 @@ async fn astra_kickoff_with_skills_plugins_and_remote_compaction() -> Result<()>
 
     let requests = mock.requests();
     insta::assert_snapshot!(
-        "astra_kickoff_remote_compaction_windows",
+        "astra_kickoff_original_history",
         context_snapshot::format_request_history_snapshot(
-            "Astra plans a kickoff with local and plugin skills, remotely compacts, and checks an image brief.",
+            "Astra plans a kickoff with local and plugin skills, retains the original history, and checks an image brief.",
             &requests,
             &ContextSnapshotOptions::default().include_request_settings(),
         )

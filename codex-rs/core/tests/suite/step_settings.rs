@@ -908,6 +908,7 @@ async fn settings_updates_preserve_turn_identity_and_target(target: SettingsTarg
     Ok(())
 }
 
+#[ignore = "D7/I1: context-window reset and the new_context tool are removed"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn new_context_after_model_switch_uses_captured_extension_window() -> Result<()> {
     struct WindowContributor;

@@ -190,6 +190,13 @@
       "classification": "a_candidate",
       "basis": "D7 and I1 remove compaction lifecycle; this case exercises that lifecycle or window reset",
       "action": "ignored under D7/I1; body retained and still compiled"
+    },
+    {
+      "function": "new_context_after_model_switch_uses_captured_extension_window",
+      "location": "codex-rs/core/tests/suite/step_settings.rs:913",
+      "classification": "a",
+      "basis": "VRS_코덱스일체화_v1.md:141-144 removes context-window reset and new_context",
+      "action": "ignored; body retained and compiled"
     }
   ],
   "mixed_cases": [
@@ -478,6 +485,16 @@
       "function": "retained_answers_cross_real_session_boundaries",
       "action": "Assert original persisted VerifiedAnswer events at exact orders 2 and 5, unchanged saved prefix, duplicate delivery idempotence, no Compacted records, child-local answer isolation, and repeated real resume equality",
       "basis": "VRS_코덱스일체화_v1.md:127-135,141-144"
+    },
+    {
+      "class": "c",
+      "file": "codex-rs/core/tests/suite/scenarios.rs",
+      "function": "astra_kickoff_with_skills_plugins_and_remote_compaction",
+      "action": "Renamed to original_history; removed only remote compact mock and Compact submission; snapshot manually keeps requests 1-2 unchanged and joins original assistant and final user/image/skill/plugin tail into request 3. No observed snapshot was accepted.",
+      "basis": "VRS_코덱스일체화_v1.md:109-131,141-144",
+      "test_name_mapping": {
+        "astra_kickoff_with_skills_plugins_and_remote_compaction": "astra_kickoff_with_skills_plugins_and_original_history"
+      }
     }
   ],
   "new_contract_tests": [
