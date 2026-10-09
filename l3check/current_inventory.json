@@ -1,0 +1,2578 @@
+{
+  "head": "a99cec1bb41eda740b8b871f316e57a1b0f59af7",
+  "branch": "vrs-int",
+  "source_scope": "Tracked Rust files in the current working tree, including incoming dirty edits",
+  "compaction": {
+    "run_auto_compact": [],
+    "compact_remote_v2": [],
+    "CompactTask": [],
+    "replace_compacted_history": [],
+    "model_auto_compact_token_limit": [
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/config.rs",
+        "line": 285,
+        "text": "pub model_auto_compact_token_limit: Option<i64>,"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/config.rs",
+        "line": 286,
+        "text": "pub model_auto_compact_token_limit_scope: Option<AutoCompactTokenLimitScope>,"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "line": 2100,
+        "text": "model_auto_compact_token_limit: None,"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "line": 2101,
+        "text": "model_auto_compact_token_limit_scope: None,"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "line": 2141,
+        "text": "model_auto_compact_token_limit: None,"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "line": 2142,
+        "text": "model_auto_compact_token_limit_scope: None,"
+      },
+      {
+        "file": "codex-rs/app-server/tests/common/config.rs",
+        "line": 172,
+        "text": "\"compact_prompt = \\\"{compact_prompt}\\\"\\nmodel_auto_compact_token_limit = {auto_compact_limit}\""
+      },
+      {
+        "file": "codex-rs/app-server/tests/common/config_tests.rs",
+        "line": 59,
+        "text": "\"model_auto_compact_token_limit = 321\","
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/logging.rs",
+        "line": 589,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 100000\")"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/executor_mcp.rs",
+        "line": 1059,
+        "text": "\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 1024\\nmcp_oauth_credentials_store = \\\"file\\\"\\nmcp_oauth_callback_port = {global_callback_port}\""
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/external_agent_config.rs",
+        "line": 2508,
+        "text": "\"compact_prompt = \\\"Summarize the conversation.\\\"\\nmodel_auto_compact_token_limit = 200\","
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/guardian_v2_history_tests.rs",
+        "line": 262,
+        "text": ".with_root_config(\"approvals_reviewer = \\\"auto_review\\\"\\nmodel_auto_compact_token_limit = 1000000\")"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/mcp_server_status.rs",
+        "line": 1490,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 1024\")"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/mcp_tool.rs",
+        "line": 1624,
+        "text": "\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = {auto_compact_limit}\""
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/multi_agent_v2_developer_instructions.rs",
+        "line": 376,
+        "text": "\"developer_instructions = {PARENT_INSTRUCTIONS:?}\\nmodel_context_window = 100\\nmodel_auto_compact_token_limit = 90\\ncompact_prompt = {COMPACT_PROMPT:?}\""
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/selected_environment.rs",
+        "line": 29,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 100000\")"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/selected_environment.rs",
+        "line": 238,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 100000\")"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/thread_settings_update.rs",
+        "line": 701,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 200000\")"
+      },
+      {
+        "file": "codex-rs/config/src/config_toml.rs",
+        "line": 181,
+        "text": "pub model_auto_compact_token_limit: Option<i64>,"
+      },
+      {
+        "file": "codex-rs/config/src/config_toml.rs",
+        "line": 185,
+        "text": "pub model_auto_compact_token_limit_scope: Option<AutoCompactTokenLimitScope>,"
+      },
+      {
+        "file": "codex-rs/protocol/src/config_types.rs",
+        "line": 43,
+        "text": "/// `model_auto_compact_token_limit`."
+      },
+      {
+        "file": "codex-rs/tui/src/chatwidget/tests/status_and_layout.rs",
+        "line": 229,
+        "text": "chat.config.model_auto_compact_token_limit = Some(auto_compact_limit);"
+      }
+    ]
+  },
+  "socket": {
+    "core_src_UnixStream_or_CODEX_VRS_SOCK": [],
+    "core_src_literal_socket_case_insensitive": [
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 12,
+        "text": "//! requests during that turn. It caches a Responses WebSocket connection (opened lazily) and stores"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 17,
+        "text": "//! WebSocket prewarm is a v2-only `response.create` with `generate=false`; it waits for completion"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 25,
+        "text": "//! WebSocket prewarm is treated as the first websocket connection attempt for a turn. If it"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 60,
+        "text": "use codex_api::ResponsesWebsocketClient as ApiWebSocketResponsesClient;"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 61,
+        "text": "use codex_api::ResponsesWebsocketConnection as ApiWebSocketConnection;"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 67,
+        "text": "use codex_api::WebsocketTelemetry;"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 82,
+        "text": "use codex_otel::WEBSOCKET_CONTINUATION_COUNT_METRIC;"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 150,
+        "text": "use codex_model_provider_info::DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS;"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 175,
+        "text": "const RESPONSES_WEBSOCKETS_V2_BETA_HEADER_VALUE: &str = \"responses_websockets=2026-02-06\";"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 181,
+        "text": "pub(crate) const WEBSOCKET_CONNECT_TIMEOUT: Duration ="
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 182,
+        "text": "Duration::from_millis(DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS);"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 218,
+        "text": "disable_websockets: AtomicBool,"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 220,
+        "text": "cached_websocket_session: StdMutex<WebsocketSession>,"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 258,
+        "text": "/// WebSocket fallback is session-scoped: once a turn activates the HTTP fallback, subsequent turns"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 281,
+        "text": "/// The session establishes a Responses WebSocket connection lazily and reuses it across multiple"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 284,
+        "text": "/// - The last full request, so subsequent calls can reuse incremental websocket request payloads"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 294,
+        "text": "websocket_session: WebsocketSession,"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 315,
+        "text": "struct WebsocketContinuation {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 322,
+        "text": "struct WebsocketSession {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 323,
+        "text": "connection: Option<ApiWebSocketConnection>,"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 336,
+        "text": "// `client_metadata`, while websocket reuse compares input and late tool-result metadata separately."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 416,
+        "text": "impl WebsocketSession {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 418,
+        "text": "// Per-socket backend metrics call a resend after reconnect \"initial\"."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 445,
+        "text": "enum WebsocketStreamOutcome {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 453,
+        "text": "/// ordinary Realtime WebSocket machinery can join the same in-progress call as a sideband"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 461,
+        "text": "/// Reuses the API-auth material that created the WebRTC call for the sideband WebSocket join."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 466,
+        "text": "fn sideband_websocket_auth_headers(api_auth: &dyn AuthProvider) -> ApiHeaderMap {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 534,
+        "text": "disable_websockets: AtomicBool::new(false),"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 536,
+        "text": "cached_websocket_session: StdMutex::new(WebsocketSession::default()),"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 607,
+        "text": "/// This constructor does not perform network I/O itself; the session opens a websocket lazily"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 611,
+        "text": "let mut websocket_session = self.take_cached_websocket_session();"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 612,
+        "text": "if websocket_session.auth_owner_generation != auth_owner_generation {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 614,
+        "text": "websocket_session.reset(Some(\"other\"));"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 615,
+        "text": "websocket_session.auth_owner_generation = auth_owner_generation;"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 619,
+        "text": "websocket_session,"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 637,
+        "text": "fn take_cached_websocket_session(&self) -> WebsocketSession {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 638,
+        "text": "let mut cached_websocket_session = self"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 640,
+        "text": ".cached_websocket_session"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 643,
+        "text": "std::mem::take(&mut *cached_websocket_session)"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 646,
+        "text": "fn store_cached_websocket_session(&self, websocket_session: WebsocketSession) {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 649,
+        "text": ".cached_websocket_session"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 651,
+        "text": ".unwrap_or_else(std::sync::PoisonError::into_inner) = websocket_session;"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 659,
+        "text": "let websocket_enabled = self.responses_websocket_enabled();"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 661,
+        "text": "websocket_enabled && !self.state.disable_websockets.swap(true, Ordering::Relaxed);"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 667,
+        "text": "&[(\"from_wire_api\", \"responses_websocket\")],"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 671,
+        "text": "self.store_cached_websocket_session(WebsocketSession::default());"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 683,
+        "text": "// the server-side control WebSocket to the call id from that HTTP response."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 691,
+        "text": "sideband_headers.extend(sideband_websocket_auth_headers("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 721,
+        "text": "extra_headers.extend(sideband_websocket_auth_headers("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1027,
+        "text": "/// Returns whether the Responses-over-WebSocket transport is active for this session."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1029,
+        "text": "/// WebSocket use is controlled by provider capability and session-scoped fallback state."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1030,
+        "text": "pub fn responses_websocket_enabled(&self) -> bool {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1031,
+        "text": "if !self.state.provider.info().supports_websockets"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1032,
+        "text": "|| self.state.disable_websockets.load(Ordering::Relaxed)"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1083,
+        "text": "// revisions so a refresh during setup still invalidates cached WebSocket state."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1212,
+        "text": "/// Opens a websocket connection using the same header and telemetry wiring as normal turns."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1217,
+        "text": "async fn connect_websocket("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1226,
+        "text": ") -> std::result::Result<ApiWebSocketConnection, ApiError> {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1227,
+        "text": "let mut headers = self.build_websocket_headers(responses_metadata).await;"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1229,
+        "text": "let websocket_telemetry = ModelClientSession::build_websocket_telemetry("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1235,
+        "text": "let websocket_connect_timeout = self.state.provider.info().websocket_connect_timeout();"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1238,
+        "text": "websocket_connect_timeout,"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1239,
+        "text": "ApiWebSocketResponsesClient::new(api_provider, api_auth).connect("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1244,
+        "text": "Some(websocket_telemetry),"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1259,
+        "text": "session_telemetry.record_websocket_connect("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1303,
+        "text": "/// Builds websocket handshake headers for both prewarm and turn-time reconnect."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1304,
+        "text": "async fn build_websocket_headers("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1329,
+        "text": "HeaderValue::from_static(RESPONSES_WEBSOCKETS_V2_BETA_HEADER_VALUE),"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1343,
+        "text": "let websocket_session = std::mem::take(&mut self.websocket_session);"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1345,
+        "text": ".store_cached_websocket_session(websocket_session);"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1395,
+        "text": "let previous_request = self.websocket_session.last_request.as_ref()?;"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1397,
+        "text": "trace!(\"incremental request failed, websocket reuse properties didn't match\");"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1426,
+        "text": "self.websocket_session"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1435,
+        "text": "fn prepare_websocket_request("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1438,
+        "text": ") -> Option<WebsocketContinuation> {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1447,
+        "text": "Some(WebsocketContinuation {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1450,
+        "text": "from_untraced_warmup: self.websocket_session.last_response_from_untraced_warmup,"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1454,
+        "text": "/// Opportunistically preconnects a websocket for this turn-scoped client session."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1457,
+        "text": "pub async fn preconnect_websocket("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1464,
+        "text": "if !self.client.responses_websocket_enabled() {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1488,
+        "text": "let mut websocket_metadata = responses_metadata.clone();"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1489,
+        "text": "websocket_metadata.routing_hint = self.client.build_routing_hint_header("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1498,
+        "text": ".websocket_connection(WebsocketConnectParams {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1504,
+        "text": "responses_metadata: &websocket_metadata,"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1539,
+        "text": "/// Returns a websocket connection for this turn."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1541,
+        "text": "name = \"model_client.websocket_connection\","
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1547,
+        "text": "transport = \"responses_websocket\","
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1552,
+        "text": "async fn websocket_connection("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1554,
+        "text": "params: WebsocketConnectParams<'_>,"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1555,
+        "text": ") -> std::result::Result<&ApiWebSocketConnection, ApiError> {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1556,
+        "text": "let WebsocketConnectParams {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1568,
+        "text": "let reset_reason = match self.websocket_session.connection.as_ref() {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1570,
+        "text": "if self.websocket_session.responses_headers != *responses_headers"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1571,
+        "text": "|| self.websocket_session.connection_key.as_ref() != Some(&connection_key) =>"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1578,
+        "text": "let needs_new = self.websocket_session.connection.is_none() || reset_reason.is_some();"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1580,
+        "text": "let owner_changed = self.websocket_session.auth_owner_generation != auth_owner_generation"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1587,
+        "text": "self.websocket_session.reset(if owner_changed {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1594,
+        "text": ".connect_websocket("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1604,
+        "text": "self.websocket_session.connection = Some(new_conn);"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1605,
+        "text": "self.websocket_session.responses_headers = responses_headers.clone();"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1606,
+        "text": "self.websocket_session.auth_owner_generation = auth_owner_generation;"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1607,
+        "text": "self.websocket_session.connection_key = Some(connection_key);"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1608,
+        "text": "self.websocket_session"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1611,
+        "text": "self.websocket_session"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1615,
+        "text": "self.websocket_session"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1619,
+        "text": "\"websocket connection is unavailable\".to_string(),"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1827,
+        "text": "/// Streams a turn via the Responses API over WebSocket transport."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1830,
+        "text": "name = \"model_client.stream_responses_websocket\","
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1836,
+        "text": "transport = \"responses_websocket\","
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1839,
+        "text": "websocket.warmup = warmup"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1842,
+        "text": "async fn stream_responses_websocket("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1854,
+        "text": ") -> Result<WebsocketStreamOutcome> {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1855,
+        "text": "let after_prewarm = !warmup && self.websocket_session.last_response_from_untraced_warmup;"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1901,
+        "text": "let mut websocket_metadata = responses_metadata.clone();"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1902,
+        "text": "websocket_metadata.routing_hint = self.client.build_routing_hint_header("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1915,
+        "text": ".websocket_connection(WebsocketConnectParams {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1921,
+        "text": "responses_metadata: &websocket_metadata,"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1932,
+        "text": "return Ok(WebsocketStreamOutcome::FallbackToHttp);"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1954,
+        "text": "// Measure the complete logical request, not only the websocket delta."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1968,
+        "text": "let continuation = self.prepare_websocket_request(&request);"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1973,
+        "text": ".websocket_session"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1976,
+        "text": ".unwrap_or(if self.websocket_session.last_request.is_some() {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 1998,
+        "text": "// request rather than the compressed websocket delta."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2062,
+        "text": "let websocket_connection ="
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2063,
+        "text": "self.websocket_session.connection.as_ref().ok_or_else(|| {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2065,
+        "text": "\"websocket connection is unavailable\".to_string(),"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2069,
+        "text": "WEBSOCKET_CONTINUATION_COUNT_METRIC,"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2081,
+        "text": "let stream_result = websocket_connection"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2084,
+        "text": "self.websocket_session.connection_reused(),"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2093,
+        "text": "self.websocket_session.last_request = Some(request);"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2094,
+        "text": "self.websocket_session.last_response_from_untraced_warmup = warmup;"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2112,
+        "text": "self.websocket_session.last_response_rx = Some(last_request_rx);"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2113,
+        "text": "return Ok(WebsocketStreamOutcome::Stream(stream));"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2135,
+        "text": "/// Builds telemetry for the Responses API WebSocket transport."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2136,
+        "text": "fn build_websocket_telemetry("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2141,
+        "text": ") -> Arc<dyn WebsocketTelemetry> {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2148,
+        "text": "let websocket_telemetry: Arc<dyn WebsocketTelemetry> = telemetry;"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2149,
+        "text": "websocket_telemetry"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2154,
+        "text": "pub(crate) async fn is_websocket_prewarmed(&self) -> bool {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2155,
+        "text": "if self.websocket_session.last_request.is_some()"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2156,
+        "text": "&& let Some(connection) = self.websocket_session.connection.as_ref()"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2165,
+        "text": "pub async fn prewarm_websocket("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2175,
+        "text": "if !self.client.responses_websocket_enabled() {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2178,
+        "text": "if self.is_websocket_prewarmed().await {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2184,
+        "text": ".stream_responses_websocket("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2198,
+        "text": "Ok(WebsocketStreamOutcome::Stream(mut stream)) => {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2209,
+        "text": "Ok(WebsocketStreamOutcome::FallbackToHttp) => {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2222,
+        "text": "/// Responses WebSocket transport when the provider supports it and it remains healthy, and will"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2240,
+        "text": "if self.client.responses_websocket_enabled() {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2243,
+        "text": ".stream_responses_websocket("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2257,
+        "text": "WebsocketStreamOutcome::Stream(stream) => return Ok(stream),"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2258,
+        "text": "WebsocketStreamOutcome::FallbackToHttp => {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2279,
+        "text": "/// Permanently disables WebSockets for this Codex session and resets WebSocket state."
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2293,
+        "text": "self.websocket_session = WebsocketSession::default();"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2300,
+        "text": "/// Meant to be called just before sending the request over the socket, to capture realistic"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2599,
+        "text": "struct WebsocketConnectParams<'a> {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2897,
+        "text": "impl WebsocketTelemetry for ApiTelemetry {"
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2904,
+        "text": "self.session_telemetry.record_websocket_request("
+      },
+      {
+        "file": "codex-rs/core/src/client.rs",
+        "line": 2944,
+        "text": ".record_websocket_event(result, duration);"
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 814,
+        "text": "fn websocket_incremental_reuse_tracks_raw_result_metadata() -> anyhow::Result<()> {"
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 923,
+        "text": "session.websocket_session.last_request = Some(previous);"
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 931,
+        "text": "session.websocket_session.last_response_rx = Some(receiver);"
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 932,
+        "text": "let continuation = session.prepare_websocket_request(&current);"
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 966,
+        "text": "provider.supports_websockets = false;"
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 1096,
+        "text": "fn websocket_continuation_reset_reason_survives_failed_reconnect_and_turn_boundary() {"
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 1120,
+        "text": "session.websocket_session.last_request = Some(request);"
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 1121,
+        "text": "session.websocket_session.reset(Some(reason));"
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 1122,
+        "text": "session.websocket_session.reset(/*reason*/ None);"
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 1123,
+        "text": "session.websocket_session.reset(Some(later_reason));"
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 1127,
+        "text": "session.websocket_session.continuation_reset_reason,"
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 1980,
+        "text": "async fn websocket_handshake_includes_attestation_for_chatgpt_codex_responses("
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 1990,
+        "text": "TestCodexResponsesRequestKind::WebsocketConnection,"
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 1995,
+        "text": ".build_websocket_headers(&responses_metadata)"
+      },
+      {
+        "file": "codex-rs/core/src/client_tests.rs",
+        "line": 2065,
+        "text": "async fn intercepted_output_reaches_trace_and_websocket_bookkeeping() -> anyhow::Result<()> {"
+      },
+      {
+        "file": "codex-rs/core/src/client_tool_metadata.rs",
+        "line": 2,
+        "text": "//! Only the wire copy changes; model-visible input and WebSocket continuation history stay intact."
+      },
+      {
+        "file": "codex-rs/core/src/client_tool_metadata_tests.rs",
+        "line": 149,
+        "text": "for websocket in [false, true] {"
+      },
+      {
+        "file": "codex-rs/core/src/client_tool_metadata_tests.rs",
+        "line": 153,
+        "text": "let ordinary_bytes = if websocket {"
+      },
+      {
+        "file": "codex-rs/core/src/client_tool_metadata_tests.rs",
+        "line": 171,
+        "text": "let bounded = if websocket {"
+      },
+      {
+        "file": "codex-rs/core/src/client_tool_metadata_tests.rs",
+        "line": 259,
+        "text": "fn websocket_budget_uses_the_actual_delta_and_does_not_mutate_logical_history() {"
+      },
+      {
+        "file": "codex-rs/core/src/client_tool_metadata_tests.rs",
+        "line": 292,
+        "text": "for websocket in [false, true] {"
+      },
+      {
+        "file": "codex-rs/core/src/client_tool_metadata_tests.rs",
+        "line": 298,
+        "text": "let ordinary_bytes = if websocket {"
+      },
+      {
+        "file": "codex-rs/core/src/client_tool_metadata_tests.rs",
+        "line": 308,
+        "text": "if websocket {"
+      },
+      {
+        "file": "codex-rs/core/src/codex_delegate.rs",
+        "line": 71,
+        "text": "config.model_provider.supports_websockets &= parent_session"
+      },
+      {
+        "file": "codex-rs/core/src/codex_delegate.rs",
+        "line": 74,
+        "text": ".responses_websocket_enabled();"
+      },
+      {
+        "file": "codex-rs/core/src/config/config_tests.rs",
+        "line": 1237,
+        "text": "supports_websockets = true"
+      },
+      {
+        "file": "codex-rs/core/src/config/config_tests.rs",
+        "line": 1494,
+        "text": "dangerously_allow_all_unix_sockets: None,"
+      },
+      {
+        "file": "codex-rs/core/src/config/config_tests.rs",
+        "line": 1502,
+        "text": "unix_sockets: None,"
+      },
+      {
+        "file": "codex-rs/core/src/config/config_tests.rs",
+        "line": 6746,
+        "text": "async fn responses_websocket_features_do_not_change_wire_api() -> std::io::Result<()> {"
+      },
+      {
+        "file": "codex-rs/core/src/config/config_tests.rs",
+        "line": 6747,
+        "text": "for feature_key in [\"responses_websockets\", \"responses_websockets_v2\"] {"
+      },
+      {
+        "file": "codex-rs/core/src/config/config_tests.rs",
+        "line": 9842,
+        "text": "websocket_connect_timeout_ms = 15000"
+      },
+      {
+        "file": "codex-rs/core/src/config/mod.rs",
+        "line": 1030,
+        "text": "/// websocket transport base URL (the `Op::RealtimeConversation`"
+      },
+      {
+        "file": "codex-rs/core/src/config/mod.rs",
+        "line": 1037,
+        "text": "/// Experimental / do not use. Selects the realtime websocket model/snapshot"
+      },
+      {
+        "file": "codex-rs/core/src/config/mod.rs",
+        "line": 1040,
+        "text": "/// Experimental / do not use. Realtime websocket session selection."
+      },
+      {
+        "file": "codex-rs/core/src/config/mod.rs",
+        "line": 1044,
+        "text": "/// websocket transport instructions (the `Op::RealtimeConversation`"
+      },
+      {
+        "file": "codex-rs/core/src/config/mod.rs",
+        "line": 1048,
+        "text": "/// context appended to websocket session instructions. An empty string"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_config.rs",
+        "line": 32,
+        "text": "/// Domain and socket values may be replaced by feature settings or requirements."
+      },
+      {
+        "file": "codex-rs/core/src/config/network_config.rs",
+        "line": 45,
+        "text": "dangerously_allow_all_unix_sockets: network.dangerously_allow_all_unix_sockets,"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_config.rs",
+        "line": 47,
+        "text": "unix_sockets: network.unix_sockets.clone(),"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_config.rs",
+        "line": 59,
+        "text": "/// This checks the supplied executor's path syntax; socket support is checked at execution."
+      },
+      {
+        "file": "codex-rs/core/src/config/network_config_tests.rs",
+        "line": 56,
+        "text": "dangerously_allow_all_unix_sockets = false"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_config_tests.rs",
+        "line": 61,
+        "text": "[unix_sockets]"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_config_tests.rs",
+        "line": 71,
+        "text": "r#\"[unix_sockets]"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_config_tests.rs",
+        "line": 146,
+        "text": "\"[unix_sockets]\\n'relative.sock' = 'allow'\","
+      },
+      {
+        "file": "codex-rs/core/src/config/network_config_tests.rs",
+        "line": 147,
+        "text": "\"[unix_sockets]\\n'$WORK/allowed.sock' = 'allow'\","
+      },
+      {
+        "file": "codex-rs/core/src/config/network_config_tests.rs",
+        "line": 148,
+        "text": "\"[unix_sockets]\\n\\\"/tmp/\\\\u0000allowed.sock\\\" = 'allow'\","
+      },
+      {
+        "file": "codex-rs/core/src/config/network_config_tests.rs",
+        "line": 178,
+        "text": "unix_sockets: Some(Default::default()),"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_config_tests.rs",
+        "line": 193,
+        "text": "unix_sockets: Some(Default::default()),"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec.rs",
+        "line": 278,
+        "text": "dangerously_allow_all_unix_sockets: Some(true),"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec.rs",
+        "line": 323,
+        "text": "controller_allow_all_unix_sockets = ?controller.and_then(|spec| spec.config.dangerously_allow_all_unix_sockets),"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec.rs",
+        "line": 418,
+        "text": "if let Some(dangerously_allow_all_unix_sockets) ="
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec.rs",
+        "line": 419,
+        "text": "requirements.dangerously_allow_all_unix_sockets"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec.rs",
+        "line": 421,
+        "text": "config.dangerously_allow_all_unix_sockets = Some(dangerously_allow_all_unix_sockets);"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec.rs",
+        "line": 422,
+        "text": "constraints.dangerously_allow_all_unix_sockets ="
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec.rs",
+        "line": 423,
+        "text": "Some(dangerously_allow_all_unix_sockets);"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec.rs",
+        "line": 472,
+        "text": "if requirements.unix_sockets.is_some() {"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec.rs",
+        "line": 473,
+        "text": "let allow_unix_sockets = requirements"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec.rs",
+        "line": 474,
+        "text": ".unix_sockets"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec.rs",
+        "line": 476,
+        "text": ".map(codex_config::NetworkUnixSocketPermissionsToml::allow_unix_sockets)"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec.rs",
+        "line": 478,
+        "text": "config.set_allow_unix_sockets(allow_unix_sockets.clone());"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec.rs",
+        "line": 479,
+        "text": "constraints.allow_unix_sockets = Some(allow_unix_sockets);"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 11,
+        "text": "use codex_network_proxy::NetworkUnixSocketPermission;"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 12,
+        "text": "use codex_network_proxy::NetworkUnixSocketPermissions;"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 30,
+        "text": "async fn attachment_socket_grants_respect_configured_restrictions_at_remote_launch()"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 35,
+        "text": "dangerously_allow_all_unix_sockets: Some(true),"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 44,
+        "text": "\"dangerously_allow_all_unix_sockets = false\","
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 50,
+        "text": "\"dangerously_allow_all_unix_sockets = true\","
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 56,
+        "text": "\"unix_sockets = { '/tmp/allowed.sock' = 'allow', '/tmp/denied.sock' = 'deny' }\","
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 60,
+        "text": "(\"empty\", \"unix_sockets = {}\", None, false),"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 63,
+        "text": "\"dangerously_allow_all_unix_sockets = true\","
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 73,
+        "text": "dangerously_allow_all_unix_sockets: required,"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 86,
+        "text": "composed.config.dangerously_allow_all_unix_sockets,"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 101,
+        "text": "\"socket-test\","
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 103,
+        "text": "format!(\"socket-{name}\"),"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 109,
+        "text": "launch.proxy.dangerously_allow_all_unix_sockets, expected,"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 113,
+        "text": "launch.proxy.unix_sockets, composed.config.unix_sockets,"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 117,
+        "text": "assert_eq!(launch.proxy.unix_sockets, controller.config.unix_sockets);"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 120,
+        "text": "// Inheritance must not grant sockets to ordinary controller-only commands."
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 126,
+        "text": ".dangerously_allow_all_unix_sockets"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 134,
+        "text": ".dangerously_allow_all_unix_sockets"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 141,
+        "text": "dangerously_allow_all_unix_sockets: Some(false),"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 155,
+        "text": ".dangerously_allow_all_unix_sockets"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 230,
+        "text": "unix_sockets: Some(NetworkUnixSocketPermissions {"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 234,
+        "text": "NetworkUnixSocketPermission::Deny,"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 238,
+        "text": "NetworkUnixSocketPermission::Allow,"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 252,
+        "text": "owner.set_allow_unix_sockets(vec!["
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 257,
+        "text": "owner.dangerously_allow_all_unix_sockets = Some(true);"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 307,
+        "text": "owner.unix_sockets.clone_from(&spec.config.unix_sockets);"
+      },
+      {
+        "file": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+        "line": 309,
+        "text": "owner.dangerously_allow_all_unix_sockets = Some(false);"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions.rs",
+        "line": 13,
+        "text": "use codex_config::permissions_toml::NetworkUnixSocketPermissionToml;"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions.rs",
+        "line": 14,
+        "text": "use codex_config::permissions_toml::NetworkUnixSocketPermissionsToml;"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions.rs",
+        "line": 21,
+        "text": "use codex_features::NetworkProxyUnixSocketPermissionToml;"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions.rs",
+        "line": 25,
+        "text": "use codex_network_proxy::NetworkUnixSocketPermission as ProxyNetworkUnixSocketPermission;"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions.rs",
+        "line": 149,
+        "text": "dangerously_allow_all_unix_sockets: feature_config.dangerously_allow_all_unix_sockets,"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions.rs",
+        "line": 173,
+        "text": "unix_sockets: feature_config.unix_sockets.as_ref().map(|unix_sockets| {"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions.rs",
+        "line": 174,
+        "text": "NetworkUnixSocketPermissionsToml {"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions.rs",
+        "line": 175,
+        "text": "entries: unix_sockets"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions.rs",
+        "line": 179,
+        "text": "NetworkProxyUnixSocketPermissionToml::Allow => {"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions.rs",
+        "line": 180,
+        "text": "NetworkUnixSocketPermissionToml::Allow"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions.rs",
+        "line": 182,
+        "text": "NetworkProxyUnixSocketPermissionToml::Deny => {"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions.rs",
+        "line": 183,
+        "text": "NetworkUnixSocketPermissionToml::Deny"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 10,
+        "text": "use codex_config::permissions_toml::NetworkUnixSocketPermissionToml;"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 11,
+        "text": "use codex_config::permissions_toml::NetworkUnixSocketPermissionsToml;"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 136,
+        "text": "let unix_sockets = NetworkUnixSocketPermissionsToml {"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 140,
+        "text": "NetworkUnixSocketPermissionToml::Allow,"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 144,
+        "text": "NetworkUnixSocketPermissionToml::Deny,"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 171,
+        "text": "unix_sockets.allow_unix_sockets(),"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 177,
+        "text": "fn network_toml_overlays_unix_socket_permissions_by_path() {"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 181,
+        "text": "unix_sockets: Some(NetworkUnixSocketPermissionsToml {"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 185,
+        "text": "NetworkUnixSocketPermissionToml::Allow,"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 189,
+        "text": "NetworkUnixSocketPermissionToml::Allow,"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 198,
+        "text": "unix_sockets: Some(NetworkUnixSocketPermissionsToml {"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 202,
+        "text": "NetworkUnixSocketPermissionToml::Allow,"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 206,
+        "text": "NetworkUnixSocketPermissionToml::Deny,"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 215,
+        "text": "config.unix_sockets,"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 216,
+        "text": "Some(codex_network_proxy::NetworkUnixSocketPermissions {"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 220,
+        "text": "ProxyNetworkUnixSocketPermission::Allow,"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 224,
+        "text": "ProxyNetworkUnixSocketPermission::Allow,"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 228,
+        "text": "ProxyNetworkUnixSocketPermission::Deny,"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 258,
+        "text": "[base.network.unix_sockets]"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 281,
+        "text": "[child.network.unix_sockets]"
+      },
+      {
+        "file": "codex-rs/core/src/config/permissions_tests.rs",
+        "line": 313,
+        "text": "[network.unix_sockets]"
+      },
+      {
+        "file": "codex-rs/core/src/environment_selection.rs",
+        "line": 1300,
+        "text": "use tokio_tungstenite::WebSocketStream;"
+      },
+      {
+        "file": "codex-rs/core/src/environment_selection.rs",
+        "line": 1350,
+        "text": "async fn read_websocket_json(websocket: &mut WebSocketStream<TcpStream>) -> Value {"
+      },
+      {
+        "file": "codex-rs/core/src/environment_selection.rs",
+        "line": 1352,
+        "text": "match timeout(std::time::Duration::from_secs(5), websocket.next())"
+      },
+      {
+        "file": "codex-rs/core/src/environment_selection.rs",
+        "line": 1354,
+        "text": ".expect(\"websocket read should not time out\")"
+      },
+      {
+        "file": "codex-rs/core/src/environment_selection.rs",
+        "line": 1355,
+        "text": ".expect(\"websocket should stay open\")"
+      },
+      {
+        "file": "codex-rs/core/src/environment_selection.rs",
+        "line": 1356,
+        "text": ".expect(\"websocket frame should read\")"
+      },
+      {
+        "file": "codex-rs/core/src/environment_selection.rs",
+        "line": 1372,
+        "text": "let mut websocket = accept_async(stream).await.expect(\"websocket handshake\");"
+      },
+      {
+        "file": "codex-rs/core/src/environment_selection.rs",
+        "line": 1374,
+        "text": "let initialize = read_websocket_json(&mut websocket).await;"
+      },
+      {
+        "file": "codex-rs/core/src/environment_selection.rs",
+        "line": 1376,
+        "text": "websocket"
+      },
+      {
+        "file": "codex-rs/core/src/environment_selection.rs",
+        "line": 1387,
+        "text": "let initialized = read_websocket_json(&mut websocket).await;"
+      },
+      {
+        "file": "codex-rs/core/src/environment_selection.rs",
+        "line": 1390,
+        "text": "let info = read_websocket_json(&mut websocket).await;"
+      },
+      {
+        "file": "codex-rs/core/src/environment_selection.rs",
+        "line": 1392,
+        "text": "websocket"
+      },
+      {
+        "file": "codex-rs/core/src/environment_selection.rs",
+        "line": 1666,
+        "text": ".expect(\"bind websocket listener\");"
+      },
+      {
+        "file": "codex-rs/core/src/environment_selection.rs",
+        "line": 1749,
+        "text": ".expect(\"bind websocket listener\");"
+      },
+      {
+        "file": "codex-rs/core/src/guardian/input_budget_tests.rs",
+        "line": 56,
+        "text": "crate::client::WEBSOCKET_CONNECT_TIMEOUT,"
+      },
+      {
+        "file": "codex-rs/core/src/guardian/review_session_setup.rs",
+        "line": 96,
+        "text": "config.model_provider.supports_websockets &= self"
+      },
+      {
+        "file": "codex-rs/core/src/guardian/review_session_setup.rs",
+        "line": 100,
+        "text": ".responses_websocket_enabled();"
+      },
+      {
+        "file": "codex-rs/core/src/lib.rs",
+        "line": 42,
+        "text": "pub use codex_network_proxy::NetworkUnixSocketPermission;"
+      },
+      {
+        "file": "codex-rs/core/src/lib.rs",
+        "line": 43,
+        "text": "pub use codex_network_proxy::NetworkUnixSocketPermissions;"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_context_tests.rs",
+        "line": 323,
+        "text": "\"Trim websocket startup payload\","
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 26,
+        "text": "use codex_api::RealtimeWebsocketClient;"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 27,
+        "text": "use codex_api::RealtimeWebsocketConnection;"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 28,
+        "text": "use codex_api::RealtimeWebsocketEvents;"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 29,
+        "text": "use codex_api::RealtimeWebsocketWriter;"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 426,
+        "text": "writer: &RealtimeWebsocketWriter,"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 442,
+        "text": "writer: &RealtimeWebsocketWriter,"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 455,
+        "text": "writer: &RealtimeWebsocketWriter,"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 475,
+        "text": "writer: RealtimeWebsocketWriter,"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 476,
+        "text": "events: RealtimeWebsocketEvents,"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 691,
+        "text": "let client = RealtimeWebsocketClient::new(api_provider, http_client_factory);"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 1339,
+        "text": ".unwrap_or(ConversationStartTransport::Websocket);"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 1347,
+        "text": "ConversationStartTransport::Websocket | ConversationStartTransport::Webrtc { .. } => {"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 1363,
+        "text": "ConversationStartTransport::Websocket => config.realtime.version,"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 1390,
+        "text": "ConversationStartTransport::Websocket => {}"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 1395,
+        "text": "(ConversationStartTransport::Webrtc { .. } | ConversationStartTransport::Websocket, _) => {"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 1408,
+        "text": "ConversationStartTransport::Websocket => {"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 1687,
+        "text": "ConversationStartTransport::Websocket => (None, None),"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 2005,
+        "text": "client: RealtimeWebsocketClient,"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 2023,
+        "text": "initial_connection: Option<RealtimeWebsocketConnection>,"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 2157,
+        "text": "writer: &RealtimeWebsocketWriter,"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 2208,
+        "text": "writer: &RealtimeWebsocketWriter,"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 2258,
+        "text": "writer: &RealtimeWebsocketWriter,"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 2261,
+        "text": ") -> RealtimeWebsocketWriter {"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 2279,
+        "text": "writer: &RealtimeWebsocketWriter,"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 2495,
+        "text": "writer: &RealtimeWebsocketWriter,"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation.rs",
+        "line": 2654,
+        "text": "writer: &RealtimeWebsocketWriter,"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation/existing_call.rs",
+        "line": 14,
+        "text": "use codex_api::RealtimeWebsocketClient;"
+      },
+      {
+        "file": "codex-rs/core/src/realtime_conversation/existing_call.rs",
+        "line": 25,
+        "text": "pub(super) client: RealtimeWebsocketClient,"
+      },
+      {
+        "file": "codex-rs/core/src/responses_headers.rs",
+        "line": 9,
+        "text": "/// are sent on HTTP requests and WebSocket handshakes; changes require a new socket."
+      },
+      {
+        "file": "codex-rs/core/src/responses_metadata.rs",
+        "line": 381,
+        "text": "// in client_metadata only so HTTP and WebSocket compatibility headers remain bounded."
+      },
+      {
+        "file": "codex-rs/core/src/responses_retry.rs",
+        "line": 133,
+        "text": "message: format!(\"Falling back from WebSockets to HTTPS transport. {err:#}\"),"
+      },
+      {
+        "file": "codex-rs/core/src/responses_retry.rs",
+        "line": 145,
+        "text": "// In release builds, hide the first websocket retry notification to reduce noisy"
+      },
+      {
+        "file": "codex-rs/core/src/responses_retry.rs",
+        "line": 149,
+        "text": "|| !sess.services.model_client.responses_websocket_enabled();"
+      },
+      {
+        "file": "codex-rs/core/src/responses_retry_tests.rs",
+        "line": 31,
+        "text": "&CodexErr::Stream(\"websocket closed by server before response.completed\".to_string()),"
+      },
+      {
+        "file": "codex-rs/core/src/responses_retry_tests.rs",
+        "line": 49,
+        "text": "\"sampling_error=stream disconnected before completion: websocket closed by server before response.completed\""
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 108,
+        "text": "info!(\"startup websocket prewarm timed out before the first turn could use it\");"
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 191,
+        "text": "warn!(\"startup websocket prewarm setup failed: {err:#}\");"
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 198,
+        "text": "warn!(\"startup websocket prewarm setup join failed: {err}\");"
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 210,
+        "text": "let websocket_connect_timeout = self.provider().await.websocket_connect_timeout();"
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 228,
+        "text": "// rechecking its socket: it may have closed since the last resume."
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 244,
+        "text": "if !self.services.model_client.responses_websocket_enabled() {"
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 245,
+        "text": "// Without websocket prewarm, resolve auth once so Agent Identity bootstrap can"
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 285,
+        "text": "websocket_connect_timeout,"
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 311,
+        "text": "let websocket_ready = client_session.is_websocket_prewarmed().await;"
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 314,
+        "text": "\"codex.startup_prewarm.websocket_check\","
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 319,
+        "text": "if websocket_ready {"
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 328,
+        "text": "if websocket_ready {"
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 390,
+        "text": "client_session.preconnect_websocket("
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 432,
+        "text": "let websocket_warmup_started_at = Instant::now();"
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 435,
+        "text": ".prewarm_websocket("
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 448,
+        "text": "\"startup_prewarm_websocket_warmup\","
+      },
+      {
+        "file": "codex-rs/core/src/session/startup_prewarm.rs",
+        "line": 449,
+        "text": "websocket_warmup_started_at.elapsed(),"
+      },
+      {
+        "file": "codex-rs/core/src/session/tests.rs",
+        "line": 630,
+        "text": "crate::client::WEBSOCKET_CONNECT_TIMEOUT,"
+      },
+      {
+        "file": "codex-rs/core/src/session/tests.rs",
+        "line": 786,
+        "text": "crate::client::WEBSOCKET_CONNECT_TIMEOUT,"
+      },
+      {
+        "file": "codex-rs/core/src/session/tests.rs",
+        "line": 1289,
+        "text": ".parse::<std::net::SocketAddr>()?;"
+      },
+      {
+        "file": "codex-rs/core/src/session/tests.rs",
+        "line": 8168,
+        "text": "assert!(session.services.model_client.responses_websocket_enabled());"
+      },
+      {
+        "file": "codex-rs/core/src/session/tests.rs",
+        "line": 11151,
+        "text": "provider.supports_websockets = false;"
+      },
+      {
+        "file": "codex-rs/core/src/session/tests/guardian_tests.rs",
+        "line": 341,
+        "text": "config.model_provider.supports_websockets = false;"
+      },
+      {
+        "file": "codex-rs/core/src/session/turn.rs",
+        "line": 329,
+        "text": "// `ModelClientSession` is turn-scoped and caches WebSocket + sticky routing state, so we reuse"
+      },
+      {
+        "file": "codex-rs/core/src/spawn.rs",
+        "line": 83,
+        "text": "// macOS fd cleanup must keep the shell escalation socket."
+      },
+      {
+        "file": "codex-rs/core/src/spawn.rs",
+        "line": 86,
+        "text": ".get(codex_shell_escalation::ESCALATE_SOCKET_ENV_VAR)"
+      },
+      {
+        "file": "codex-rs/core/src/test_support.rs",
+        "line": 219,
+        "text": "WebsocketConnection,"
+      },
+      {
+        "file": "codex-rs/core/src/test_support.rs",
+        "line": 236,
+        "text": "TestCodexResponsesRequestKind::WebsocketConnection => None,"
+      },
+      {
+        "file": "codex-rs/core/src/tools/runtimes/zsh_fork.rs",
+        "line": 39,
+        "text": "use codex_shell_escalation::ESCALATE_SOCKET_ENV_VAR;"
+      },
+      {
+        "file": "codex-rs/core/src/tools/runtimes/zsh_fork.rs",
+        "line": 51,
+        "text": ".get(ESCALATE_SOCKET_ENV_VAR)"
+      },
+      {
+        "file": "codex-rs/core/src/tools/runtimes/zsh_fork.rs",
+        "line": 58,
+        "text": "self.escalation_session.close_client_socket();"
+      },
+      {
+        "file": "codex-rs/core/src/tools/runtimes/zsh_fork/unix_escalation.rs",
+        "line": 638,
+        "text": "// wrapper/socket variables into the base shell environment."
+      },
+      {
+        "file": "codex-rs/core/src/tools/runtimes/zsh_fork/unix_escalation.rs",
+        "line": 639,
+        "text": "for var in [\"CODEX_ESCALATE_SOCKET\", \"EXEC_WRAPPER\"] {"
+      }
+    ],
+    "core_all_UnixStream_or_CODEX_VRS_SOCK": []
+  },
+  "clone_history": [
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 420,
+      "text": "let history = parent_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 463,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 821,
+      "text": "let history = thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 1895,
+      "text": "child_thread.session.clone_history().await.raw_items(),",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2055,
+      "text": "child_thread.session.clone_history().await.raw_items(),",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2166,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2307,
+      "text": "let clamped_history = clamped_child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2369,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2469,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2523,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2530,
+      "text": "assert!(assistant_position(&parent_thread.session.clone_history().await).is_some());",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2534,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2642,
+      "text": "let no_hint_history = no_hint_child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2873,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3067,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3290,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3497,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3637,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3778,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3914,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 4303,
+      "text": "let root_history = root_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 4402,
+      "text": "let root_history = root_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 4436,
+      "text": "let history = parent_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 4885,
+      "text": "resumed_thread.session.clone_history().await.raw_items(),",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/feedback.rs",
+      "line": 29,
+      "text": "let history = reviewer.clone_history().await;",
+      "classification": "non_request",
+      "reason": "Writes local review feedback, not a model request."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/input_budget_tests.rs",
+      "line": 78,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/input_budget_tests.rs",
+      "line": 187,
+      "text": "history_version: session.clone_history().await.history_version(),",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/input_budget_tests.rs",
+      "line": 206,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/review_session.rs",
+      "line": 385,
+      "text": ".clone_history()",
+      "classification": "unresolved_model_influence",
+      "reason": "Selects full/delta review transcript mode."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/review_session.rs",
+      "line": 448,
+      "text": "let reviewer_history = review_session.session.clone_history().await;",
+      "classification": "unresolved_model_influence",
+      "reason": "Reads retained images when preparing review input."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/review_session.rs",
+      "line": 721,
+      "text": ".clone_history()",
+      "classification": "unresolved_model_influence",
+      "reason": "Controls developer reminder injection."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/review_session.rs",
+      "line": 764,
+      "text": ".clone_history()",
+      "classification": "unresolved_model_influence",
+      "reason": "Controls node REPL policy injection."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/review_session_tests.rs",
+      "line": 35,
+      "text": "session.clone_history().await.history_version(),",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/review_session_tests.rs",
+      "line": 115,
+      "text": "parent_history: session.clone_history().await,",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/review_session_tests.rs",
+      "line": 620,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/prompt_debug.rs",
+      "line": 107,
+      "text": ".clone_history()",
+      "classification": "non_request",
+      "reason": "Debug prompt rendering; excluded by design A5."
+    },
+    {
+      "file": "codex-rs/core/src/session/guardian_checkpoint_tests.rs",
+      "line": 83,
+      "text": "let expected = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/guardian_checkpoint_tests.rs",
+      "line": 113,
+      "text": "let restored = fork.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/handlers.rs",
+      "line": 346,
+      "text": "let history = sess.clone_history().await;",
+      "classification": "non_request",
+      "reason": "Counts turns for shutdown telemetry."
+    },
+    {
+      "file": "codex-rs/core/src/session/inject_tests.rs",
+      "line": 43,
+      "text": "let recorded = session.clone_history().await.into_annotated_items();",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/mod.rs",
+      "line": 1496,
+      "text": "let history = self.clone_history().await;",
+      "classification": "non_request",
+      "reason": "Returns a token-count estimate, not response items."
+    },
+    {
+      "file": "codex-rs/core/src/session/mod.rs",
+      "line": 1704,
+      "text": "let history = self.clone_history().await;",
+      "classification": "non_request",
+      "reason": "Marks memory mode polluted by external context."
+    },
+    {
+      "file": "codex-rs/core/src/session/mod.rs",
+      "line": 4262,
+      "text": "state.clone_history()",
+      "classification": "helper",
+      "reason": "Delegates to state history; safety depends on its callers."
+    },
+    {
+      "file": "codex-rs/core/src/session/notification_tests.rs",
+      "line": 61,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/retained_context_tests.rs",
+      "line": 55,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/retained_context_tests.rs",
+      "line": 109,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 89,
+      "text": "let original_sources = sources(session.clone_history().await.annotated_items());",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 92,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 107,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 320,
+      "text": "raw_history_items(&session.state.lock().await.clone_history()),",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 350,
+      "text": "&session.state.lock().await.clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 428,
+      "text": "raw_history_items(&session.clone_history().await),",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2473,
+      "text": "let history = session.state.lock().await.clone_history();",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2494,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2683,
+      "text": "let live = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2739,
+      "text": "let recorded_history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2795,
+      "text": "strip_response_item_ids(&raw_history_items(&resumed_session.clone_history().await)),",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2823,
+      "text": "let live_history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2864,
+      "text": "let resumed_history = resumed_session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2968,
+      "text": "assert_eq!(session.clone_history().await.annotated_items(), &expected);",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3015,
+      "text": "let history = session.state.lock().await.clone_history();",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3094,
+      "text": "let history = session.state.lock().await.clone_history();",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3206,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3242,
+      "text": "let history_before_seed = session.state.lock().await.clone_history();",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3252,
+      "text": "let history_after_seed = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3264,
+      "text": "let history_after_second_seed = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3892,
+      "text": "let history = session.state.lock().await.clone_history();",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3936,
+      "text": "let live_history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 4190,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 9911,
+      "text": "let previous_len = session.clone_history().await.raw_items().len();",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 9918,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 10236,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 10538,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 10591,
+      "text": "raw_history_items(&session.clone_history().await),",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 11599,
+      "text": "let history = sess.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 12210,
+      "text": "let history = sess.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/thread_manager_tests.rs",
+      "line": 1504,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    },
+    {
+      "file": "codex-rs/core/src/tools/context.rs",
+      "line": 105,
+      "text": ".clone_history()",
+      "classification": "non_request",
+      "reason": "Finds the originating tool-call item ID."
+    },
+    {
+      "file": "codex-rs/core/src/tools/handlers/extension_tools.rs",
+      "line": 460,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Inline test assertion; not production model input."
+    },
+    {
+      "file": "codex-rs/core/src/tools/router_tests.rs",
+      "line": 553,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup only; not a production request path."
+    }
+  ],
+  "clone_class_counts": {
+    "test": 69,
+    "non_request": 6,
+    "unresolved_model_influence": 4,
+    "helper": 1
+  },
+  "prior_failures": {
+    "file_entries": 608,
+    "unique_entries": 540,
+    "suite_announced": "2227",
+    "suite_statuses": {
+      "ok": 1611,
+      "FAILED": 608,
+      "ignored": 6
+    },
+    "suite_result_lines": [],
+    "suite_exit_lines": [
+      "EXIT 143"
+    ],
+    "rerun_result_lines": [
+      "test result: FAILED. 1 passed; 607 failed; 0 ignored; 0 measured; 1619 filtered out; finished in 135.63s"
+    ]
+  },
+  "previous_wip_deleted_test_files": [
+    "codex-rs/app-server/tests/suite/v2/compaction.rs",
+    "codex-rs/core/src/compact_remote_history_tests.rs",
+    "codex-rs/core/src/compact_remote_v2_image_budget_tests.rs",
+    "codex-rs/core/src/compact_tests.rs",
+    "codex-rs/core/tests/suite/compact.rs",
+    "codex-rs/core/tests/suite/compact_program_tests.rs",
+    "codex-rs/core/tests/suite/compact_remote.rs",
+    "codex-rs/core/tests/suite/compact_remote_trimming.rs",
+    "codex-rs/core/tests/suite/compact_resume_fork.rs",
+    "codex-rs/core/tests/suite/step_settings_compaction.rs",
+    "codex-rs/core/tests/suite/turn_error_details_tests.rs",
+    "codex-rs/core/tests/suite/window_headers.rs",
+    "codex-rs/ext/guardian-v2/src/async_scorer/parent_compaction_tests.rs"
+  ],
+  "incoming_dirty_source_sha256": {
+    "codex-rs/core/tests/suite/code_mode.rs": "d4a478ddbce8e8070a055c5f0e37bf52c55cf1db67e85e66a865a45b6beef72e",
+    "codex-rs/vrs/src/lib.rs": "5b75987f0a3b845d2f212a0ea942662a2acc96385aa83e779e764135fba04166"
+  }
+}

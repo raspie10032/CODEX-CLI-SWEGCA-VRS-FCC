@@ -1,0 +1,15 @@
+{
+  "command": "env -u CODEX_VRS_SOCK -u CODEX_VRS_LOG -u CODEX_VRS_DUMP PATH=~/.cargo/bin:/usr/local/bin:/usr/bin:/bin CODEX_HOME=$WORK/codexint/l3check/baseline-home CARGO_TARGET_DIR=$WORK/codexbase/target taskset -c 0-11 cargo test -j 10 -p codex-core --test all --no-run",
+  "cwd": "$WORK/codexbase/codex-rs",
+  "pid": 2521140,
+  "elapsed_minutes_before_stop": 3.09,
+  "terminated_pids": [
+    2521140,
+    2552845,
+    2555003,
+    2555004,
+    2555005,
+    2555006
+  ],
+  "reason": "Stopped on P-3 / E3-3 design blocker as requested; no test execution"
+}

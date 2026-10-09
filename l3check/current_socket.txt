@@ -1,0 +1,372 @@
+core_src_UnixStream_or_CODEX_VRS_SOCK: 0 matching lines
+core_src_literal_socket_case_insensitive: 369 matching lines
+codex-rs/core/src/client.rs:12: //! requests during that turn. It caches a Responses WebSocket connection (opened lazily) and stores
+codex-rs/core/src/client.rs:17: //! WebSocket prewarm is a v2-only `response.create` with `generate=false`; it waits for completion
+codex-rs/core/src/client.rs:25: //! WebSocket prewarm is treated as the first websocket connection attempt for a turn. If it
+codex-rs/core/src/client.rs:60: use codex_api::ResponsesWebsocketClient as ApiWebSocketResponsesClient;
+codex-rs/core/src/client.rs:61: use codex_api::ResponsesWebsocketConnection as ApiWebSocketConnection;
+codex-rs/core/src/client.rs:67: use codex_api::WebsocketTelemetry;
+codex-rs/core/src/client.rs:82: use codex_otel::WEBSOCKET_CONTINUATION_COUNT_METRIC;
+codex-rs/core/src/client.rs:150: use codex_model_provider_info::DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS;
+codex-rs/core/src/client.rs:175: const RESPONSES_WEBSOCKETS_V2_BETA_HEADER_VALUE: &str = "responses_websockets=2026-02-06";
+codex-rs/core/src/client.rs:181: pub(crate) const WEBSOCKET_CONNECT_TIMEOUT: Duration =
+codex-rs/core/src/client.rs:182: Duration::from_millis(DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS);
+codex-rs/core/src/client.rs:218: disable_websockets: AtomicBool,
+codex-rs/core/src/client.rs:220: cached_websocket_session: StdMutex<WebsocketSession>,
+codex-rs/core/src/client.rs:258: /// WebSocket fallback is session-scoped: once a turn activates the HTTP fallback, subsequent turns
+codex-rs/core/src/client.rs:281: /// The session establishes a Responses WebSocket connection lazily and reuses it across multiple
+codex-rs/core/src/client.rs:284: /// - The last full request, so subsequent calls can reuse incremental websocket request payloads
+codex-rs/core/src/client.rs:294: websocket_session: WebsocketSession,
+codex-rs/core/src/client.rs:315: struct WebsocketContinuation {
+codex-rs/core/src/client.rs:322: struct WebsocketSession {
+codex-rs/core/src/client.rs:323: connection: Option<ApiWebSocketConnection>,
+codex-rs/core/src/client.rs:336: // `client_metadata`, while websocket reuse compares input and late tool-result metadata separately.
+codex-rs/core/src/client.rs:416: impl WebsocketSession {
+codex-rs/core/src/client.rs:418: // Per-socket backend metrics call a resend after reconnect "initial".
+codex-rs/core/src/client.rs:445: enum WebsocketStreamOutcome {
+codex-rs/core/src/client.rs:453: /// ordinary Realtime WebSocket machinery can join the same in-progress call as a sideband
+codex-rs/core/src/client.rs:461: /// Reuses the API-auth material that created the WebRTC call for the sideband WebSocket join.
+codex-rs/core/src/client.rs:466: fn sideband_websocket_auth_headers(api_auth: &dyn AuthProvider) -> ApiHeaderMap {
+codex-rs/core/src/client.rs:534: disable_websockets: AtomicBool::new(false),
+codex-rs/core/src/client.rs:536: cached_websocket_session: StdMutex::new(WebsocketSession::default()),
+codex-rs/core/src/client.rs:607: /// This constructor does not perform network I/O itself; the session opens a websocket lazily
+codex-rs/core/src/client.rs:611: let mut websocket_session = self.take_cached_websocket_session();
+codex-rs/core/src/client.rs:612: if websocket_session.auth_owner_generation != auth_owner_generation {
+codex-rs/core/src/client.rs:614: websocket_session.reset(Some("other"));
+codex-rs/core/src/client.rs:615: websocket_session.auth_owner_generation = auth_owner_generation;
+codex-rs/core/src/client.rs:619: websocket_session,
+codex-rs/core/src/client.rs:637: fn take_cached_websocket_session(&self) -> WebsocketSession {
+codex-rs/core/src/client.rs:638: let mut cached_websocket_session = self
+codex-rs/core/src/client.rs:640: .cached_websocket_session
+codex-rs/core/src/client.rs:643: std::mem::take(&mut *cached_websocket_session)
+codex-rs/core/src/client.rs:646: fn store_cached_websocket_session(&self, websocket_session: WebsocketSession) {
+codex-rs/core/src/client.rs:649: .cached_websocket_session
+codex-rs/core/src/client.rs:651: .unwrap_or_else(std::sync::PoisonError::into_inner) = websocket_session;
+codex-rs/core/src/client.rs:659: let websocket_enabled = self.responses_websocket_enabled();
+codex-rs/core/src/client.rs:661: websocket_enabled && !self.state.disable_websockets.swap(true, Ordering::Relaxed);
+codex-rs/core/src/client.rs:667: &[("from_wire_api", "responses_websocket")],
+codex-rs/core/src/client.rs:671: self.store_cached_websocket_session(WebsocketSession::default());
+codex-rs/core/src/client.rs:683: // the server-side control WebSocket to the call id from that HTTP response.
+codex-rs/core/src/client.rs:691: sideband_headers.extend(sideband_websocket_auth_headers(
+codex-rs/core/src/client.rs:721: extra_headers.extend(sideband_websocket_auth_headers(
+codex-rs/core/src/client.rs:1027: /// Returns whether the Responses-over-WebSocket transport is active for this session.
+codex-rs/core/src/client.rs:1029: /// WebSocket use is controlled by provider capability and session-scoped fallback state.
+codex-rs/core/src/client.rs:1030: pub fn responses_websocket_enabled(&self) -> bool {
+codex-rs/core/src/client.rs:1031: if !self.state.provider.info().supports_websockets
+codex-rs/core/src/client.rs:1032: || self.state.disable_websockets.load(Ordering::Relaxed)
+codex-rs/core/src/client.rs:1083: // revisions so a refresh during setup still invalidates cached WebSocket state.
+codex-rs/core/src/client.rs:1212: /// Opens a websocket connection using the same header and telemetry wiring as normal turns.
+codex-rs/core/src/client.rs:1217: async fn connect_websocket(
+codex-rs/core/src/client.rs:1226: ) -> std::result::Result<ApiWebSocketConnection, ApiError> {
+codex-rs/core/src/client.rs:1227: let mut headers = self.build_websocket_headers(responses_metadata).await;
+codex-rs/core/src/client.rs:1229: let websocket_telemetry = ModelClientSession::build_websocket_telemetry(
+codex-rs/core/src/client.rs:1235: let websocket_connect_timeout = self.state.provider.info().websocket_connect_timeout();
+codex-rs/core/src/client.rs:1238: websocket_connect_timeout,
+codex-rs/core/src/client.rs:1239: ApiWebSocketResponsesClient::new(api_provider, api_auth).connect(
+codex-rs/core/src/client.rs:1244: Some(websocket_telemetry),
+codex-rs/core/src/client.rs:1259: session_telemetry.record_websocket_connect(
+codex-rs/core/src/client.rs:1303: /// Builds websocket handshake headers for both prewarm and turn-time reconnect.
+codex-rs/core/src/client.rs:1304: async fn build_websocket_headers(
+codex-rs/core/src/client.rs:1329: HeaderValue::from_static(RESPONSES_WEBSOCKETS_V2_BETA_HEADER_VALUE),
+codex-rs/core/src/client.rs:1343: let websocket_session = std::mem::take(&mut self.websocket_session);
+codex-rs/core/src/client.rs:1345: .store_cached_websocket_session(websocket_session);
+codex-rs/core/src/client.rs:1395: let previous_request = self.websocket_session.last_request.as_ref()?;
+codex-rs/core/src/client.rs:1397: trace!("incremental request failed, websocket reuse properties didn't match");
+codex-rs/core/src/client.rs:1426: self.websocket_session
+codex-rs/core/src/client.rs:1435: fn prepare_websocket_request(
+codex-rs/core/src/client.rs:1438: ) -> Option<WebsocketContinuation> {
+codex-rs/core/src/client.rs:1447: Some(WebsocketContinuation {
+codex-rs/core/src/client.rs:1450: from_untraced_warmup: self.websocket_session.last_response_from_untraced_warmup,
+codex-rs/core/src/client.rs:1454: /// Opportunistically preconnects a websocket for this turn-scoped client session.
+codex-rs/core/src/client.rs:1457: pub async fn preconnect_websocket(
+codex-rs/core/src/client.rs:1464: if !self.client.responses_websocket_enabled() {
+codex-rs/core/src/client.rs:1488: let mut websocket_metadata = responses_metadata.clone();
+codex-rs/core/src/client.rs:1489: websocket_metadata.routing_hint = self.client.build_routing_hint_header(
+codex-rs/core/src/client.rs:1498: .websocket_connection(WebsocketConnectParams {
+codex-rs/core/src/client.rs:1504: responses_metadata: &websocket_metadata,
+codex-rs/core/src/client.rs:1539: /// Returns a websocket connection for this turn.
+codex-rs/core/src/client.rs:1541: name = "model_client.websocket_connection",
+codex-rs/core/src/client.rs:1547: transport = "responses_websocket",
+codex-rs/core/src/client.rs:1552: async fn websocket_connection(
+codex-rs/core/src/client.rs:1554: params: WebsocketConnectParams<'_>,
+codex-rs/core/src/client.rs:1555: ) -> std::result::Result<&ApiWebSocketConnection, ApiError> {
+codex-rs/core/src/client.rs:1556: let WebsocketConnectParams {
+codex-rs/core/src/client.rs:1568: let reset_reason = match self.websocket_session.connection.as_ref() {
+codex-rs/core/src/client.rs:1570: if self.websocket_session.responses_headers != *responses_headers
+codex-rs/core/src/client.rs:1571: || self.websocket_session.connection_key.as_ref() != Some(&connection_key) =>
+codex-rs/core/src/client.rs:1578: let needs_new = self.websocket_session.connection.is_none() || reset_reason.is_some();
+codex-rs/core/src/client.rs:1580: let owner_changed = self.websocket_session.auth_owner_generation != auth_owner_generation
+codex-rs/core/src/client.rs:1587: self.websocket_session.reset(if owner_changed {
+codex-rs/core/src/client.rs:1594: .connect_websocket(
+codex-rs/core/src/client.rs:1604: self.websocket_session.connection = Some(new_conn);
+codex-rs/core/src/client.rs:1605: self.websocket_session.responses_headers = responses_headers.clone();
+codex-rs/core/src/client.rs:1606: self.websocket_session.auth_owner_generation = auth_owner_generation;
+codex-rs/core/src/client.rs:1607: self.websocket_session.connection_key = Some(connection_key);
+codex-rs/core/src/client.rs:1608: self.websocket_session
+codex-rs/core/src/client.rs:1611: self.websocket_session
+codex-rs/core/src/client.rs:1615: self.websocket_session
+codex-rs/core/src/client.rs:1619: "websocket connection is unavailable".to_string(),
+codex-rs/core/src/client.rs:1827: /// Streams a turn via the Responses API over WebSocket transport.
+codex-rs/core/src/client.rs:1830: name = "model_client.stream_responses_websocket",
+codex-rs/core/src/client.rs:1836: transport = "responses_websocket",
+codex-rs/core/src/client.rs:1839: websocket.warmup = warmup
+codex-rs/core/src/client.rs:1842: async fn stream_responses_websocket(
+codex-rs/core/src/client.rs:1854: ) -> Result<WebsocketStreamOutcome> {
+codex-rs/core/src/client.rs:1855: let after_prewarm = !warmup && self.websocket_session.last_response_from_untraced_warmup;
+codex-rs/core/src/client.rs:1901: let mut websocket_metadata = responses_metadata.clone();
+codex-rs/core/src/client.rs:1902: websocket_metadata.routing_hint = self.client.build_routing_hint_header(
+codex-rs/core/src/client.rs:1915: .websocket_connection(WebsocketConnectParams {
+codex-rs/core/src/client.rs:1921: responses_metadata: &websocket_metadata,
+codex-rs/core/src/client.rs:1932: return Ok(WebsocketStreamOutcome::FallbackToHttp);
+codex-rs/core/src/client.rs:1954: // Measure the complete logical request, not only the websocket delta.
+codex-rs/core/src/client.rs:1968: let continuation = self.prepare_websocket_request(&request);
+codex-rs/core/src/client.rs:1973: .websocket_session
+codex-rs/core/src/client.rs:1976: .unwrap_or(if self.websocket_session.last_request.is_some() {
+codex-rs/core/src/client.rs:1998: // request rather than the compressed websocket delta.
+codex-rs/core/src/client.rs:2062: let websocket_connection =
+codex-rs/core/src/client.rs:2063: self.websocket_session.connection.as_ref().ok_or_else(|| {
+codex-rs/core/src/client.rs:2065: "websocket connection is unavailable".to_string(),
+codex-rs/core/src/client.rs:2069: WEBSOCKET_CONTINUATION_COUNT_METRIC,
+codex-rs/core/src/client.rs:2081: let stream_result = websocket_connection
+codex-rs/core/src/client.rs:2084: self.websocket_session.connection_reused(),
+codex-rs/core/src/client.rs:2093: self.websocket_session.last_request = Some(request);
+codex-rs/core/src/client.rs:2094: self.websocket_session.last_response_from_untraced_warmup = warmup;
+codex-rs/core/src/client.rs:2112: self.websocket_session.last_response_rx = Some(last_request_rx);
+codex-rs/core/src/client.rs:2113: return Ok(WebsocketStreamOutcome::Stream(stream));
+codex-rs/core/src/client.rs:2135: /// Builds telemetry for the Responses API WebSocket transport.
+codex-rs/core/src/client.rs:2136: fn build_websocket_telemetry(
+codex-rs/core/src/client.rs:2141: ) -> Arc<dyn WebsocketTelemetry> {
+codex-rs/core/src/client.rs:2148: let websocket_telemetry: Arc<dyn WebsocketTelemetry> = telemetry;
+codex-rs/core/src/client.rs:2149: websocket_telemetry
+codex-rs/core/src/client.rs:2154: pub(crate) async fn is_websocket_prewarmed(&self) -> bool {
+codex-rs/core/src/client.rs:2155: if self.websocket_session.last_request.is_some()
+codex-rs/core/src/client.rs:2156: && let Some(connection) = self.websocket_session.connection.as_ref()
+codex-rs/core/src/client.rs:2165: pub async fn prewarm_websocket(
+codex-rs/core/src/client.rs:2175: if !self.client.responses_websocket_enabled() {
+codex-rs/core/src/client.rs:2178: if self.is_websocket_prewarmed().await {
+codex-rs/core/src/client.rs:2184: .stream_responses_websocket(
+codex-rs/core/src/client.rs:2198: Ok(WebsocketStreamOutcome::Stream(mut stream)) => {
+codex-rs/core/src/client.rs:2209: Ok(WebsocketStreamOutcome::FallbackToHttp) => {
+codex-rs/core/src/client.rs:2222: /// Responses WebSocket transport when the provider supports it and it remains healthy, and will
+codex-rs/core/src/client.rs:2240: if self.client.responses_websocket_enabled() {
+codex-rs/core/src/client.rs:2243: .stream_responses_websocket(
+codex-rs/core/src/client.rs:2257: WebsocketStreamOutcome::Stream(stream) => return Ok(stream),
+codex-rs/core/src/client.rs:2258: WebsocketStreamOutcome::FallbackToHttp => {
+codex-rs/core/src/client.rs:2279: /// Permanently disables WebSockets for this Codex session and resets WebSocket state.
+codex-rs/core/src/client.rs:2293: self.websocket_session = WebsocketSession::default();
+codex-rs/core/src/client.rs:2300: /// Meant to be called just before sending the request over the socket, to capture realistic
+codex-rs/core/src/client.rs:2599: struct WebsocketConnectParams<'a> {
+codex-rs/core/src/client.rs:2897: impl WebsocketTelemetry for ApiTelemetry {
+codex-rs/core/src/client.rs:2904: self.session_telemetry.record_websocket_request(
+codex-rs/core/src/client.rs:2944: .record_websocket_event(result, duration);
+codex-rs/core/src/client_tests.rs:814: fn websocket_incremental_reuse_tracks_raw_result_metadata() -> anyhow::Result<()> {
+codex-rs/core/src/client_tests.rs:923: session.websocket_session.last_request = Some(previous);
+codex-rs/core/src/client_tests.rs:931: session.websocket_session.last_response_rx = Some(receiver);
+codex-rs/core/src/client_tests.rs:932: let continuation = session.prepare_websocket_request(&current);
+codex-rs/core/src/client_tests.rs:966: provider.supports_websockets = false;
+codex-rs/core/src/client_tests.rs:1096: fn websocket_continuation_reset_reason_survives_failed_reconnect_and_turn_boundary() {
+codex-rs/core/src/client_tests.rs:1120: session.websocket_session.last_request = Some(request);
+codex-rs/core/src/client_tests.rs:1121: session.websocket_session.reset(Some(reason));
+codex-rs/core/src/client_tests.rs:1122: session.websocket_session.reset(/*reason*/ None);
+codex-rs/core/src/client_tests.rs:1123: session.websocket_session.reset(Some(later_reason));
+codex-rs/core/src/client_tests.rs:1127: session.websocket_session.continuation_reset_reason,
+codex-rs/core/src/client_tests.rs:1980: async fn websocket_handshake_includes_attestation_for_chatgpt_codex_responses(
+codex-rs/core/src/client_tests.rs:1990: TestCodexResponsesRequestKind::WebsocketConnection,
+codex-rs/core/src/client_tests.rs:1995: .build_websocket_headers(&responses_metadata)
+codex-rs/core/src/client_tests.rs:2065: async fn intercepted_output_reaches_trace_and_websocket_bookkeeping() -> anyhow::Result<()> {
+codex-rs/core/src/client_tool_metadata.rs:2: //! Only the wire copy changes; model-visible input and WebSocket continuation history stay intact.
+codex-rs/core/src/client_tool_metadata_tests.rs:149: for websocket in [false, true] {
+codex-rs/core/src/client_tool_metadata_tests.rs:153: let ordinary_bytes = if websocket {
+codex-rs/core/src/client_tool_metadata_tests.rs:171: let bounded = if websocket {
+codex-rs/core/src/client_tool_metadata_tests.rs:259: fn websocket_budget_uses_the_actual_delta_and_does_not_mutate_logical_history() {
+codex-rs/core/src/client_tool_metadata_tests.rs:292: for websocket in [false, true] {
+codex-rs/core/src/client_tool_metadata_tests.rs:298: let ordinary_bytes = if websocket {
+codex-rs/core/src/client_tool_metadata_tests.rs:308: if websocket {
+codex-rs/core/src/codex_delegate.rs:71: config.model_provider.supports_websockets &= parent_session
+codex-rs/core/src/codex_delegate.rs:74: .responses_websocket_enabled();
+codex-rs/core/src/config/config_tests.rs:1237: supports_websockets = true
+codex-rs/core/src/config/config_tests.rs:1494: dangerously_allow_all_unix_sockets: None,
+codex-rs/core/src/config/config_tests.rs:1502: unix_sockets: None,
+codex-rs/core/src/config/config_tests.rs:6746: async fn responses_websocket_features_do_not_change_wire_api() -> std::io::Result<()> {
+codex-rs/core/src/config/config_tests.rs:6747: for feature_key in ["responses_websockets", "responses_websockets_v2"] {
+codex-rs/core/src/config/config_tests.rs:9842: websocket_connect_timeout_ms = 15000
+codex-rs/core/src/config/mod.rs:1030: /// websocket transport base URL (the `Op::RealtimeConversation`
+codex-rs/core/src/config/mod.rs:1037: /// Experimental / do not use. Selects the realtime websocket model/snapshot
+codex-rs/core/src/config/mod.rs:1040: /// Experimental / do not use. Realtime websocket session selection.
+codex-rs/core/src/config/mod.rs:1044: /// websocket transport instructions (the `Op::RealtimeConversation`
+codex-rs/core/src/config/mod.rs:1048: /// context appended to websocket session instructions. An empty string
+codex-rs/core/src/config/network_config.rs:32: /// Domain and socket values may be replaced by feature settings or requirements.
+codex-rs/core/src/config/network_config.rs:45: dangerously_allow_all_unix_sockets: network.dangerously_allow_all_unix_sockets,
+codex-rs/core/src/config/network_config.rs:47: unix_sockets: network.unix_sockets.clone(),
+codex-rs/core/src/config/network_config.rs:59: /// This checks the supplied executor's path syntax; socket support is checked at execution.
+codex-rs/core/src/config/network_config_tests.rs:56: dangerously_allow_all_unix_sockets = false
+codex-rs/core/src/config/network_config_tests.rs:61: [unix_sockets]
+codex-rs/core/src/config/network_config_tests.rs:71: r#"[unix_sockets]
+codex-rs/core/src/config/network_config_tests.rs:146: "[unix_sockets]\n'relative.sock' = 'allow'",
+codex-rs/core/src/config/network_config_tests.rs:147: "[unix_sockets]\n'$WORK/allowed.sock' = 'allow'",
+codex-rs/core/src/config/network_config_tests.rs:148: "[unix_sockets]\n\"/tmp/\\u0000allowed.sock\" = 'allow'",
+codex-rs/core/src/config/network_config_tests.rs:178: unix_sockets: Some(Default::default()),
+codex-rs/core/src/config/network_config_tests.rs:193: unix_sockets: Some(Default::default()),
+codex-rs/core/src/config/network_proxy_spec.rs:278: dangerously_allow_all_unix_sockets: Some(true),
+codex-rs/core/src/config/network_proxy_spec.rs:323: controller_allow_all_unix_sockets = ?controller.and_then(|spec| spec.config.dangerously_allow_all_unix_sockets),
+codex-rs/core/src/config/network_proxy_spec.rs:418: if let Some(dangerously_allow_all_unix_sockets) =
+codex-rs/core/src/config/network_proxy_spec.rs:419: requirements.dangerously_allow_all_unix_sockets
+codex-rs/core/src/config/network_proxy_spec.rs:421: config.dangerously_allow_all_unix_sockets = Some(dangerously_allow_all_unix_sockets);
+codex-rs/core/src/config/network_proxy_spec.rs:422: constraints.dangerously_allow_all_unix_sockets =
+codex-rs/core/src/config/network_proxy_spec.rs:423: Some(dangerously_allow_all_unix_sockets);
+codex-rs/core/src/config/network_proxy_spec.rs:472: if requirements.unix_sockets.is_some() {
+codex-rs/core/src/config/network_proxy_spec.rs:473: let allow_unix_sockets = requirements
+codex-rs/core/src/config/network_proxy_spec.rs:474: .unix_sockets
+codex-rs/core/src/config/network_proxy_spec.rs:476: .map(codex_config::NetworkUnixSocketPermissionsToml::allow_unix_sockets)
+codex-rs/core/src/config/network_proxy_spec.rs:478: config.set_allow_unix_sockets(allow_unix_sockets.clone());
+codex-rs/core/src/config/network_proxy_spec.rs:479: constraints.allow_unix_sockets = Some(allow_unix_sockets);
+codex-rs/core/src/config/network_proxy_spec_tests.rs:11: use codex_network_proxy::NetworkUnixSocketPermission;
+codex-rs/core/src/config/network_proxy_spec_tests.rs:12: use codex_network_proxy::NetworkUnixSocketPermissions;
+codex-rs/core/src/config/network_proxy_spec_tests.rs:30: async fn attachment_socket_grants_respect_configured_restrictions_at_remote_launch()
+codex-rs/core/src/config/network_proxy_spec_tests.rs:35: dangerously_allow_all_unix_sockets: Some(true),
+codex-rs/core/src/config/network_proxy_spec_tests.rs:44: "dangerously_allow_all_unix_sockets = false",
+codex-rs/core/src/config/network_proxy_spec_tests.rs:50: "dangerously_allow_all_unix_sockets = true",
+codex-rs/core/src/config/network_proxy_spec_tests.rs:56: "unix_sockets = { '/tmp/allowed.sock' = 'allow', '/tmp/denied.sock' = 'deny' }",
+codex-rs/core/src/config/network_proxy_spec_tests.rs:60: ("empty", "unix_sockets = {}", None, false),
+codex-rs/core/src/config/network_proxy_spec_tests.rs:63: "dangerously_allow_all_unix_sockets = true",
+codex-rs/core/src/config/network_proxy_spec_tests.rs:73: dangerously_allow_all_unix_sockets: required,
+codex-rs/core/src/config/network_proxy_spec_tests.rs:86: composed.config.dangerously_allow_all_unix_sockets,
+codex-rs/core/src/config/network_proxy_spec_tests.rs:101: "socket-test",
+codex-rs/core/src/config/network_proxy_spec_tests.rs:103: format!("socket-{name}"),
+codex-rs/core/src/config/network_proxy_spec_tests.rs:109: launch.proxy.dangerously_allow_all_unix_sockets, expected,
+codex-rs/core/src/config/network_proxy_spec_tests.rs:113: launch.proxy.unix_sockets, composed.config.unix_sockets,
+codex-rs/core/src/config/network_proxy_spec_tests.rs:117: assert_eq!(launch.proxy.unix_sockets, controller.config.unix_sockets);
+codex-rs/core/src/config/network_proxy_spec_tests.rs:120: // Inheritance must not grant sockets to ordinary controller-only commands.
+codex-rs/core/src/config/network_proxy_spec_tests.rs:126: .dangerously_allow_all_unix_sockets
+codex-rs/core/src/config/network_proxy_spec_tests.rs:134: .dangerously_allow_all_unix_sockets
+codex-rs/core/src/config/network_proxy_spec_tests.rs:141: dangerously_allow_all_unix_sockets: Some(false),
+codex-rs/core/src/config/network_proxy_spec_tests.rs:155: .dangerously_allow_all_unix_sockets
+codex-rs/core/src/config/network_proxy_spec_tests.rs:230: unix_sockets: Some(NetworkUnixSocketPermissions {
+codex-rs/core/src/config/network_proxy_spec_tests.rs:234: NetworkUnixSocketPermission::Deny,
+codex-rs/core/src/config/network_proxy_spec_tests.rs:238: NetworkUnixSocketPermission::Allow,
+codex-rs/core/src/config/network_proxy_spec_tests.rs:252: owner.set_allow_unix_sockets(vec![
+codex-rs/core/src/config/network_proxy_spec_tests.rs:257: owner.dangerously_allow_all_unix_sockets = Some(true);
+codex-rs/core/src/config/network_proxy_spec_tests.rs:307: owner.unix_sockets.clone_from(&spec.config.unix_sockets);
+codex-rs/core/src/config/network_proxy_spec_tests.rs:309: owner.dangerously_allow_all_unix_sockets = Some(false);
+codex-rs/core/src/config/permissions.rs:13: use codex_config::permissions_toml::NetworkUnixSocketPermissionToml;
+codex-rs/core/src/config/permissions.rs:14: use codex_config::permissions_toml::NetworkUnixSocketPermissionsToml;
+codex-rs/core/src/config/permissions.rs:21: use codex_features::NetworkProxyUnixSocketPermissionToml;
+codex-rs/core/src/config/permissions.rs:25: use codex_network_proxy::NetworkUnixSocketPermission as ProxyNetworkUnixSocketPermission;
+codex-rs/core/src/config/permissions.rs:149: dangerously_allow_all_unix_sockets: feature_config.dangerously_allow_all_unix_sockets,
+codex-rs/core/src/config/permissions.rs:173: unix_sockets: feature_config.unix_sockets.as_ref().map(|unix_sockets| {
+codex-rs/core/src/config/permissions.rs:174: NetworkUnixSocketPermissionsToml {
+codex-rs/core/src/config/permissions.rs:175: entries: unix_sockets
+codex-rs/core/src/config/permissions.rs:179: NetworkProxyUnixSocketPermissionToml::Allow => {
+codex-rs/core/src/config/permissions.rs:180: NetworkUnixSocketPermissionToml::Allow
+codex-rs/core/src/config/permissions.rs:182: NetworkProxyUnixSocketPermissionToml::Deny => {
+codex-rs/core/src/config/permissions.rs:183: NetworkUnixSocketPermissionToml::Deny
+codex-rs/core/src/config/permissions_tests.rs:10: use codex_config::permissions_toml::NetworkUnixSocketPermissionToml;
+codex-rs/core/src/config/permissions_tests.rs:11: use codex_config::permissions_toml::NetworkUnixSocketPermissionsToml;
+codex-rs/core/src/config/permissions_tests.rs:136: let unix_sockets = NetworkUnixSocketPermissionsToml {
+codex-rs/core/src/config/permissions_tests.rs:140: NetworkUnixSocketPermissionToml::Allow,
+codex-rs/core/src/config/permissions_tests.rs:144: NetworkUnixSocketPermissionToml::Deny,
+codex-rs/core/src/config/permissions_tests.rs:171: unix_sockets.allow_unix_sockets(),
+codex-rs/core/src/config/permissions_tests.rs:177: fn network_toml_overlays_unix_socket_permissions_by_path() {
+codex-rs/core/src/config/permissions_tests.rs:181: unix_sockets: Some(NetworkUnixSocketPermissionsToml {
+codex-rs/core/src/config/permissions_tests.rs:185: NetworkUnixSocketPermissionToml::Allow,
+codex-rs/core/src/config/permissions_tests.rs:189: NetworkUnixSocketPermissionToml::Allow,
+codex-rs/core/src/config/permissions_tests.rs:198: unix_sockets: Some(NetworkUnixSocketPermissionsToml {
+codex-rs/core/src/config/permissions_tests.rs:202: NetworkUnixSocketPermissionToml::Allow,
+codex-rs/core/src/config/permissions_tests.rs:206: NetworkUnixSocketPermissionToml::Deny,
+codex-rs/core/src/config/permissions_tests.rs:215: config.unix_sockets,
+codex-rs/core/src/config/permissions_tests.rs:216: Some(codex_network_proxy::NetworkUnixSocketPermissions {
+codex-rs/core/src/config/permissions_tests.rs:220: ProxyNetworkUnixSocketPermission::Allow,
+codex-rs/core/src/config/permissions_tests.rs:224: ProxyNetworkUnixSocketPermission::Allow,
+codex-rs/core/src/config/permissions_tests.rs:228: ProxyNetworkUnixSocketPermission::Deny,
+codex-rs/core/src/config/permissions_tests.rs:258: [base.network.unix_sockets]
+codex-rs/core/src/config/permissions_tests.rs:281: [child.network.unix_sockets]
+codex-rs/core/src/config/permissions_tests.rs:313: [network.unix_sockets]
+codex-rs/core/src/environment_selection.rs:1300: use tokio_tungstenite::WebSocketStream;
+codex-rs/core/src/environment_selection.rs:1350: async fn read_websocket_json(websocket: &mut WebSocketStream<TcpStream>) -> Value {
+codex-rs/core/src/environment_selection.rs:1352: match timeout(std::time::Duration::from_secs(5), websocket.next())
+codex-rs/core/src/environment_selection.rs:1354: .expect("websocket read should not time out")
+codex-rs/core/src/environment_selection.rs:1355: .expect("websocket should stay open")
+codex-rs/core/src/environment_selection.rs:1356: .expect("websocket frame should read")
+codex-rs/core/src/environment_selection.rs:1372: let mut websocket = accept_async(stream).await.expect("websocket handshake");
+codex-rs/core/src/environment_selection.rs:1374: let initialize = read_websocket_json(&mut websocket).await;
+codex-rs/core/src/environment_selection.rs:1376: websocket
+codex-rs/core/src/environment_selection.rs:1387: let initialized = read_websocket_json(&mut websocket).await;
+codex-rs/core/src/environment_selection.rs:1390: let info = read_websocket_json(&mut websocket).await;
+codex-rs/core/src/environment_selection.rs:1392: websocket
+codex-rs/core/src/environment_selection.rs:1666: .expect("bind websocket listener");
+codex-rs/core/src/environment_selection.rs:1749: .expect("bind websocket listener");
+codex-rs/core/src/guardian/input_budget_tests.rs:56: crate::client::WEBSOCKET_CONNECT_TIMEOUT,
+codex-rs/core/src/guardian/review_session_setup.rs:96: config.model_provider.supports_websockets &= self
+codex-rs/core/src/guardian/review_session_setup.rs:100: .responses_websocket_enabled();
+codex-rs/core/src/lib.rs:42: pub use codex_network_proxy::NetworkUnixSocketPermission;
+codex-rs/core/src/lib.rs:43: pub use codex_network_proxy::NetworkUnixSocketPermissions;
+codex-rs/core/src/realtime_context_tests.rs:323: "Trim websocket startup payload",
+codex-rs/core/src/realtime_conversation.rs:26: use codex_api::RealtimeWebsocketClient;
+codex-rs/core/src/realtime_conversation.rs:27: use codex_api::RealtimeWebsocketConnection;
+codex-rs/core/src/realtime_conversation.rs:28: use codex_api::RealtimeWebsocketEvents;
+codex-rs/core/src/realtime_conversation.rs:29: use codex_api::RealtimeWebsocketWriter;
+codex-rs/core/src/realtime_conversation.rs:426: writer: &RealtimeWebsocketWriter,
+codex-rs/core/src/realtime_conversation.rs:442: writer: &RealtimeWebsocketWriter,
+codex-rs/core/src/realtime_conversation.rs:455: writer: &RealtimeWebsocketWriter,
+codex-rs/core/src/realtime_conversation.rs:475: writer: RealtimeWebsocketWriter,
+codex-rs/core/src/realtime_conversation.rs:476: events: RealtimeWebsocketEvents,
+codex-rs/core/src/realtime_conversation.rs:691: let client = RealtimeWebsocketClient::new(api_provider, http_client_factory);
+codex-rs/core/src/realtime_conversation.rs:1339: .unwrap_or(ConversationStartTransport::Websocket);
+codex-rs/core/src/realtime_conversation.rs:1347: ConversationStartTransport::Websocket | ConversationStartTransport::Webrtc { .. } => {
+codex-rs/core/src/realtime_conversation.rs:1363: ConversationStartTransport::Websocket => config.realtime.version,
+codex-rs/core/src/realtime_conversation.rs:1390: ConversationStartTransport::Websocket => {}
+codex-rs/core/src/realtime_conversation.rs:1395: (ConversationStartTransport::Webrtc { .. } | ConversationStartTransport::Websocket, _) => {
+codex-rs/core/src/realtime_conversation.rs:1408: ConversationStartTransport::Websocket => {
+codex-rs/core/src/realtime_conversation.rs:1687: ConversationStartTransport::Websocket => (None, None),
+codex-rs/core/src/realtime_conversation.rs:2005: client: RealtimeWebsocketClient,
+codex-rs/core/src/realtime_conversation.rs:2023: initial_connection: Option<RealtimeWebsocketConnection>,
+codex-rs/core/src/realtime_conversation.rs:2157: writer: &RealtimeWebsocketWriter,
+codex-rs/core/src/realtime_conversation.rs:2208: writer: &RealtimeWebsocketWriter,
+codex-rs/core/src/realtime_conversation.rs:2258: writer: &RealtimeWebsocketWriter,
+codex-rs/core/src/realtime_conversation.rs:2261: ) -> RealtimeWebsocketWriter {
+codex-rs/core/src/realtime_conversation.rs:2279: writer: &RealtimeWebsocketWriter,
+codex-rs/core/src/realtime_conversation.rs:2495: writer: &RealtimeWebsocketWriter,
+codex-rs/core/src/realtime_conversation.rs:2654: writer: &RealtimeWebsocketWriter,
+codex-rs/core/src/realtime_conversation/existing_call.rs:14: use codex_api::RealtimeWebsocketClient;
+codex-rs/core/src/realtime_conversation/existing_call.rs:25: pub(super) client: RealtimeWebsocketClient,
+codex-rs/core/src/responses_headers.rs:9: /// are sent on HTTP requests and WebSocket handshakes; changes require a new socket.
+codex-rs/core/src/responses_metadata.rs:381: // in client_metadata only so HTTP and WebSocket compatibility headers remain bounded.
+codex-rs/core/src/responses_retry.rs:133: message: format!("Falling back from WebSockets to HTTPS transport. {err:#}"),
+codex-rs/core/src/responses_retry.rs:145: // In release builds, hide the first websocket retry notification to reduce noisy
+codex-rs/core/src/responses_retry.rs:149: || !sess.services.model_client.responses_websocket_enabled();
+codex-rs/core/src/responses_retry_tests.rs:31: &CodexErr::Stream("websocket closed by server before response.completed".to_string()),
+codex-rs/core/src/responses_retry_tests.rs:49: "sampling_error=stream disconnected before completion: websocket closed by server before response.completed"
+codex-rs/core/src/session/startup_prewarm.rs:108: info!("startup websocket prewarm timed out before the first turn could use it");
+codex-rs/core/src/session/startup_prewarm.rs:191: warn!("startup websocket prewarm setup failed: {err:#}");
+codex-rs/core/src/session/startup_prewarm.rs:198: warn!("startup websocket prewarm setup join failed: {err}");
+codex-rs/core/src/session/startup_prewarm.rs:210: let websocket_connect_timeout = self.provider().await.websocket_connect_timeout();
+codex-rs/core/src/session/startup_prewarm.rs:228: // rechecking its socket: it may have closed since the last resume.
+codex-rs/core/src/session/startup_prewarm.rs:244: if !self.services.model_client.responses_websocket_enabled() {
+codex-rs/core/src/session/startup_prewarm.rs:245: // Without websocket prewarm, resolve auth once so Agent Identity bootstrap can
+codex-rs/core/src/session/startup_prewarm.rs:285: websocket_connect_timeout,
+codex-rs/core/src/session/startup_prewarm.rs:311: let websocket_ready = client_session.is_websocket_prewarmed().await;
+codex-rs/core/src/session/startup_prewarm.rs:314: "codex.startup_prewarm.websocket_check",
+codex-rs/core/src/session/startup_prewarm.rs:319: if websocket_ready {
+codex-rs/core/src/session/startup_prewarm.rs:328: if websocket_ready {
+codex-rs/core/src/session/startup_prewarm.rs:390: client_session.preconnect_websocket(
+codex-rs/core/src/session/startup_prewarm.rs:432: let websocket_warmup_started_at = Instant::now();
+codex-rs/core/src/session/startup_prewarm.rs:435: .prewarm_websocket(
+codex-rs/core/src/session/startup_prewarm.rs:448: "startup_prewarm_websocket_warmup",
+codex-rs/core/src/session/startup_prewarm.rs:449: websocket_warmup_started_at.elapsed(),
+codex-rs/core/src/session/tests.rs:630: crate::client::WEBSOCKET_CONNECT_TIMEOUT,
+codex-rs/core/src/session/tests.rs:786: crate::client::WEBSOCKET_CONNECT_TIMEOUT,
+codex-rs/core/src/session/tests.rs:1289: .parse::<std::net::SocketAddr>()?;
+codex-rs/core/src/session/tests.rs:8168: assert!(session.services.model_client.responses_websocket_enabled());
+codex-rs/core/src/session/tests.rs:11151: provider.supports_websockets = false;
+codex-rs/core/src/session/tests/guardian_tests.rs:341: config.model_provider.supports_websockets = false;
+codex-rs/core/src/session/turn.rs:329: // `ModelClientSession` is turn-scoped and caches WebSocket + sticky routing state, so we reuse
+codex-rs/core/src/spawn.rs:83: // macOS fd cleanup must keep the shell escalation socket.
+codex-rs/core/src/spawn.rs:86: .get(codex_shell_escalation::ESCALATE_SOCKET_ENV_VAR)
+codex-rs/core/src/test_support.rs:219: WebsocketConnection,
+codex-rs/core/src/test_support.rs:236: TestCodexResponsesRequestKind::WebsocketConnection => None,
+codex-rs/core/src/tools/runtimes/zsh_fork.rs:39: use codex_shell_escalation::ESCALATE_SOCKET_ENV_VAR;
+codex-rs/core/src/tools/runtimes/zsh_fork.rs:51: .get(ESCALATE_SOCKET_ENV_VAR)
+codex-rs/core/src/tools/runtimes/zsh_fork.rs:58: self.escalation_session.close_client_socket();
+codex-rs/core/src/tools/runtimes/zsh_fork/unix_escalation.rs:638: // wrapper/socket variables into the base shell environment.
+codex-rs/core/src/tools/runtimes/zsh_fork/unix_escalation.rs:639: for var in ["CODEX_ESCALATE_SOCKET", "EXEC_WRAPPER"] {
+core_all_UnixStream_or_CODEX_VRS_SOCK: 0 matching lines
