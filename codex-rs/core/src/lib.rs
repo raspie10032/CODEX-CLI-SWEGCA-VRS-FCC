@@ -244,3 +244,12 @@ pub mod otel_init;
 // Captured environment bindings can be passed back to ThreadManager by internal reviewers.
 pub use environment_selection::TurnEnvironmentSnapshot;
 pub use environment_selection::validate_environment_ids_and_cwds;
+
+// Unit tests instantiate Session directly rather than entering through an application main.
+// Match production's one-time startup publication, with a root that can never touch user data.
+#[cfg(test)]
+#[ctor::ctor]
+fn initialize_vrs_for_core_tests() {
+    let home = tempfile::tempdir().expect("create VRS unit test home").keep();
+    codex_vrs::initialize_for_home(&home).expect("initialize VRS for unit tests");
+}
