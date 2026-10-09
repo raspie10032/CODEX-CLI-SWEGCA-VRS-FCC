@@ -4,6 +4,7 @@ mod service;
 mod session;
 mod turn;
 mod turn_token_usage;
+mod vrs_live_cache;
 
 pub(crate) use crate::tools::ExecutedToolCalls;
 pub(crate) use additional_context::AdditionalContextStore;
@@ -21,3 +22,4 @@ pub(crate) use turn::RunningTask;
 pub(crate) use turn::TaskKind;
 pub(crate) use turn::TurnState;
 pub(crate) use turn_token_usage::TurnTokenUsage;
+pub(crate) use vrs_live_cache::VrsCacheCut;

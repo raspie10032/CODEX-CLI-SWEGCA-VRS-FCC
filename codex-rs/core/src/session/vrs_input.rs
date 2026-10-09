@@ -69,7 +69,14 @@ pub(crate) async fn vrs_input(
 ) -> Result<Vec<ResponseItem>, VrsError> {
     let thread_id = sess.thread_id.to_string();
     let started = Instant::now();
-    let result = assemble_for(sess, budget).await;
+    let result: Result<(Vec<ResponseItem>, u64), VrsError> = async {
+        let (items, tokens, cut) = assemble_for(sess, budget).await?;
+        // Only the private D4 cache receives concurrent records. Every model-bound caller
+        // receives the exact assembly below, even when a newer refresh supersedes this one.
+        sess.install_assembled_history(cut, items.clone()).await?;
+        Ok((items, tokens))
+    }
+    .await;
     let elapsed_us = started.elapsed().as_micros();
     match &result {
         Ok((items, tokens)) => {
@@ -82,21 +89,19 @@ pub(crate) async fn vrs_input(
         }
     }
     let (items, _) = result?;
-    // Every consumer refreshes the bounded live cache, including snapshots and prewarm.
-    // The model receives this assembly directly, never a readback of the cache.
-    sess.install_assembled_history(items.clone()).await;
     Ok(items)
 }
 
 async fn assemble_for(
     sess: &Session,
     budget: Option<u64>,
-) -> Result<(Vec<ResponseItem>, u64), VrsError> {
-    if let Some(error) = sess.state.lock().await.vrs_recording_error.as_ref() {
-        return Err(VrsError::Unavailable(format!(
-            "rollout recording failed: {error}; reopen the session before sending another request"
-        )));
-    }
+) -> Result<(Vec<ResponseItem>, u64, crate::state::VrsCacheCut), VrsError> {
+    let cut = sess
+        .state
+        .lock()
+        .await
+        .begin_vrs_assembly()
+        .map_err(recording_unavailable)?;
     // P-3'': recording callers publish their reserved lines before queuing disk writes.
     // Assembly reads VRS immediately and never waits for the rollout writer.
     let path: PathBuf = match sess.current_rollout_path().await {
@@ -106,7 +111,13 @@ async fn assemble_for(
     };
     let assembled = codex_vrs::assemble_with_budget(&path, budget)?;
     let items = decode_assembled_items(assembled.items)?;
-    Ok((items, assembled.tokens))
+    Ok((items, assembled.tokens, cut))
+}
+
+fn recording_unavailable(error: String) -> VrsError {
+    VrsError::Unavailable(format!(
+        "rollout recording failed: {error}; reopen the session before sending another request"
+    ))
 }
 
 fn decode_assembled_items(values: Vec<serde_json::Value>) -> Result<Vec<ResponseItem>, VrsError> {
@@ -216,10 +227,17 @@ fn normalize_for_prompt(
 }
 
 impl Session {
-    /// Makes `items` the live history (design D4). Truncation was already applied by the assembler.
-    pub(crate) async fn install_assembled_history(&self, items: Vec<ResponseItem>) {
+    /// Installs A plus overlapping records into the private D4 cache, without awaiting a writer.
+    pub(crate) async fn install_assembled_history(
+        &self,
+        cut: crate::state::VrsCacheCut,
+        items: Vec<ResponseItem>,
+    ) -> Result<(), VrsError> {
         let mut state = self.state.lock().await;
-        state.history.replace_assembled(items);
+        state
+            .install_vrs_history(cut, items)
+            .map(|_| ())
+            .map_err(recording_unavailable)
     }
 
     /// Installs the stored assembly as the live history of a resumed or forked thread (design D4).

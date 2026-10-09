@@ -3442,7 +3442,7 @@ impl Session {
             .iter()
             .map(|envelope| envelope.item.clone())
             .collect::<Vec<_>>();
-        {
+        let publication = {
             let mut state = self.state.lock().await;
             state
                 .current_time_reminder
@@ -3480,10 +3480,8 @@ impl Session {
                         });
                 }
             }
-            state
-                .history
-                .record_annotated_items(&mut items, model_info.truncation_policy.into());
-        }
+            state.record_vrs_history(&mut items, model_info.truncation_policy.into())
+        };
         for image in image_preparations {
             self.services
                 .analytics_events_client
@@ -3494,9 +3492,11 @@ impl Session {
         }
         let rollout_items: Vec<RolloutItem> =
             items.into_iter().map(RolloutItem::ResponseItem).collect();
-        if self.persist_rollout_items(&rollout_items).await
-            && let Some(revision) = mcp_revision
-        {
+        let published = self.persist_rollout_items(&rollout_items).await;
+        if let Some(publication) = publication {
+            publication.finish(published);
+        }
+        if published && let Some(revision) = mcp_revision {
             self.services
                 .executed_tool_calls
                 .mark_mcp_attribution_persisted(revision);
@@ -3823,21 +3823,25 @@ impl Session {
         for mut recording in pending {
             let _ = recording.changed().await;
         }
-        {
+        let publication = {
             let mut state = self.state.lock().await;
             state.current_time_reminder.note_recorded_items(items);
-            state.history.record_annotated_items(
+            state.record_vrs_history(
                 std::slice::from_mut(&mut response_item),
                 model_info.truncation_policy.into(),
-            );
+            )
+        };
+        let published = self
+            .persist_rollout_items(&[
+                RolloutItem::InterAgentCommunicationMetadata {
+                    trigger_turn: communication.trigger_turn,
+                },
+                RolloutItem::ResponseItem(response_item),
+            ])
+            .await;
+        if let Some(publication) = publication {
+            publication.finish(published);
         }
-        self.persist_rollout_items(&[
-            RolloutItem::InterAgentCommunicationMetadata {
-                trigger_turn: communication.trigger_turn,
-            },
-            RolloutItem::ResponseItem(response_item),
-        ])
-        .await;
         drop(boundary);
         self.send_raw_response_items(turn_context, items).await;
     }

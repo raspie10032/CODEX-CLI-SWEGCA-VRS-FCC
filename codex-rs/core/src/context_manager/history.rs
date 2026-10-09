@@ -682,15 +682,25 @@ impl ContextManager {
     /// Retained context, review mode and the world-state baseline describe the same thread and
     /// are kept.
     pub(crate) fn replace_assembled(&mut self, items: Vec<ResponseItem>) {
+        self.replace_assembled_with_suffix(items, Vec::new());
+    }
+
+    /// Refreshes the D4 cache while retaining records overlapping assembly/publication.
+    /// Model callers use A directly and never this conservative cache union.
+    pub(crate) fn replace_assembled_with_suffix(
+        &mut self,
+        items: Vec<ResponseItem>,
+        suffix: Vec<ResponseItemEnvelope>,
+    ) {
         // Preserve host-only metadata for surviving item identities. It is not serialized into
         // rollout/model JSON (notably FunctionCallOutputPayload::success), and disappears as
         // soon as that item leaves the bounded assembly. Model input consumes A directly.
-        let known: std::collections::HashMap<String, &ResponseItemEnvelope> = self
-            .items
+        let known: std::collections::HashMap<String, &ResponseItemEnvelope> = suffix
             .iter()
+            .chain(self.items.iter())
             .filter_map(|envelope| Some((envelope.item.id()?.as_str().to_owned(), envelope)))
             .collect();
-        let items: Vec<ResponseItemEnvelope> = items
+        let mut items: Vec<ResponseItemEnvelope> = items
             .into_iter()
             .filter(|item| is_api_message(item, /*metadata*/ None))
             .map(|mut item| {
@@ -716,6 +726,23 @@ impl ContextManager {
                 ResponseItemEnvelope { item, metadata }
             })
             .collect();
+        // All ordinary recorded response items have a stable ID. Keep the assembler's
+        // representation when it already selected/truncated an overlapping item. Identical
+        // id-less records may be distinct occurrences, so retain their conservative overlap
+        // until a later refresh covers publication; content equality cannot prove identity.
+        let mut ids: std::collections::HashSet<String> = items
+            .iter()
+            .filter_map(|envelope| envelope.item.id().map(|id| id.as_str().to_owned()))
+            .collect();
+        for envelope in suffix {
+            if let Some(id) = envelope.item.id() {
+                if ids.insert(id.as_str().to_owned()) {
+                    items.push(envelope);
+                }
+            } else {
+                items.push(envelope);
+            }
+        }
         // Reassembling an unchanged store is a read, not a new history revision.
         // Guardian cursors and snapshots must retain their identity across such reads.
         if self.items.as_ref() == &items && self.review_history.is_none() {

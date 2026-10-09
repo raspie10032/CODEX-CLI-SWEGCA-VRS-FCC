@@ -101,24 +101,31 @@ impl Session {
                 ..Default::default()
             }),
         };
-        if let Some(live_thread) = self.live_thread() {
-            // Capture settings under the same permit as the instruction, including when a
-            // goal creates the rollout. No fallible settings catch-up runs after publication.
-            live_thread
-                .append_items(&[
-                    RolloutItem::EventMsg(thread_settings::applied_event(self).await),
-                    RolloutItem::ResponseItem(item.clone()),
-                ])
-                .await
-                .map_err(std::io::Error::other)?;
+        // Capture settings under the same permit as the instruction, including when a goal
+        // creates the rollout. The common publisher also covers fileless VRS sessions.
+        if !self
+            .persist_rollout_items(&[
+                RolloutItem::EventMsg(thread_settings::applied_event(self).await),
+                RolloutItem::ResponseItem(item.clone()),
+            ])
+            .await
+        {
+            return Err(std::io::Error::other("VRS goal update publication failed"));
         }
         // A failed append or checkpoint must not change live authorization or its revision.
         self.try_ensure_rollout_materialized(PersistContext::ThreadPreparation)
             .await?;
-        self.state.lock().await.history.record_annotated_items(
-            std::slice::from_mut(&mut item),
-            context.model_info().truncation_policy.into(),
-        );
+        {
+            let mut state = self.state.lock().await;
+            let publication = state.record_vrs_history(
+                std::slice::from_mut(&mut item),
+                context.model_info().truncation_policy.into(),
+            );
+            if let Some(publication) = publication {
+                publication.finish(true);
+            }
+            state.check_vrs_recording().map_err(std::io::Error::other)?;
+        }
         self.send_raw_response_items(&context, std::slice::from_ref(&item.item))
             .await;
         Ok(())

@@ -1,7 +1,6 @@
 //! Session-wide mutable state.
 
 use codex_protocol::models::BaseInstructionsProvenance;
-#[cfg(test)]
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ReasoningEffort;
 use std::collections::HashSet;
@@ -11,6 +10,9 @@ use super::AdditionalContextStore;
 use super::auto_compact_window::AutoCompactWindow;
 use super::auto_compact_window::AutoCompactWindowIds;
 use super::auto_compact_window::AutoCompactWindowSnapshot;
+use super::vrs_live_cache::VrsCacheCut;
+use super::vrs_live_cache::VrsLiveCache;
+use super::vrs_live_cache::VrsPublication;
 use crate::context_manager::ContextManager;
 use crate::session::PreviousTurnSettings;
 use crate::session::session::SessionConfiguration;
@@ -24,6 +26,7 @@ use codex_protocol::protocol::TokenUsage;
 use codex_protocol::protocol::TokenUsageInfo;
 use codex_protocol::protocol::TokenUsageRecord;
 use codex_protocol::protocol::TurnContextItem;
+use codex_utils_output_truncation::TruncationPolicy;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 
@@ -71,6 +74,7 @@ pub(crate) struct SessionState {
     pub(crate) history: ContextManager,
     /// A missing VRS insertion invalidates subsequent input until the session is reopened.
     pub(crate) vrs_recording_error: Option<String>,
+    vrs_live_cache: VrsLiveCache,
     /// Cancels work bound to discarded history or a superseded Guardian evidence policy.
     pub(crate) history_reset: CancellationToken,
     pub(crate) latest_rate_limits: Option<RateLimitSnapshot>,
@@ -123,6 +127,7 @@ impl SessionState {
             base_instructions_provenance: None,
             history,
             vrs_recording_error: None,
+            vrs_live_cache: VrsLiveCache::default(),
             history_reset: CancellationToken::new(),
             latest_rate_limits: None,
             latest_token_usage_record: None,
@@ -167,6 +172,44 @@ impl SessionState {
         self.history.clone()
     }
 
+    pub(crate) fn record_vrs_history(
+        &mut self,
+        items: &mut [ResponseItemEnvelope],
+        policy: TruncationPolicy,
+    ) -> Option<VrsPublication> {
+        match self.vrs_live_cache.record(&mut self.history, items, policy) {
+            Ok(publication) => Some(publication),
+            Err(error) => {
+                self.vrs_recording_error.get_or_insert(error);
+                None
+            }
+        }
+    }
+
+    pub(crate) fn check_vrs_recording(&mut self) -> Result<(), String> {
+        if let Some(error) = self.vrs_live_cache.recording_error() {
+            self.vrs_recording_error.get_or_insert(error);
+        }
+        match &self.vrs_recording_error {
+            Some(error) => Err(error.clone()),
+            None => Ok(()),
+        }
+    }
+
+    pub(crate) fn begin_vrs_assembly(&mut self) -> Result<VrsCacheCut, String> {
+        self.check_vrs_recording()?;
+        self.vrs_live_cache.begin_assembly()
+    }
+
+    pub(crate) fn install_vrs_history(
+        &mut self,
+        cut: VrsCacheCut,
+        items: Vec<ResponseItem>,
+    ) -> Result<bool, String> {
+        self.check_vrs_recording()?;
+        Ok(self.vrs_live_cache.install(&mut self.history, cut, items))
+    }
+
     #[cfg(test)]
     pub(crate) fn replace_history(
         &mut self,
@@ -184,6 +227,7 @@ impl SessionState {
         items: Vec<ResponseItemEnvelope>,
         reference_context_item: Option<TurnContextItem>,
     ) {
+        self.vrs_live_cache.reset();
         self.history.replace_annotated(items);
         std::mem::take(&mut self.history_reset).cancel();
         self.history
