@@ -225,8 +225,6 @@ async fn context_indicator_shows_used_tokens_when_window_unknown() {
     let (mut chat, _rx, _ops) = make_chatwidget_manual(Some("unknown-model")).await;
 
     chat.config.model_context_window = None;
-    let auto_compact_limit = 200_000;
-    chat.config.model_auto_compact_token_limit = Some(auto_compact_limit);
 
     // No model window, so the indicator should fall back to showing tokens used.
     let total_tokens = 106_000;
