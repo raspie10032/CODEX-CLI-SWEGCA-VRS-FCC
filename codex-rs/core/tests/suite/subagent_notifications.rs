@@ -1211,8 +1211,6 @@ enum GrandchildParentContext {
 #[test_case(GrandchildParentContext::FullHistory, ThreadHistoryMode::Paginated; "paginated full history")]
 #[test_case(GrandchildParentContext::LastTurn, ThreadHistoryMode::Paginated; "paginated last turn")]
 #[test_case(GrandchildParentContext::NoHistory, ThreadHistoryMode::Paginated; "paginated no history")]
-#[test_case(GrandchildParentContext::Compacted, ThreadHistoryMode::Legacy; "legacy full history after compaction")]
-#[test_case(GrandchildParentContext::Compacted, ThreadHistoryMode::Paginated; "paginated full history after compaction")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn grandchild_full_fork_preserves_context_baseline(
     parent_context: GrandchildParentContext,
@@ -1700,13 +1698,6 @@ async fn spawned_full_history_v2_child_uses_model_precedence_without_dropping_co
             builder.with_external_time_provider(std::sync::Arc::new(FailFirstClockRead::default()));
     }
     let test = builder.build(&server).await?;
-    if matches!(selection, FullHistoryV2ModelSelection::WorldStateIdentity) {
-        test.codex.submit(Op::Compact).await?;
-        wait_for_event(&test.codex, |event| {
-            matches!(event, EventMsg::TurnComplete(_))
-        })
-        .await;
-    }
 
     test.submit_turn(TURN_0_FORK_PROMPT).await?;
     let _ = seed_turn.single_request();
@@ -1922,28 +1913,12 @@ async fn spawned_full_history_v2_child_uses_model_precedence_without_dropping_co
             })
             .collect::<Vec<_>>();
         assert_ne!(window_ids[0], window_ids[1]);
-        let checkpoint = child_rollout
-            .get_rollout_items()
-            .iter()
-            .find_map(|item| match item {
-                RolloutItem::Compacted(checkpoint) => Some(checkpoint),
-                _ => None,
-            })
-            .expect("inherited compaction checkpoint");
         assert!(
-            checkpoint
-                .replacement_history
-                .as_ref()
-                .is_some_and(|history| !history.is_empty())
-        );
-        assert_eq!(
-            (
-                checkpoint.window_number,
-                checkpoint.first_window_id.as_deref(),
-                checkpoint.previous_window_id.as_deref(),
-                checkpoint.window_id.as_deref(),
-            ),
-            (Some(0), Some(window_ids[1]), None, Some(window_ids[1]))
+            child_rollout
+                .get_rollout_items()
+                .iter()
+                .all(|item| !matches!(item, RolloutItem::Compacted(_))),
+            "D7 preserves original fork history without synthesizing a checkpoint"
         );
         assert!(
             child_request.has_message_with_input_texts("developer", |message| {

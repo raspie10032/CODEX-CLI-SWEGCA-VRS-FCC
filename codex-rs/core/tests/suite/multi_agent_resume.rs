@@ -5,7 +5,6 @@ use codex_features::Feature;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::EventMsg;
-use codex_protocol::protocol::Op;
 use codex_protocol::protocol::ThreadSettingsOverrides;
 use codex_protocol::user_input::UserInput;
 use core_test_support::responses::assert_parent_turn;
@@ -470,27 +469,6 @@ async fn cold_root_resume_restores_agent_identity_and_role_on_followup() -> Resu
             .is_err()
     );
 
-    mount_sse_once_match(
-        &server,
-        |request: &wiremock::Request| request_has_input_type(request, "compaction_trigger"),
-        sse(vec![
-            json!({
-                "type": "response.output_item.done",
-                "item": {
-                    "type": "compaction",
-                    "encrypted_content": "DURABLE_AGENT_COMPACTION_SUMMARY",
-                }
-            }),
-            ev_completed("resp-durable-agent-compact"),
-        ]),
-    )
-    .await;
-    resumed.codex.submit(Op::Compact).await?;
-    wait_for_event(&resumed.codex, |event| {
-        matches!(event, EventMsg::TurnComplete(_))
-    })
-    .await;
-
     let redirected_server = start_mock_server().await;
     let redirected_base_url = format!("{}/v1", redirected_server.uri());
     std::fs::write(
@@ -544,22 +522,6 @@ openai_base_url = "{redirected_base_url}"
             && !request.body_contains_text(SUBAGENT_DEVELOPER_INSTRUCTIONS)
     }));
     // The worker is loaded again, while its alphabetically earlier sibling remains unloaded.
-    mount_sse_once(
-        &server,
-        sse(vec![
-            json!({
-                "type": "response.output_item.done",
-                "item": { "type": "compaction", "encrypted_content": "LOADED_FIRST_COMPACTION" },
-            }),
-            ev_completed("resp-loaded-first-compact"),
-        ]),
-    )
-    .await;
-    resumed.codex.submit(Op::Compact).await?;
-    wait_for_event(&resumed.codex, |event| {
-        matches!(event, EventMsg::TurnComplete(_))
-    })
-    .await;
     let roster_request =
         mount_sse_once(&server, sse(vec![ev_completed("resp-loaded-first-roster")])).await;
     resumed.submit_turn("inspect the agent roster").await?;
@@ -603,7 +565,7 @@ openai_base_url = "{redirected_base_url}"
         .flatten()
         .filter_map(|item| item["text"].as_str())
         .rfind(|text| text.contains("<subagents>"))
-        .expect("post-compaction context should include cold agents");
+        .expect("resumed context should include cold agents");
     assert!(roster.contains(r#"<agent name="/root/worker" />"#));
     assert!(roster.contains(r#"<agent name="/root/survivor" />"#));
     assert!(!roster.contains("grandchild"));

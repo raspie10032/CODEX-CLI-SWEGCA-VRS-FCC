@@ -925,14 +925,7 @@ async fn reasoning_effort_override_unavailable_recovers_saved_history(
         vec![
             reply("initial", "initial reply"),
             reply("resumed", "resumed reply"),
-            responses::sse(vec![
-                serde_json::json!({
-                    "type": "response.output_item.done",
-                    "item": {"type": "compaction", "encrypted_content": "compacted-history"},
-                }),
-                responses::ev_completed("compact"),
-            ]),
-            reply("after", "after compaction reply"),
+            reply("after", "resumed follow-up reply"),
         ],
     )
     .await;
@@ -982,12 +975,7 @@ async fn reasoning_effort_override_unavailable_recovers_saved_history(
         })
         .collect::<Vec<_>>();
     assert_eq!(saved_updates, vec![effort_update(ReasoningEffort::Medium)]);
-    resumed.codex.submit(Op::Compact).await?;
-    wait_for_event(&resumed.codex, |event| {
-        matches!(event, EventMsg::TurnComplete(_))
-    })
-    .await;
-    resumed.submit_text_turn("after compaction").await?;
+    resumed.submit_text_turn("another resumed follow-up").await?;
 
     let requests = mock.requests();
     assert_eq!(
@@ -1010,14 +998,16 @@ async fn reasoning_effort_override_unavailable_recovers_saved_history(
             ),
             (Value::from("high"), Vec::new()),
             (Value::from("high"), Vec::new()),
-            (Value::from("high"), Vec::new()),
         ],
     );
     assert!(
-        requests[3]
-            .input()
+        requests
             .iter()
-            .any(|item| item["type"] == "compaction")
+            .all(|request| request.inputs_of_type("compaction").is_empty())
+    );
+    assert_eq!(
+        requests[2].inputs_of_type("agent_message"),
+        requests[0].inputs_of_type("agent_message")
     );
     Ok(())
 }

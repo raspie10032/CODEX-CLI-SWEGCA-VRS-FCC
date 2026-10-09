@@ -1824,12 +1824,10 @@ async fn startup_prewarm_connects_before_delayed_mcp_tools_then_reuses_socket(
 
 #[derive(Clone, Copy)]
 enum InterruptedMcpStartupPhase {
-    PreSamplingCompaction,
     FirstStep,
     StartupPrewarm,
 }
 
-#[test_case(InterruptedMcpStartupPhase::PreSamplingCompaction; "pre sampling compaction")]
 #[test_case(InterruptedMcpStartupPhase::FirstStep; "first step")]
 #[test_case(InterruptedMcpStartupPhase::StartupPrewarm; "startup prewarm")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1867,11 +1865,6 @@ async fn interrupt_during_mcp_startup_preserves_user_input_in_history(
             models.push(current_model);
             config.model_provider.supports_websockets =
                 matches!(startup_phase, InterruptedMcpStartupPhase::StartupPrewarm);
-            if matches!(
-                startup_phase,
-                InterruptedMcpStartupPhase::PreSamplingCompaction
-            ) {
-            }
             insert_mcp_server(
                 config,
                 "interrupted_startup",

@@ -353,6 +353,7 @@ async fn async_interrupt_hook_runs_without_delaying_turn_aborted() -> Result<()>
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "D7/I1: the self-abort scenario requires removed manual compaction hooks"]
 async fn self_aborted_turn_runs_interrupt_hook_before_turn_aborted() -> Result<()> {
     skip_if_no_network!(Ok(()));
     skip_if_wine_exec!(

@@ -392,6 +392,48 @@
       "attribute": "#[test_case(6_000, ReviewerResponse::NextReview; \"incoming_review_compacts_existing_history\")]",
       "action": "Removed only compaction-specific parameter; required context fail-closed case retained",
       "basis": "D7/I1; D5"
+    },
+    {
+      "class": "a",
+      "file": "codex-rs/core/tests/suite/rmcp_client.rs",
+      "test": "interrupt_during_mcp_startup_preserves_user_input_in_history::pre_sampling_compaction",
+      "action": "remove only deleted auto-compaction phase; first-step and startup-prewarm interruption assertions remain",
+      "basis": "VRS_코덱스일체화_v1.md:22,109-131,141-144"
+    },
+    {
+      "class": "a",
+      "file": "codex-rs/core/tests/suite/interrupt_hooks.rs",
+      "test": "self_aborted_turn_runs_interrupt_hook_before_turn_aborted",
+      "action": "ignored; sole trigger is aborted PreCompact hook",
+      "basis": "VRS_코덱스일체화_v1.md:22,109-131,141-144"
+    },
+    {
+      "class": "a",
+      "file": "codex-rs/core/tests/suite/multi_agent_resume.rs",
+      "test": "cold_root_resume_restores_agent_identity_and_role_on_followup",
+      "action": "remove both compaction preparations/mocks; preserve role, provider, cold-agent, restored roster assertions",
+      "basis": "VRS_코덱스일체화_v1.md:22,109-131,141-144"
+    },
+    {
+      "class": "c",
+      "file": "codex-rs/core/tests/suite/reasoning_effort_override.rs",
+      "test": "reasoning_effort_override_unavailable_recovers_saved_history",
+      "action": "remove compact request/mock and its one effort sample; keep initial/restart/follow-up effort recovery, assert original agent message retained and no compaction items",
+      "basis": "VRS_코덱스일체화_v1.md:22,109-131,141-144"
+    },
+    {
+      "class": "a",
+      "file": "codex-rs/core/tests/suite/subagent_notifications.rs",
+      "test": "grandchild_full_fork_preserves_context_baseline::{legacy,paginated}_full_history_after_compaction",
+      "action": "remove only two Compacted matrix entries; six uncompressed fork modes remain",
+      "basis": "VRS_코덱스일체화_v1.md:22,109-131,141-144"
+    },
+    {
+      "class": "c",
+      "file": "codex-rs/core/tests/suite/subagent_notifications.rs",
+      "test": "spawned_full_history_v2_child_uses_model_precedence_without_dropping_context::world_state_appends_context_window_when_agent_identity_changes",
+      "action": "keep parent/child identity, exact world-state snapshots, distinct context IDs; remove Compact setup and assert no synthesized Compacted item",
+      "basis": "VRS_코덱스일체화_v1.md:22,109-131,141-144"
     }
   ],
   "intended_expectation_changes": [
