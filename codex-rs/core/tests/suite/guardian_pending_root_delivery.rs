@@ -306,7 +306,7 @@ async fn confirmed_delivery_invalidates_pending_local_allow() -> Result<()> {
     release_delivery.send(()).expect("release confirmed send");
     tokio::time::timeout(Duration::from_secs(/*secs*/ 10), async {
         loop {
-            let history = test.codex.conversation_history_snapshot().await;
+            let history = test.codex.conversation_history_snapshot().await.unwrap();
             if history
                 .retained_context()
                 .expect("retained root context")

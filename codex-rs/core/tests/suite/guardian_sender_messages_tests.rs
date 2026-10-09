@@ -170,7 +170,7 @@ async fn guardian_receives_sender_user_messages_by_default(
             .filter_map(|item| item["text"].as_str())
             .collect::<String>();
         assert!(review.contains("SENDER USER MESSAGES START"));
-        let history = receiver.conversation_history_snapshot().await;
+        let history = receiver.conversation_history_snapshot().await.unwrap();
         let snapshot = history
             .retained_context()
             .expect("thread-owned context")

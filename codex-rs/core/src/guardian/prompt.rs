@@ -66,7 +66,7 @@ pub(crate) async fn build_guardian_prompt_items(
 ) -> anyhow::Result<GuardianPromptItems> {
     build_guardian_prompt_items_with_parent_turn(
         session,
-        session.conversation_history_snapshot().await.as_ref(),
+        session.conversation_history_snapshot().await?.as_ref(),
         /*parent_context*/ None,
         ApprovalRequestReasons {
             approval: None,

@@ -315,7 +315,7 @@ async fn guardian_history_uses_deltas_between_eviction_batches() -> Result<()> {
     let restriction = "Only inspect the repository; do not publish it.";
     test.submit_text_turn(restriction).await?;
     // Restore a pre-rollout encrypted checkpoint with its legacy review transcript.
-    let history = test.codex.conversation_history_snapshot().await;
+    let history = test.codex.conversation_history_snapshot().await.unwrap();
     let checkpoint: RolloutItem = serde_json::from_value(json!({
         "type": "compacted", "payload": {
             "message": "old checkpoint",

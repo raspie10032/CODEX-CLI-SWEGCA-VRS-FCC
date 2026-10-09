@@ -358,7 +358,7 @@ async fn start_or_steer(
             responsesapi_client_metadata.clone(),
             origin,
         )
-        .await
+        .await?
     {
         Ok(turn_id) => {
             settings.apply_steered(session, submission_id).await?;
@@ -407,7 +407,7 @@ async fn start_or_steer(
             let mut task_input = merge_additional_context_input(session, additional_context).await;
             if has_explicit_input {
                 task_input
-                    .push(pending_turn_input(session, input, &turn_context.sub_id, origin).await);
+                    .push(pending_turn_input(session, input, &turn_context.sub_id, origin).await?);
             }
             session
                 .spawn_task(turn_context, task_input, RegularTask::new())
@@ -554,19 +554,30 @@ async fn start_if_idle(
             if let SubmittedTurnInput::UserInput { content, .. } = &input {
                 turn_context.session_telemetry.user_prompt(content);
             }
-            task_input.push(pending_turn_input(session, input, &turn_context.sub_id, origin).await);
+            let input = match pending_turn_input(session, input, &turn_context.sub_id, origin).await
+            {
+                Ok(input) => input,
+                Err(error) => {
+                    session.clear_reserved_idle_turn(&turn_state).await;
+                    return Err(error);
+                }
+            };
+            task_input.push(input);
         }
         TurnStartKind::Automatic | TurnStartKind::Recovery => {
             // Empty automatic user input resumes sampling without a new message.
             if !matches!(&input, SubmittedTurnInput::UserInput { .. }) {
+                let input =
+                    match pending_turn_input(session, input, &turn_context.sub_id, origin).await {
+                        Ok(input) => input,
+                        Err(error) => {
+                            session.clear_reserved_idle_turn(&turn_state).await;
+                            return Err(error);
+                        }
+                    };
                 session
                     .input_queue
-                    .extend_pending_input_for_turn_state(
-                        turn_state.as_ref(),
-                        vec![
-                            pending_turn_input(session, input, &turn_context.sub_id, origin).await,
-                        ],
-                    )
+                    .extend_pending_input_for_turn_state(turn_state.as_ref(), vec![input])
                     .await;
             }
         }
@@ -621,7 +632,7 @@ async fn steer(
             responsesapi_client_metadata,
             origin,
         )
-        .await
+        .await?
     {
         Ok(turn_id) => {
             settings.apply_steered(session, submission_id).await?;
@@ -710,42 +721,42 @@ impl Session {
         required_final_output_json_schema: Option<&Value>,
         responsesapi_client_metadata: Option<HashMap<String, String>>,
         origin: UserInputOrigin,
-    ) -> Result<String, NotSubmittedReason> {
+    ) -> CodexResult<Result<String, NotSubmittedReason>> {
         let mut active = self.active_turn.lock().await;
         let Some(active_turn) = active.as_mut() else {
-            return Err(NotSubmittedReason::NoActiveTurn);
+            return Ok(Err(NotSubmittedReason::NoActiveTurn));
         };
 
         let Some(active_task) = active_turn.task.as_ref() else {
-            return Err(NotSubmittedReason::NoActiveTurn);
+            return Ok(Err(NotSubmittedReason::NoActiveTurn));
         };
         let active_turn_id = &active_task.turn_context.sub_id;
 
         if let Some(expected_turn_id) = expected_turn_id
             && expected_turn_id != active_turn_id
         {
-            return Err(NotSubmittedReason::ExpectedTurnMismatch {
+            return Ok(Err(NotSubmittedReason::ExpectedTurnMismatch {
                 expected: expected_turn_id.to_string(),
                 actual: active_turn_id.clone(),
-            });
+            }));
         }
 
         match active_task.kind {
             crate::state::TaskKind::Regular => {}
             crate::state::TaskKind::Review => {
-                return Err(NotSubmittedReason::ActiveTurnNotSteerable {
+                return Ok(Err(NotSubmittedReason::ActiveTurnNotSteerable {
                     turn_kind: NonSteerableTurnKind::Review,
-                });
+                }));
             }
             crate::state::TaskKind::Compact => {
-                return Err(NotSubmittedReason::ActiveTurnNotSteerable {
+                return Ok(Err(NotSubmittedReason::ActiveTurnNotSteerable {
                     turn_kind: NonSteerableTurnKind::Compact,
-                });
+                }));
             }
         }
 
         if matches!(input, SubmittedTurnInput::UserInput { content, .. } if content.is_empty()) {
-            return Err(NotSubmittedReason::EmptyInput);
+            return Ok(Err(NotSubmittedReason::EmptyInput));
         }
         // Compare JSON values directly instead of serialized schema text.
         // Value equality ignores object key order while preserving array and
@@ -753,7 +764,7 @@ impl Session {
         if let Some(required_schema) = required_final_output_json_schema
             && active_task.turn_context.final_output_json_schema.as_ref() != Some(required_schema)
         {
-            return Err(NotSubmittedReason::ActiveTurnOutputSchemaMismatch);
+            return Ok(Err(NotSubmittedReason::ActiveTurnOutputSchemaMismatch));
         }
         let mut pending_input = merge_additional_context_input(self, additional_context).await;
 
@@ -779,7 +790,7 @@ impl Session {
                     },
                 }
             }
-            input => pending_turn_input(self, input.clone(), active_turn_id, origin).await,
+            input => pending_turn_input(self, input.clone(), active_turn_id, origin).await?,
         };
         pending_input.push(input);
         self.input_queue
@@ -788,7 +799,7 @@ impl Session {
                 pending_input,
             )
             .await;
-        Ok(active_turn_id.clone())
+        Ok(Ok(active_turn_id.clone()))
     }
 }
 
@@ -812,8 +823,8 @@ async fn pending_turn_input(
     input: SubmittedTurnInput,
     turn_id: &str,
     origin: UserInputOrigin,
-) -> TurnInput {
-    match input {
+) -> CodexResult<TurnInput> {
+    Ok(match input {
         SubmittedTurnInput::UserInput { content, client_id } => TurnInput::UserInput {
             content,
             client_id,
@@ -833,7 +844,7 @@ async fn pending_turn_input(
                 .services
                 .local_agent_runtime
                 .capture_sender_user_messages(&item, session.thread_id, turn_id)
-                .await
+                .await?
             {
                 Some(CodexHarnessMetadata {
                     user_input_order: Some(session.reserve_user_input_order().await),
@@ -849,5 +860,5 @@ async fn pending_turn_input(
         SubmittedTurnInput::InterAgentCommunication(communication) => {
             TurnInput::InterAgentCommunication(communication)
         }
-    }
+    })
 }

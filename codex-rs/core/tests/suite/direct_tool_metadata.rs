@@ -179,7 +179,7 @@ async fn message_budget_sheds_inventory_without_changing_tool_results_or_history
         );
     }
 
-    let history = test.codex.conversation_history_snapshot().await;
+    let history = test.codex.conversation_history_snapshot().await.unwrap();
     let history = serde_json::to_value(history.items().collect::<Vec<_>>())?;
     let outputs = history
         .as_array()
@@ -581,7 +581,7 @@ async fn direct_metadata_limit_respects_provider_support(
     assert_eq!(requests.len(), 3);
     let first_output = requests[2].function_call_output("first");
     let second_output = requests[2].function_call_output("second");
-    let history = test.codex.conversation_history_snapshot().await;
+    let history = test.codex.conversation_history_snapshot().await.unwrap();
     let history = serde_json::to_value(history.items().collect::<Vec<_>>())?;
     let recorded_outputs = [&first_output, &second_output].map(|output| {
         history

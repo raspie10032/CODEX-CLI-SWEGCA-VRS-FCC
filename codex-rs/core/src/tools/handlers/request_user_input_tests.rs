@@ -107,7 +107,7 @@ async fn request_user_input_sets_non_blocking_outside_plan_mode(
         .services
         .thread_extension_data
         .insert(GuardianReviewEvidence::default());
-    let original_history = session.conversation_history_snapshot().await;
+    let original_history = session.conversation_history_snapshot().await.unwrap();
     *session.active_turn.lock().await = Some(ActiveTurn::default());
 
     let request = tokio::spawn({
@@ -182,7 +182,7 @@ async fn request_user_input_sets_non_blocking_outside_plan_mode(
         .expect("request_user_input handler task should finish")
         .expect("request_user_input handler should succeed");
     assert!(output.success_for_logging());
-    let history = session.conversation_history_snapshot().await;
+    let history = session.conversation_history_snapshot().await.unwrap();
     let RenderedVerifiedAnswers {
         fragments,
         complete,

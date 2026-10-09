@@ -178,7 +178,16 @@ impl ReviewHost for super::super::runtime::ReviewRuntime {
         let root_review_context_revision =
             root_snapshot.map(|snapshot| snapshot.review_context_revision);
         // Keep the authorization revision even when no cacheable review evidence exists.
-        let history = session.conversation_history_snapshot().await;
+        let history = match session.conversation_history_snapshot().await {
+            Ok(history) => history,
+            Err(error) => {
+                return (
+                    GuardianReviewOutcome::Error(GuardianReviewError::session(error.into())),
+                    GuardianReviewAnalyticsResult::without_session(),
+                    None,
+                );
+            }
+        };
         let user_message_revision = history.user_message_revision();
         let review_context_revision = history.guardian_review_context_revision();
         let review_evidence = session
@@ -220,7 +229,16 @@ impl ReviewHost for super::super::runtime::ReviewRuntime {
                     .map(|snapshot| snapshot.review_context_revision);
             let authorization_changed = root_authorization_version
                 != root_snapshot.map(|snapshot| snapshot.authorization_version);
-            let history = session.conversation_history_snapshot().await;
+            let history = match session.conversation_history_snapshot().await {
+                Ok(history) => history,
+                Err(error) => {
+                    return (
+                        GuardianReviewOutcome::Error(GuardianReviewError::session(error.into())),
+                        analytics,
+                        None,
+                    );
+                }
+            };
             let authorization_changed =
                 authorization_changed || user_message_revision != history.user_message_revision();
             let review_context_changed = root_review_changed

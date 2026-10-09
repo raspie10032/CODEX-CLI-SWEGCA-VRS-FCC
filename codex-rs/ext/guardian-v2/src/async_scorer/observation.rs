@@ -319,7 +319,25 @@ impl GuardianV2Extension {
             );
             return;
         };
-        let score_authorization = ScoreAuthorization::current(&thread, &permissions).await;
+        let score_authorization = match ScoreAuthorization::current(&thread, &permissions).await {
+            Ok(authorization) => authorization,
+            Err(error) => {
+                score_progress.fail_closed(sampled_at);
+                record_classification(
+                    metrics.as_deref(),
+                    context_mode,
+                    classification_started_at.elapsed(),
+                    "failure",
+                    Some("context_assembly_error"),
+                );
+                event_sink.emit_warning(ExtensionWarning {
+                    thread_id,
+                    turn_id: Some(turn_id),
+                    message: format!("Guardian V2 context assembly failed: {error}"),
+                });
+                return;
+            }
+        };
         let classification = Classification {
             reservation,
             classification_started_at,

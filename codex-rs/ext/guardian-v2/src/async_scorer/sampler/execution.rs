@@ -155,7 +155,8 @@ impl SamplingExecution {
                     status.is_server_error() || *status == StatusCode::TOO_MANY_REQUESTS
                 }
             }
-            LunaSamplerError::Provider(_)
+            LunaSamplerError::ContextAssembly(_)
+            | LunaSamplerError::Provider(_)
             | LunaSamplerError::MissingOutput
             | LunaSamplerError::OutputTooLarge
             | LunaSamplerError::Superseded

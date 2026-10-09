@@ -600,7 +600,7 @@ async fn guardian_revalidates_allow_with_offline_secondary_executor() -> Result<
 
     // Invalidate the pending allow, then disconnect the unrelated executor. The
     // retry must still reach the model and respect the updated authorization.
-    let mut expected_authorization = test.codex.guardian_authorization_version().await;
+    let mut expected_authorization = test.codex.guardian_authorization_version().await.unwrap();
     test.codex
         .record_user_goal_update(UserGoalUpdate::Set {
             objective: Some("Do not grant network permission after all.".to_owned()),
@@ -609,7 +609,7 @@ async fn guardian_revalidates_allow_with_offline_secondary_executor() -> Result<
         .await?;
     expected_authorization.user_message_revision += 1;
     assert_eq!(
-        test.codex.guardian_authorization_version().await,
+        test.codex.guardian_authorization_version().await.unwrap(),
         expected_authorization
     );
     disconnect.send(()).expect("disconnect secondary executor");

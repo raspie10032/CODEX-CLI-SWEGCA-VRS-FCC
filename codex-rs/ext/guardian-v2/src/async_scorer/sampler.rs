@@ -91,6 +91,9 @@ pub struct LunaSamplingRequest {
 /// Failures returned while connecting or sampling the Luna model.
 #[derive(Debug, Error)]
 pub enum LunaSamplerError {
+    /// The parent VRS context could not be assembled for this request.
+    #[error("Guardian V2 context assembly failed: {0}")]
+    ContextAssembly(#[source] CodexErr),
     /// The thread's provider or scoped credentials could not be resolved.
     #[error("could not resolve the Luna model provider: {0}")]
     Provider(#[source] CodexErr),

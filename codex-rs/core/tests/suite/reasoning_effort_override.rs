@@ -213,6 +213,7 @@ async fn worker_reasoning_overrides_follow_effective_client_policy(
         let context_updates = thread
             .conversation_history_snapshot()
             .await
+            .unwrap()
             .items()
             .filter(|item| matches!(item, ResponseItem::ConfigurationUpdate { .. }))
             .map(|item| serde_json::to_value(item).expect("serialize context update"))

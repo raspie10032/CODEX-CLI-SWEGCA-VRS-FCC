@@ -1023,17 +1023,23 @@ impl CodexThread {
         self.session.multi_agent_version()
     }
 
-    /// Shares an immutable view of the live parent model context and retained host facts.
-    pub async fn conversation_history_snapshot(&self) -> Arc<dyn ConversationHistorySnapshot> {
+    /// Assembles an immutable parent model context with retained host facts.
+    /// Assembly failures are returned without substituting another context.
+    pub async fn conversation_history_snapshot(
+        &self,
+    ) -> CodexResult<Arc<dyn ConversationHistorySnapshot>> {
         self.session.conversation_history_snapshot().await
     }
 
     /// Returns the current user-authorization revision for Guardian.
-    pub async fn guardian_authorization_version(&self) -> GuardianAuthorizationVersion {
-        let history = self.conversation_history_snapshot().await;
-        self.thread_extension_data()
+    pub async fn guardian_authorization_version(
+        &self,
+    ) -> CodexResult<GuardianAuthorizationVersion> {
+        let history = self.conversation_history_snapshot().await?;
+        Ok(self
+            .thread_extension_data()
             .get_or_init(GuardianReviewEvidence::default)
-            .authorization_version(history.as_ref())
+            .authorization_version(history.as_ref()))
     }
 
     /// Returns bounded root conversation evidence and its authorization version atomically.

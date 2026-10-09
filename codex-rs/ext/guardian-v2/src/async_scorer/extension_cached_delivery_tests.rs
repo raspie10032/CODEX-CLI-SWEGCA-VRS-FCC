@@ -217,8 +217,12 @@ async fn confirmed_root_delivery_invalidates_root_and_worker_cached_approvals() 
             thread_store: worker.thread_extension_data(),
         })
         .await;
-    let root_before = ScoreAuthorization::current(&test.codex, &Default::default()).await;
-    let worker_before = ScoreAuthorization::current(&worker, &Default::default()).await;
+    let root_before = ScoreAuthorization::current(&test.codex, &Default::default())
+        .await
+        .unwrap();
+    let worker_before = ScoreAuthorization::current(&worker, &Default::default())
+        .await
+        .unwrap();
     assert_eq!(
         worker_before.root_review_context_revision,
         Some(root_before.review_context_revision)
@@ -240,8 +244,12 @@ async fn confirmed_root_delivery_invalidates_root_and_worker_cached_approvals() 
     release_delivery.send(())?;
     let (root_after, worker_after) = tokio::time::timeout(ASYNC_TEST_TIMEOUT, async {
         loop {
-            let root = ScoreAuthorization::current(&test.codex, &Default::default()).await;
-            let worker = ScoreAuthorization::current(&worker, &Default::default()).await;
+            let root = ScoreAuthorization::current(&test.codex, &Default::default())
+                .await
+                .unwrap();
+            let worker = ScoreAuthorization::current(&worker, &Default::default())
+                .await
+                .unwrap();
             if root.review_context_revision != root_before.review_context_revision
                 && worker.root_review_context_revision != worker_before.root_review_context_revision
             {
@@ -299,7 +307,9 @@ async fn confirmed_root_delivery_invalidates_root_and_worker_cached_approvals() 
     );
     let store = worker.thread_extension_data();
     let progress = store.get::<GuardianV2ScoreProgress>().unwrap();
-    let authorization = ScoreAuthorization::current(&worker, &Default::default()).await;
+    let authorization = ScoreAuthorization::current(&worker, &Default::default())
+        .await
+        .unwrap();
     assert!(authorization.local.retained_context_complete);
     seed_cached_score(&progress, store, /*index*/ 1_000, authorization);
     assert_eq!(

@@ -269,7 +269,7 @@ pub(crate) async fn handoff_scenario() -> Result<Vec<ResponsesRequest>> {
 
     let requests = core_test_support::responses::received_responses_requests(&review_server).await;
     // Compaction can remove every recognizable handoff. Fall back to the original root reader.
-    let history = test.codex.conversation_history_snapshot().await;
+    let history = test.codex.conversation_history_snapshot().await.unwrap();
     let checkpoint: CompactedItem = serde_json::from_value(json!({
         "message":"Root checkpoint.", "replacement_history":[], "retained_context":history.retained_context(),
     }))?;

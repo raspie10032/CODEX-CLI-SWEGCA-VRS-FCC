@@ -4252,7 +4252,10 @@ impl Session {
             }
         } else {
             // A thread without a rollout file still lives in the VRS store (design D1).
-            self.insert_ephemeral_vrs_lines(items).await;
+            if let Err(err) = self.insert_ephemeral_vrs_lines(items).await {
+                error!("failed to record ephemeral rollout items: {err}");
+                return false;
+            }
         }
         true
     }
@@ -4273,16 +4276,12 @@ impl Session {
 
     pub(crate) async fn conversation_history_snapshot(
         &self,
-    ) -> Arc<dyn ConversationHistorySnapshot> {
-        // The snapshot is built from the VRS assembly (design D3 A14). When it cannot be
-        // assembled the snapshot is empty; the accumulated history is never used instead.
-        match self.vrs_history().await {
-            Ok(history) => history.conversation_history_snapshot(),
-            Err(err) => {
-                warn!("conversation history snapshot unavailable: {err}");
-                ContextManager::new().conversation_history_snapshot()
-            }
-        }
+    ) -> CodexResult<Arc<dyn ConversationHistorySnapshot>> {
+        let history = self
+            .vrs_history()
+            .await
+            .map_err(vrs_input::vrs_error_to_codex)?;
+        Ok(history.conversation_history_snapshot())
     }
 
     pub(crate) async fn current_window_id(&self) -> String {

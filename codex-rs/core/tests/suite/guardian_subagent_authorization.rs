@@ -806,7 +806,11 @@ async fn run_guardian_subagent_review(
         .await?;
         assert_eq!(
             codex_core::context::GuardianContextMode::from_history(
-                test.codex.conversation_history_snapshot().await.as_ref()
+                test.codex
+                    .conversation_history_snapshot()
+                    .await
+                    .unwrap()
+                    .as_ref()
             ),
             codex_core::context::GuardianContextMode::Legacy,
         );
@@ -953,7 +957,7 @@ async fn run_guardian_subagent_review(
             matches!(event, EventMsg::TurnAborted(_))
         })
         .await;
-        let history = test.codex.conversation_history_snapshot().await;
+        let history = test.codex.conversation_history_snapshot().await.unwrap();
         assert!(history.items().any(|item| match (code_mode, item) {
             (
                 true,
@@ -1046,7 +1050,7 @@ async fn run_guardian_subagent_review(
     if block_post_hook {
         // A completion notice can end the turn before the next model request.
         // Check the recorded output rather than requiring that extra request.
-        let history = test.codex.conversation_history_snapshot().await;
+        let history = test.codex.conversation_history_snapshot().await.unwrap();
         assert!(history.items().any(|item| match item {
             ResponseItem::FunctionCallOutput {
                 call_id: Some(call_id),
@@ -1279,7 +1283,7 @@ async fn run_guardian_subagent_review(
                 "arguments": json!({"text": ORIGINAL_QUESTION}).to_string()
             }))?])
             .await?;
-        let history = test.codex.conversation_history_snapshot().await;
+        let history = test.codex.conversation_history_snapshot().await.unwrap();
         assert!(history.items().any(|item| {
             matches!(item, ResponseItem::FunctionCall { call_id, .. } if call_id == "unsent-question")
         }));
@@ -1294,7 +1298,7 @@ async fn run_guardian_subagent_review(
             | MessagingOutcome::UntrustedMcp
             | MessagingOutcome::SpoofedRawName
     ) {
-        let history = test.codex.conversation_history_snapshot().await;
+        let history = test.codex.conversation_history_snapshot().await.unwrap();
         assert!(
             !history
                 .retained_context()
@@ -1422,7 +1426,7 @@ async fn run_guardian_subagent_review(
     if matches!(root_context, RootContext::Retained) && matches!(root_answer, RootAnswer::Complete)
     {
         let mut root = test.codex.clone();
-        let history = root.conversation_history_snapshot().await;
+        let history = root.conversation_history_snapshot().await.unwrap();
         root.flush_rollout().await?;
         let saved = test
             .thread_store
@@ -1826,7 +1830,7 @@ async fn run_guardian_subagent_review(
             root.submit(Op::Compact).await?;
             wait_for_event(&root, |event| matches!(event, EventMsg::TurnComplete(_))).await;
             compact.single_request();
-            assert!(!root.conversation_history_snapshot().await.items().any(|item| {
+            assert!(!root.conversation_history_snapshot().await.unwrap().items().any(|item| {
                 matches!(item, ResponseItem::FunctionCall { call_id, .. } | ResponseItem::CustomToolCall { call_id, .. } if call_id == MESSAGE_CALL_ID)
             }));
             root.flush_rollout().await?;

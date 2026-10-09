@@ -424,7 +424,10 @@ async fn run_review_on_session(
             {
                 parent_history
             } else {
-                params.parent_session.conversation_history_snapshot().await
+                params
+                    .parent_session
+                    .conversation_history_snapshot()
+                    .await?
             };
             let mut prompt_items = build_guardian_prompt_items_with_parent_turn(
                 params.parent_session.as_ref(),

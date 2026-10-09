@@ -74,7 +74,7 @@ pub async fn environment_windows_sandbox_types(
 pub async fn history_with_tool_call_metadata(
     thread: &crate::CodexThread,
 ) -> Vec<codex_protocol::models::ResponseItem> {
-    let history = thread.conversation_history_snapshot().await;
+    let history = thread.conversation_history_snapshot().await.unwrap();
     let mut items = history.items().cloned().collect::<Vec<_>>();
     thread
         .session

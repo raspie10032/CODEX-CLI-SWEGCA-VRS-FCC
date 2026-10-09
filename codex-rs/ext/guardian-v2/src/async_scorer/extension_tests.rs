@@ -302,7 +302,7 @@ async fn installed_extension_uses_http_after_warm_socket_auth_expires() -> Resul
                 tool_name: &tool_name,
                 mcp_tool: None,
                 payload: &payload,
-                conversation_history: test.codex.conversation_history_snapshot().await,
+                conversation_history: test.codex.conversation_history_snapshot().await.unwrap(),
                 source: ToolCallSource::Direct,
             })
             .await;
@@ -578,7 +578,12 @@ async fn sandboxed_shell_classification_respects_review_scope() -> Result<()> {
                 tool_name: &tool_name,
                 mcp_tool: None,
                 payload: &payload,
-                conversation_history: fixture.test.codex.conversation_history_snapshot().await,
+                conversation_history: fixture
+                    .test
+                    .codex
+                    .conversation_history_snapshot()
+                    .await
+                    .unwrap(),
                 source: ToolCallSource::Direct,
             })
             .await;
@@ -656,7 +661,9 @@ async fn computer_use_only_scores_cannot_approve_other_actions() -> Result<()> {
         .get::<GuardianV2ScoreProgress>()
         .expect("Guardian v2 should track score progress per thread");
     // The seeded low score belongs to the model selected above.
-    let authorization = ScoreAuthorization::current(&fixture.test.codex, &Default::default()).await;
+    let authorization = ScoreAuthorization::current(&fixture.test.codex, &Default::default())
+        .await
+        .unwrap();
     seed_cached_score(&progress, thread_store, /*index*/ 1, authorization);
     let cached = progress.inspect(/*call_id*/ None);
     let turn_store = ExtensionData::new("turn-1");
@@ -677,7 +684,12 @@ async fn computer_use_only_scores_cannot_approve_other_actions() -> Result<()> {
             tool_name: &ordinary_tool,
             mcp_tool: None,
             payload: &payload,
-            conversation_history: fixture.test.codex.conversation_history_snapshot().await,
+            conversation_history: fixture
+                .test
+                .codex
+                .conversation_history_snapshot()
+                .await
+                .unwrap(),
             source: ToolCallSource::CodeMode {
                 cell_id: "cell-1".to_owned(),
                 runtime_tool_call_id: "nested-1".to_owned(),
@@ -1032,7 +1044,7 @@ async fn sample_configured_conversation_history_with_delivery(
         )
         .await?;
     }
-    let conversation_history = test.codex.conversation_history_snapshot().await;
+    let conversation_history = test.codex.conversation_history_snapshot().await.unwrap();
 
     registry.tool_lifecycle_contributors()[0]
         .on_tool_start(ToolStartInput {
@@ -1167,7 +1179,12 @@ impl GuardianFailureFixture {
                 tool_name: &tool_name,
                 mcp_tool: None,
                 payload: &payload,
-                conversation_history: self.test.codex.conversation_history_snapshot().await,
+                conversation_history: self
+                    .test
+                    .codex
+                    .conversation_history_snapshot()
+                    .await
+                    .unwrap(),
                 source: ToolCallSource::Direct,
             })
             .await;
@@ -1626,7 +1643,9 @@ max_recent_non_user_entries = 8
         &score_progress,
         thread_store,
         first_unscored,
-        ScoreAuthorization::current(&test.codex, &Default::default()).await,
+        ScoreAuthorization::current(&test.codex, &Default::default())
+            .await
+            .unwrap(),
     );
     assert_eq!(
         cached_approval(
@@ -2189,7 +2208,9 @@ async fn contributor_samples_tool_calls_with_the_existing_luna_pool() -> Result<
             &progress,
             thread_store,
             /*index*/ 1,
-            ScoreAuthorization::current(&test.codex, &permissions).await,
+            ScoreAuthorization::current(&test.codex, &permissions)
+                .await
+                .unwrap(),
         );
         assert_eq!(
             cached_approval(
@@ -2360,7 +2381,9 @@ async fn contributor_skips_required_models_in_standard_scope() -> Result<()> {
     thread_store.insert(model_info);
     // A late prewarm preview must leave the active model's review requirements intact.
     let _ = codex_core::guardian_review::prepare_review_prewarm(&test.codex).await?;
-    let authorization = ScoreAuthorization::current(&test.codex, &Default::default()).await;
+    let authorization = ScoreAuthorization::current(&test.codex, &Default::default())
+        .await
+        .unwrap();
     let progress = thread_store
         .get::<GuardianV2ScoreProgress>()
         .expect("Guardian v2 should track score progress per thread");
@@ -2517,7 +2540,9 @@ async fn stale_review_context_blocks_cached_approval_without_changing_authorizat
     let mut score = cached_score(store).unwrap();
     score.scores.insert("action_risk".to_owned(), 0.25);
     set_cached_score(store, score);
-    let current = ScoreAuthorization::current(&fixture.test.codex, &Default::default()).await;
+    let current = ScoreAuthorization::current(&fixture.test.codex, &Default::default())
+        .await
+        .unwrap();
     let mut stale_local = current.clone();
     stale_local.review_context_revision += 1;
     let mut stale_root = current.clone();
@@ -2575,7 +2600,12 @@ async fn incompatible_compaction_blocks_cached_score_and_initial_cua_allowance()
         .await,
         Some(ReviewDecision::Approved)
     );
-    let authorization = fixture.test.codex.guardian_authorization_version().await;
+    let authorization = fixture
+        .test
+        .codex
+        .guardian_authorization_version()
+        .await
+        .unwrap();
     fixture
         .test
         .codex
@@ -2595,11 +2625,17 @@ async fn incompatible_compaction_blocks_cached_score_and_initial_cua_allowance()
     model.node_repl_auto_review_required = true;
     thread_store.insert(model);
     assert_eq!(
-        fixture.test.codex.guardian_authorization_version().await,
+        fixture
+            .test
+            .codex
+            .guardian_authorization_version()
+            .await
+            .unwrap(),
         authorization
     );
-    let score_authorization =
-        ScoreAuthorization::current(&fixture.test.codex, &Default::default()).await;
+    let score_authorization = ScoreAuthorization::current(&fixture.test.codex, &Default::default())
+        .await
+        .unwrap();
     let progress = thread_store
         .get::<GuardianV2ScoreProgress>()
         .expect("score progress");
@@ -2712,7 +2748,7 @@ async fn contributor_counts_failed_thread_lookups_toward_score_lag() -> Result<(
             tool_name: &tool_name,
             mcp_tool: None,
             payload: &payload,
-            conversation_history: test.codex.conversation_history_snapshot().await,
+            conversation_history: test.codex.conversation_history_snapshot().await.unwrap(),
             source: ToolCallSource::Direct,
         })
         .await;
@@ -3195,6 +3231,7 @@ async fn assert_parent_compaction_reuse(parent_context_for_review: bool) -> Resu
         .codex
         .conversation_history_snapshot()
         .await
+        .unwrap()
         .guardian_review_context_revision();
     let mut retained: Vec<ResponseItem> = serde_json::from_value(json!([
         {"type":"function_call", "name":"check_repository", "arguments":"{}", "call_id":"before"},
@@ -3430,14 +3467,18 @@ async fn cached_approval_discounts_only_its_own_unscored_wrapper() -> Result<()>
         &progress,
         store,
         wrapper,
-        ScoreAuthorization::current(&fixture.test.codex, &Default::default()).await,
+        ScoreAuthorization::current(&fixture.test.codex, &Default::default())
+            .await
+            .unwrap(),
     );
     assert_eq!(approve("third").await, None);
     seed_cached_score(
         &progress,
         store,
         wrapper + 3,
-        ScoreAuthorization::current(&fixture.test.codex, &Default::default()).await,
+        ScoreAuthorization::current(&fixture.test.codex, &Default::default())
+            .await
+            .unwrap(),
     );
     let output = start("output-only", &origin, ToolCallSource::Direct);
     let other = ResponseItemId::from_server("other-wrapper".to_owned());
@@ -3452,7 +3493,9 @@ async fn cached_approval_discounts_only_its_own_unscored_wrapper() -> Result<()>
         &progress,
         store,
         output,
-        ScoreAuthorization::current(&fixture.test.codex, &Default::default()).await,
+        ScoreAuthorization::current(&fixture.test.codex, &Default::default())
+            .await
+            .unwrap(),
     );
     assert_eq!(
         approve("other-second").await,
@@ -3576,7 +3619,9 @@ async fn cached_score_publication_rejects_delayed_results_without_changing_cover
     let fixture = GuardianFailureFixture::new().await?;
     let store = fixture.test.codex.thread_extension_data();
     let progress = store.get::<GuardianV2ScoreProgress>().unwrap();
-    let authorization = ScoreAuthorization::current(&fixture.test.codex, &Default::default()).await;
+    let authorization = ScoreAuthorization::current(&fixture.test.codex, &Default::default())
+        .await
+        .unwrap();
     seed_cached_score(&progress, store, /*index*/ 1, authorization.clone());
     let score = cached_score(store).unwrap();
     observe_unscored_call(&progress, store);

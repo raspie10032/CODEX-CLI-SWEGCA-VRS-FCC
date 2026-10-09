@@ -181,7 +181,7 @@ async fn record_answer(
         }],
     };
     thread.ensure_rollout_materialized().await;
-    let history = thread.conversation_history_snapshot().await;
+    let history = thread.conversation_history_snapshot().await.unwrap();
     let acceptance_order = history
         .retained_context()
         .context("retained answer context")?
@@ -340,7 +340,7 @@ async fn streamed_question_precedes_reply_across_resume(
     })
     .await;
 
-    let history = test.codex.conversation_history_snapshot().await;
+    let history = test.codex.conversation_history_snapshot().await.unwrap();
     let retained = history
         .retained_context()
         .context("live retained context")?;
@@ -372,6 +372,7 @@ async fn streamed_question_precedes_reply_across_resume(
         resumed
             .conversation_history_snapshot()
             .await
+            .unwrap()
             .retained_context(),
         Some(retained),
     );
@@ -556,7 +557,7 @@ async fn retained_instructions_keep_identity_across_compaction_and_resume(
             );
         }
     }
-    let history = thread.conversation_history_snapshot().await;
+    let history = thread.conversation_history_snapshot().await.unwrap();
     let retained = history.retained_context().context("retained originals")?;
     let revisions = retained
         .ordered_entries()
@@ -617,7 +618,7 @@ async fn retained_instructions_keep_identity_across_compaction_and_resume(
         serde_json::to_value(compact_and_assert_answers(&test, &thread, &answers).await?)?,
         expected
     );
-    let compacted = thread.conversation_history_snapshot().await;
+    let compacted = thread.conversation_history_snapshot().await.unwrap();
     assert!(!compacted.items().any(|item| {
         item.id()
             .is_some_and(|id| id.as_str() == "ordinary-question")
@@ -637,6 +638,7 @@ async fn retained_instructions_keep_identity_across_compaction_and_resume(
             thread
                 .conversation_history_snapshot()
                 .await
+                .unwrap()
                 .retained_context()
         )?,
         expected.clone()
@@ -709,7 +711,7 @@ async fn legacy_checkpoint_recovers_root_excerpt_before_discarding_backup(
         matches!(event, EventMsg::TurnComplete(_))
     })
     .await;
-    let snapshot = test.codex.conversation_history_snapshot().await;
+    let snapshot = test.codex.conversation_history_snapshot().await.unwrap();
     let source = snapshot
         .items()
         .find(|item| matches!(item, ResponseItem::Message { role, .. } if role == "user"))
@@ -760,6 +762,7 @@ async fn legacy_checkpoint_recovers_root_excerpt_before_discarding_backup(
         resumed
             .conversation_history_snapshot()
             .await
+            .unwrap()
             .retained_context(),
         Some(&expected)
     );
@@ -773,6 +776,7 @@ async fn legacy_checkpoint_recovers_root_excerpt_before_discarding_backup(
         resumed
             .conversation_history_snapshot()
             .await
+            .unwrap()
             .retained_context(),
         Some(&expected)
     );
@@ -880,7 +884,7 @@ async fn standalone_fork_retains_inherited_user_instructions(
         .await;
         compact_and_assert_answers(&test, &worker, &[]).await?;
     }
-    let worker_context = worker.conversation_history_snapshot().await;
+    let worker_context = worker.conversation_history_snapshot().await.unwrap();
     let inherited_text = worker_context
         .items()
         .find_map(|item| match item {
@@ -933,7 +937,7 @@ async fn standalone_fork_retains_inherited_user_instructions(
             .await?
     };
     assert!(fork.thread.guardian_root_snapshot().await.is_none());
-    let history = fork.thread.conversation_history_snapshot().await;
+    let history = fork.thread.conversation_history_snapshot().await.unwrap();
     let retained = history.retained_context().context("root context")?;
     let answers = codex_guardian_context::render_verified_answers(retained);
     assert_eq!(
@@ -967,6 +971,7 @@ async fn standalone_fork_retains_inherited_user_instructions(
         .thread
         .conversation_history_snapshot()
         .await
+        .unwrap()
         .retained_context()
         .context("root after local answer")?
         .clone();
@@ -977,6 +982,7 @@ async fn standalone_fork_retains_inherited_user_instructions(
     assert_eq!(
         root.conversation_history_snapshot()
             .await
+            .unwrap()
             .retained_context(),
         Some(&expected)
     );
@@ -1106,7 +1112,7 @@ async fn forked_parent_instructions_do_not_become_local_authorization(
         .find(|request| request.body_json()["client_metadata"]["thread_id"] == child_id)
         .context("child model request")?;
     assert!(serde_json::to_string(&child_request.input())?.contains(PARENT_GRANT));
-    let history = child.conversation_history_snapshot().await;
+    let history = child.conversation_history_snapshot().await.unwrap();
     assert_eq!(
         history.retained_context().map(|context| (
             context.ordered_entries().count(),
@@ -1160,7 +1166,7 @@ async fn forked_parent_instructions_do_not_become_local_authorization(
         }]))
         .await?;
     wait_for_event(&child, |event| matches!(event, EventMsg::TurnComplete(_))).await;
-    let history = child.conversation_history_snapshot().await;
+    let history = child.conversation_history_snapshot().await.unwrap();
     let expected = history.retained_context().cloned();
     assert_eq!(
         expected.as_ref().map(|context| context
@@ -1181,6 +1187,7 @@ async fn forked_parent_instructions_do_not_become_local_authorization(
         child
             .conversation_history_snapshot()
             .await
+            .unwrap()
             .retained_context(),
         expected.as_ref()
     );
@@ -1191,6 +1198,7 @@ async fn forked_parent_instructions_do_not_become_local_authorization(
         child
             .conversation_history_snapshot()
             .await
+            .unwrap()
             .retained_context(),
         expected.as_ref()
     );

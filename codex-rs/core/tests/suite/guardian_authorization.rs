@@ -189,7 +189,11 @@ async fn guardian_revalidates_owning_session_before_allow(
     }
     assert_eq!(
         GuardianContextMode::from_history(
-            test.codex.conversation_history_snapshot().await.as_ref()
+            test.codex
+                .conversation_history_snapshot()
+                .await
+                .unwrap()
+                .as_ref()
         ),
         review_mode,
     );
@@ -319,7 +323,7 @@ async fn guardian_authorization_revision_survives_compaction_not_user_input() ->
         .build_with_auto_env(&server)
         .await?;
     test.submit_text_turn("Inspect the deployment.").await?;
-    let mut expected = test.codex.guardian_authorization_version().await;
+    let mut expected = test.codex.guardian_authorization_version().await.unwrap();
 
     let internal_context = InternalModelContextFragment::new(
         InternalContextSource::from_static("goal"),
@@ -329,7 +333,10 @@ async fn guardian_authorization_revision_survives_compaction_not_user_input() ->
     test.codex
         .inject_response_items(vec![ContextualUserFragment::into(internal_context)])
         .await?;
-    assert_eq!(test.codex.guardian_authorization_version().await, expected);
+    assert_eq!(
+        test.codex.guardian_authorization_version().await.unwrap(),
+        expected
+    );
 
     // An explicit user goal edit invalidates cached authorization, unlike its continuation.
     test.codex
@@ -339,7 +346,10 @@ async fn guardian_authorization_revision_survives_compaction_not_user_input() ->
         })
         .await?;
     expected.user_message_revision += 1;
-    assert_eq!(test.codex.guardian_authorization_version().await, expected);
+    assert_eq!(
+        test.codex.guardian_authorization_version().await.unwrap(),
+        expected
+    );
 
     // The same text submitted by the user must invalidate, even if it looks internal.
     responses::mount_sse_once(
@@ -349,7 +359,10 @@ async fn guardian_authorization_revision_survives_compaction_not_user_input() ->
     .await;
     test.submit_text_turn(&notification_text).await?;
     expected.user_message_revision += 1;
-    assert_eq!(test.codex.guardian_authorization_version().await, expected);
+    assert_eq!(
+        test.codex.guardian_authorization_version().await.unwrap(),
+        expected
+    );
 
     // Failed image preparation must not turn a real user message into internal context.
     responses::mount_sse_once(
@@ -370,14 +383,20 @@ async fn guardian_authorization_revision_survives_compaction_not_user_input() ->
     })
     .await;
     expected.user_message_revision += 1;
-    assert_eq!(test.codex.guardian_authorization_version().await, expected);
+    assert_eq!(
+        test.codex.guardian_authorization_version().await.unwrap(),
+        expected
+    );
 
     test.codex.submit(Op::Compact).await?;
     wait_for_event(&test.codex, |event| {
         matches!(event, EventMsg::TurnComplete(_))
     })
     .await;
-    assert_eq!(test.codex.guardian_authorization_version().await, expected);
+    assert_eq!(
+        test.codex.guardian_authorization_version().await.unwrap(),
+        expected
+    );
 
     Ok(())
 }

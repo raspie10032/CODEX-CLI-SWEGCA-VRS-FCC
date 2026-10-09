@@ -380,7 +380,10 @@ impl Classification {
                 ),
                 sampled_at: Some(sampled_at.into()),
             };
-            if !score_authorization.is_current(&thread).await
+            if !score_authorization
+                .is_current(&thread)
+                .await
+                .map_err(|error| error.to_string())?
                 || generation
                     .as_ref()
                     .is_some_and(|generation| generation.strong_count() == 0)

@@ -9,6 +9,7 @@ use codex_extension_api::ToolFinishInput;
 use codex_extension_api::ToolStartInput;
 use codex_file_system::ExecutorFileSystem;
 use codex_protocol::mcp::CallToolResult;
+use codex_tools::FunctionCallError;
 use codex_tools::ToolName;
 use codex_utils_path_uri::PathUri;
 
@@ -21,17 +22,21 @@ use crate::tools::context::ToolInvocation;
 pub(crate) async fn notify_tool_start(
     invocation: &ToolInvocation,
     mcp_tool: Option<&McpToolContext>,
-) {
+) -> Result<(), FunctionCallError> {
     let contributors = invocation
         .session
         .services
         .extensions
         .tool_lifecycle_contributors();
     if contributors.is_empty() {
-        return;
+        return Ok(());
     }
     let thread_store = &invocation.session.services.thread_extension_data;
-    let conversation_history = invocation.session.conversation_history_snapshot().await;
+    let conversation_history = invocation
+        .session
+        .conversation_history_snapshot()
+        .await
+        .map_err(|error| FunctionCallError::Fatal(error.to_string()))?;
     let root_turn_id = invocation.turn.turn_metadata_state.root_turn_id();
     let originating_item_id = invocation
         .originating_call()
@@ -57,6 +62,7 @@ pub(crate) async fn notify_tool_start(
             })
             .await;
     }
+    Ok(())
 }
 
 pub(crate) async fn notify_command_start(

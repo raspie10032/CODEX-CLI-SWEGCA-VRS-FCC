@@ -2622,7 +2622,7 @@ async fn blocked_queued_prompt_does_not_strand_earlier_accepted_prompt() -> Resu
         "second request should not include the blocked queued prompt",
     );
 
-    let history = test.codex.conversation_history_snapshot().await;
+    let history = test.codex.conversation_history_snapshot().await.unwrap();
     assert!(history.retained_context().is_some());
     let retained = serde_json::to_value(history.retained_context().cloned().unwrap_or_default())?;
     let messages = retained["user_messages"]

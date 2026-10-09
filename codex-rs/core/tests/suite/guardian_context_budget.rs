@@ -82,7 +82,11 @@ async fn independent_review_preserves_oversized_instruction_order() -> Result<()
         super::guardian_checkpoint_migration::resume(&test, &test.codex, old_history).await?;
     assert_eq!(
         GuardianContextMode::from_history(
-            test.codex.conversation_history_snapshot().await.as_ref()
+            test.codex
+                .conversation_history_snapshot()
+                .await
+                .unwrap()
+                .as_ref()
         ),
         GuardianContextMode::Independent,
     );

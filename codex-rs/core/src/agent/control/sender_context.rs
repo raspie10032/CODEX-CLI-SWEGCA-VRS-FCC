@@ -10,6 +10,7 @@ use codex_history::RetainedContextEntry;
 use codex_history::RetainedContextOrder;
 use codex_history::SenderUserMessages;
 use codex_protocol::ThreadId;
+use codex_protocol::error::Result as CodexResult;
 use codex_protocol::models::ResponseItem;
 
 use super::LocalAgentRuntime;
@@ -20,7 +21,7 @@ impl LocalAgentRuntime {
         item: &ResponseItem,
         receiver_thread_id: ThreadId,
         receiver_turn_id: &str,
-    ) -> Option<SenderUserMessages> {
+    ) -> CodexResult<Option<SenderUserMessages>> {
         let ResponseItem::FunctionCallOutput {
             id: Some(id),
             call_id: None,
@@ -30,14 +31,14 @@ impl LocalAgentRuntime {
             ..
         } = item
         else {
-            return None;
+            return Ok(None);
         };
         if !matches!(
             (namespace.as_str(), name.as_str()),
             ("codex_app" | "codex_tui", "send_message_to_thread")
                 | ("cloud_threads", "send_message")
         ) {
-            return None;
+            return Ok(None);
         }
         // Recognized deliveries always get their own snapshot, even without usable provenance.
         let source_thread_id = output.body.to_text().and_then(|text| {
@@ -64,7 +65,7 @@ impl LocalAgentRuntime {
             && let Ok(manager) = self.upgrade()
             && let Ok(sender) = manager.get_thread(source_thread_id).await
         {
-            let history = sender.conversation_history_snapshot().await;
+            let history = sender.conversation_history_snapshot().await?;
             if let Some(context) = history.retained_context() {
                 let mut exchanges = Vec::new();
                 let mut assistant = None;
@@ -106,6 +107,6 @@ impl LocalAgentRuntime {
             text: fragment.render(),
         };
         snapshot.bound();
-        Some(snapshot)
+        Ok(Some(snapshot))
     }
 }

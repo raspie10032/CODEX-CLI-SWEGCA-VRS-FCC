@@ -3,6 +3,7 @@
 use codex_core::CodexThread;
 use codex_core::GuardianAuthorizationVersion;
 use codex_core::context::GuardianReviewEvidence;
+use codex_protocol::error::Result as CodexResult;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct ScoreAuthorization {
@@ -17,21 +18,21 @@ pub(super) struct ScoreAuthorization {
 }
 
 impl ScoreAuthorization {
-    pub(super) async fn is_current(&self, thread: &CodexThread) -> bool {
-        self == &Self::current(thread, &self.permissions).await
+    pub(super) async fn is_current(&self, thread: &CodexThread) -> CodexResult<bool> {
+        Ok(self == &Self::current(thread, &self.permissions).await?)
     }
 
     pub(super) async fn current(
         thread: &CodexThread,
         permissions: &codex_guardian_context::PermissionContext,
-    ) -> Self {
+    ) -> CodexResult<Self> {
         let root = thread.guardian_root_snapshot().await;
-        let history = thread.conversation_history_snapshot().await;
+        let history = thread.conversation_history_snapshot().await?;
         let local = thread
             .thread_extension_data()
             .get_or_init(GuardianReviewEvidence::default)
             .authorization_version(history.as_ref());
-        Self {
+        Ok(Self {
             permissions: permissions.clone(),
             settings: thread.thread_settings_snapshot().await,
             environments: thread
@@ -46,6 +47,6 @@ impl ScoreAuthorization {
             model: thread
                 .thread_extension_data()
                 .get::<codex_protocol::openai_models::ModelInfo>(),
-        }
+        })
     }
 }

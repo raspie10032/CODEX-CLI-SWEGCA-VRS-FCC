@@ -1201,7 +1201,11 @@ async fn fork_internal_session_uses_only_the_selected_history() {
         )
         .await
         .expect("fork internal reviewer");
-    let history = reviewer.thread.conversation_history_snapshot().await;
+    let history = reviewer
+        .thread
+        .conversation_history_snapshot()
+        .await
+        .unwrap();
     let mut actual = history.items().cloned().collect::<Vec<_>>();
     // Recording history assigns message IDs and provenance; compare the selected content.
     for item in &mut actual {

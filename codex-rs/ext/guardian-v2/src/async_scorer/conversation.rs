@@ -124,9 +124,17 @@ async fn run(
         let Ok(request) = queued.request.await else {
             continue;
         };
-        if generation.strong_count() == 0
-            || !request.authorization.is_current(&request.thread).await
-        {
+        let authorization_current = match request.authorization.is_current(&request.thread).await {
+            Ok(current) => current,
+            Err(error) => {
+                committed = None;
+                let _ = request
+                    .ready
+                    .send(Err(LunaSamplerError::ContextAssembly(error)));
+                continue;
+            }
+        };
+        if generation.strong_count() == 0 || !authorization_current {
             committed = None;
             let _ = request.ready.send(Err(LunaSamplerError::Superseded));
             continue;
@@ -179,7 +187,11 @@ async fn run(
         let history = sampler.sample_retained(prepared, request.ready).await;
         if let Some(history) = history
             && generation.strong_count() > 0
-            && request.authorization.is_current(&request.thread).await
+            && request
+                .authorization
+                .is_current(&request.thread)
+                .await
+                .is_ok_and(|current| current)
         {
             let mut truncations = super::truncation::ClassificationTruncations::default();
             truncations.extend(pending_truncations);

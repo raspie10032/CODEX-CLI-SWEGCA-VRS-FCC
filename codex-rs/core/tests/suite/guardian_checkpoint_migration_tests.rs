@@ -145,7 +145,7 @@ async fn independent_history_resume_filters_rolled_back_sources(compaction: &str
     thread.submit(Op::Compact).await?;
     finish_turn(&thread).await;
     mock.single_request();
-    let snapshot = thread.conversation_history_snapshot().await;
+    let snapshot = thread.conversation_history_snapshot().await.unwrap();
     assert!(
         !serde_json::to_string(&snapshot.review_items().collect::<Vec<_>>())?
             .contains("Synthetic parent summary")
@@ -161,7 +161,7 @@ async fn independent_history_resume_filters_rolled_back_sources(compaction: &str
         .await?;
     history.push(rollback);
     let thread = resume(&test, &thread, history).await?;
-    let snapshot = thread.conversation_history_snapshot().await;
+    let snapshot = thread.conversation_history_snapshot().await.unwrap();
     assert_eq!(
         snapshot.review_items().cloned().collect::<Vec<_>>(),
         vec![original]
@@ -231,7 +231,13 @@ pub(super) async fn migration_scenario() -> Result<Vec<responses::ResponsesReque
     test.codex.append_rollout_items(&history).await?;
     let thread = resume(&test, &test.codex, history).await?;
     assert_eq!(
-        GuardianContextMode::from_history(thread.conversation_history_snapshot().await.as_ref()),
+        GuardianContextMode::from_history(
+            thread
+                .conversation_history_snapshot()
+                .await
+                .unwrap()
+                .as_ref()
+        ),
         GuardianContextMode::Legacy
     );
 
@@ -284,7 +290,13 @@ pub(super) async fn migration_scenario() -> Result<Vec<responses::ResponsesReque
     let before_compaction = saved_history(&test, &thread).await?;
     let thread = resume(&test, &thread, before_compaction).await?;
     assert_eq!(
-        GuardianContextMode::from_history(thread.conversation_history_snapshot().await.as_ref()),
+        GuardianContextMode::from_history(
+            thread
+                .conversation_history_snapshot()
+                .await
+                .unwrap()
+                .as_ref()
+        ),
         GuardianContextMode::Legacy
     );
     let mut all_requests = answer.requests();
@@ -312,7 +324,7 @@ pub(super) async fn migration_scenario() -> Result<Vec<responses::ResponsesReque
         .await?;
     finish_turn(&thread).await;
     all_requests.extend(compaction.requests());
-    let after = thread.conversation_history_snapshot().await;
+    let after = thread.conversation_history_snapshot().await.unwrap();
     assert_eq!(
         (
             GuardianContextMode::from_history(after.as_ref()),
@@ -335,7 +347,11 @@ pub(super) async fn migration_scenario() -> Result<Vec<responses::ResponsesReque
         }
         assert_eq!(
             GuardianContextMode::from_history(
-                thread.conversation_history_snapshot().await.as_ref()
+                thread
+                    .conversation_history_snapshot()
+                    .await
+                    .unwrap()
+                    .as_ref()
             ),
             if checkpoint.is_some() {
                 GuardianContextMode::ThreadOwned
@@ -386,7 +402,7 @@ pub(super) async fn migration_scenario() -> Result<Vec<responses::ResponsesReque
     };
     // The answer has survived suffix replay, both compactions, and checkpoint replay.
     let thread = resume(&test, &thread, after_compaction).await?;
-    let history = thread.conversation_history_snapshot().await;
+    let history = thread.conversation_history_snapshot().await.unwrap();
     assert!(
         history
             .retained_context()

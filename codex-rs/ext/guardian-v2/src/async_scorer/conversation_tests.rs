@@ -24,7 +24,7 @@ async fn pending_request(
         .thread_extension_data()
         .get::<GuardianV2Config>()
         .unwrap();
-    let history = thread.conversation_history_snapshot().await;
+    let history = thread.conversation_history_snapshot().await.unwrap();
     let instructions = config.render_classifier_instructions(TEST_GUARDIAN_POLICY, "");
     let evidence = config.transcript.collect_context(ContextInput {
         target: ContextTarget::Async,
@@ -39,7 +39,9 @@ async fn pending_request(
         node_repl_images: None,
     })?;
     let (ready, score) = tokio::sync::oneshot::channel();
-    let authorization = ScoreAuthorization::current(&thread, &Default::default()).await;
+    let authorization = ScoreAuthorization::current(&thread, &Default::default())
+        .await
+        .unwrap();
     Ok((
         ConversationRequest {
             evidence,

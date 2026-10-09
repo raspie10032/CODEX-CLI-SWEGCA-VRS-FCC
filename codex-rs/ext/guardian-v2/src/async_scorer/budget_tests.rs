@@ -184,11 +184,15 @@ async fn assert_catalog_budget(evidence: BudgetEvidence) -> Result<()> {
                     .codex
                     .conversation_history_snapshot()
                     .await
+                    .unwrap()
                     .guardian_review_context_revision(),
             }),
-            BudgetEvidence::Image | BudgetEvidence::UserInstructions => {
-                fixture.test.codex.conversation_history_snapshot().await
-            }
+            BudgetEvidence::Image | BudgetEvidence::UserInstructions => fixture
+                .test
+                .codex
+                .conversation_history_snapshot()
+                .await
+                .unwrap(),
         };
         let thread_store = fixture.test.codex.thread_extension_data();
         if matches!(evidence, BudgetEvidence::UserInstructions) {
@@ -203,7 +207,9 @@ async fn assert_catalog_budget(evidence: BudgetEvidence) -> Result<()> {
             );
             let progress = thread_store.get::<GuardianV2ScoreProgress>().unwrap();
             let authorization =
-                ScoreAuthorization::current(&fixture.test.codex, &Default::default()).await;
+                ScoreAuthorization::current(&fixture.test.codex, &Default::default())
+                    .await
+                    .unwrap();
             seed_cached_score(&progress, thread_store, /*index*/ 0, authorization);
             assert_eq!(
                 cached_approval(

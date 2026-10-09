@@ -142,7 +142,14 @@ async fn cached_evidence(
     let max_action_bytes = TruncationPolicy::Tokens(config.max_action_tokens).byte_budget();
     let action_fits = serde_json::to_string_pretty(&action)
         .is_ok_and(|action| action.len().saturating_add(1) <= max_action_bytes);
-    let history = thread.conversation_history_snapshot().await;
+    let history = thread
+        .conversation_history_snapshot()
+        .await
+        .map_err(|error| {
+            tracing::warn!(%error, "Guardian V2 context assembly failed");
+            record_fast_decision(metrics, "deferred", "context_assembly_error");
+            GuardianReviewReason::ScoringFailure
+        })?;
     let cached = progress.inspect(input.tool_call_id);
     if !action_fits || cached.oversized {
         record_fast_decision(metrics, "deferred", "scoring_failure");
@@ -173,7 +180,13 @@ async fn cached_evidence(
         record_fast_decision(metrics, "deferred", "permission_resolution_error");
         return Err(GuardianReviewReason::AuthorizationChanged);
     };
-    let current = ScoreAuthorization::current(thread, permissions).await;
+    let current = ScoreAuthorization::current(thread, permissions)
+        .await
+        .map_err(|error| {
+            tracing::warn!(%error, "Guardian V2 context assembly failed");
+            record_fast_decision(metrics, "deferred", "context_assembly_error");
+            GuardianReviewReason::ScoringFailure
+        })?;
     // Classification may publish or fail while authorization is collected.
     let cached = progress.inspect(input.tool_call_id);
     if cached.oversized {
