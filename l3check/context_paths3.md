@@ -161,3 +161,35 @@ the original user item plus the new user item, while the old path is unchanged.
 The second injects offset exhaustion before seeding and checks the D5 request error
 preserves the failure reason and never wraps the offset. Existing protocol assertions
 were not relaxed.
+
+## Release warning cleanup: removed compaction task artifacts
+
+Design D7 (document lines 141–144) removes automatic/manual compaction and their
+trigger/task machinery. `AutoCompactFallbackPrompt` and its reexport had no
+remaining caller; both are removed. `TaskKind::Compact` had no production
+constructor after D7, so the variant and unreachable steering branch are removed.
+The protocol's historical `NonSteerableTurnKind::Compact` compatibility value is
+outside this internal task enum and remains unchanged.
+
+Class (c) fixture changes, justified by D7 rather than observed test output:
+
+- `session::turn_input_tests::rejects_non_regular_turns`: remove only the compact
+  matrix entry because the corresponding task can no longer exist. Retain the
+  Review fixture and both existing steering/result assertions.
+- `session::step_activation_tests::activation_fixture`: held tasks now use the
+  existing non-steerable Review kind. The fixture still exercises retained task
+  identity, captured settings, authorization and ordering; its assertions and
+  budgets are unchanged.
+- `session::step_activation_tests::delayed_activation_does_not_retarget_a_task`:
+  replacement held tasks likewise use Review. Replacement/context reuse cases
+  and their existing identity/settings assertions are unchanged.
+
+The test-only guardian helper still returns `Vec<RolloutItem>`, so that import is
+now `#[cfg(test)]` instead of being removed. Guardian V2's unused history binding
+is removed, while the fallible assembly expression is deliberately retained:
+the initial CUA fast approval returns before `ScoreAuthorization::current`, so
+removing the early check would permit that branch to bypass D5. Assembly errors
+continue to select `ScoringFailure` before any cached approval.
+
+No build or test was run for this cleanup by this subagent. Root owns serialized
+build/test validation. Formatting and diff validation are recorded separately.

@@ -30,6 +30,7 @@ use codex_guardian_reviewer::ReviewModel;
 use codex_guardian_reviewer::ReviewSessionResult;
 use codex_guardian_reviewer::SessionDisposition;
 use codex_history::InitialHistory;
+#[cfg(test)]
 use codex_history::RolloutItem;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::Personality;

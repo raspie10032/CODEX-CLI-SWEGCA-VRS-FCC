@@ -66,7 +66,6 @@ impl Default for ActiveTurn {
 pub(crate) enum TaskKind {
     Regular,
     Review,
-    Compact,
 }
 
 pub(crate) struct RunningTask {
@@ -97,7 +96,7 @@ pub(crate) struct TurnState {
     pub(crate) token_usage_at_turn_start: TokenUsage,
     pub(crate) token_usage_by_model: TurnTokenUsage,
     /// The last step captured for execution or selected from a speculative fallback.
-    /// Remains absent until a step is captured; standalone local compaction has no step.
+    /// Remains absent until a step is captured.
     pub(crate) last_known_step_context: Option<Arc<StepContext>>,
 }
 

@@ -142,7 +142,9 @@ async fn cached_evidence(
     let max_action_bytes = TruncationPolicy::Tokens(config.max_action_tokens).byte_budget();
     let action_fits = serde_json::to_string_pretty(&action)
         .is_ok_and(|action| action.len().saturating_add(1) <= max_action_bytes);
-    let history = thread
+    // Validate assembly before every approval path, including the initial CUA
+    // shortcut below, which returns before ScoreAuthorization::current.
+    thread
         .conversation_history_snapshot()
         .await
         .map_err(|error| {

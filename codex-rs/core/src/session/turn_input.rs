@@ -748,11 +748,6 @@ impl Session {
                     turn_kind: NonSteerableTurnKind::Review,
                 }));
             }
-            crate::state::TaskKind::Compact => {
-                return Ok(Err(NotSubmittedReason::ActiveTurnNotSteerable {
-                    turn_kind: NonSteerableTurnKind::Compact,
-                }));
-            }
         }
 
         if matches!(input, SubmittedTurnInput::UserInput { content, .. } if content.is_empty()) {

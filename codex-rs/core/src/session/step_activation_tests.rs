@@ -440,7 +440,7 @@ async fn activation_fixture(models: Vec<ModelInfo>) -> ActivationFixture {
             prepared,
             Vec::new(),
             HeldStepTask {
-                kind: TaskKind::Compact,
+                kind: TaskKind::Review,
                 finish: Arc::clone(&finish),
             },
         )
@@ -830,7 +830,7 @@ async fn delayed_activation_does_not_retarget_a_task(change: TaskChangeDuringLoo
                     Arc::clone(&replacement),
                     Vec::new(),
                     HeldStepTask {
-                        kind: TaskKind::Compact,
+                        kind: TaskKind::Review,
                         finish: Arc::new(Notify::new()),
                     },
                 )
