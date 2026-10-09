@@ -693,7 +693,7 @@ impl ContextManager {
                 ))
             })
             .collect();
-        let items = items
+        let items: Vec<ResponseItemEnvelope> = items
             .into_iter()
             .filter(|item| is_api_message(item, /*metadata*/ None))
             .map(|item| {
@@ -704,6 +704,11 @@ impl ContextManager {
                 ResponseItemEnvelope { item, metadata }
             })
             .collect();
+        // Reassembling an unchanged store is a read, not a new history revision.
+        // Guardian cursors and snapshots must retain their identity across such reads.
+        if self.items.as_ref() == &items && self.review_history.is_none() {
+            return;
+        }
         self.items = Arc::new(items);
         // Guardian must use the same assembly in every review mode. A compatibility
         // transcript from an earlier window must never replace the assembled items.

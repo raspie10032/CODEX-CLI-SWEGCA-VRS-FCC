@@ -158,6 +158,24 @@ fn assembled_history_is_the_only_guardian_transcript(mode: GuardianContextMode) 
 }
 
 #[test]
+fn repeated_assembly_preserves_the_history_revision() {
+    let mut history = ContextManager::new();
+    let assembled = vec![user_msg("the original request")];
+    history.replace_assembled(assembled.clone());
+    let version = history.history_version();
+
+    history.replace_assembled(assembled.clone());
+    assert_eq!(history.history_version(), version);
+    assert_eq!(
+        history.with_assembled_items(assembled).history_version(),
+        version
+    );
+
+    history.replace_assembled(vec![user_msg("a changed request")]);
+    assert!(history.history_version() > version);
+}
+
+#[test]
 fn delivered_assistant_context_invalidates_reviews_without_changing_authorization() {
     let revisions = |history: &ContextManager| {
         let snapshot = history.conversation_history_snapshot();
