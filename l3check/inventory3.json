@@ -1,0 +1,942 @@
+{
+  "source_head": "3530ac9a1c3fe78db45abbcf84c23dc4f5ed7059",
+  "captured_utc": "2026-10-09T12:07:52.391937+00:00",
+  "scope": "Tracked Rust files in current worktree; comments/fixtures counted by symbol grep. Call-path annotations manually reviewed; not a formal reachability proof.",
+  "tracked_rust_files": 5057,
+  "tracked_rust_combined_sha256": "6212b5c9715f2483fa72bf09d6b9e63dbbeb3583b5c8b955c94b45f93ec2a414",
+  "tracked_rust_dirty": [],
+  "builds_or_tests_run_by_inventory": false,
+  "compression": {
+    "run_auto_compact": [],
+    "compact_remote_v2": [],
+    "CompactTask": [],
+    "replace_compacted_history": [],
+    "model_auto_compact_token_limit": [
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/config.rs",
+        "line": 285,
+        "text": "pub model_auto_compact_token_limit: Option<i64>,",
+        "classification": "inert_configuration_or_protocol_compatibility_field"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/config.rs",
+        "line": 286,
+        "text": "pub model_auto_compact_token_limit_scope: Option<AutoCompactTokenLimitScope>,",
+        "classification": "inert_configuration_or_protocol_compatibility_field"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "line": 2100,
+        "text": "model_auto_compact_token_limit: None,",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "line": 2101,
+        "text": "model_auto_compact_token_limit_scope: None,",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "line": 2141,
+        "text": "model_auto_compact_token_limit: None,",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "line": 2142,
+        "text": "model_auto_compact_token_limit_scope: None,",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server/tests/common/config.rs",
+        "line": 172,
+        "text": "\"compact_prompt = \\\"{compact_prompt}\\\"\\nmodel_auto_compact_token_limit = {auto_compact_limit}\"",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server/tests/common/config_tests.rs",
+        "line": 59,
+        "text": "\"model_auto_compact_token_limit = 321\",",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/logging.rs",
+        "line": 589,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 100000\")",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/executor_mcp.rs",
+        "line": 1059,
+        "text": "\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 1024\\nmcp_oauth_credentials_store = \\\"file\\\"\\nmcp_oauth_callback_port = {global_callback_port}\"",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/external_agent_config.rs",
+        "line": 2508,
+        "text": "\"compact_prompt = \\\"Summarize the conversation.\\\"\\nmodel_auto_compact_token_limit = 200\",",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/guardian_v2_history_tests.rs",
+        "line": 262,
+        "text": ".with_root_config(\"approvals_reviewer = \\\"auto_review\\\"\\nmodel_auto_compact_token_limit = 1000000\")",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/mcp_server_status.rs",
+        "line": 1490,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 1024\")",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/mcp_tool.rs",
+        "line": 1624,
+        "text": "\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = {auto_compact_limit}\"",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/multi_agent_v2_developer_instructions.rs",
+        "line": 376,
+        "text": "\"developer_instructions = {PARENT_INSTRUCTIONS:?}\\nmodel_context_window = 100\\nmodel_auto_compact_token_limit = 90\\ncompact_prompt = {COMPACT_PROMPT:?}\"",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/selected_environment.rs",
+        "line": 29,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 100000\")",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/selected_environment.rs",
+        "line": 238,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 100000\")",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/thread_settings_update.rs",
+        "line": 701,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 200000\")",
+        "classification": "compatibility_test_config_or_fixture"
+      },
+      {
+        "file": "codex-rs/config/src/config_toml.rs",
+        "line": 181,
+        "text": "pub model_auto_compact_token_limit: Option<i64>,",
+        "classification": "inert_configuration_or_protocol_compatibility_field"
+      },
+      {
+        "file": "codex-rs/config/src/config_toml.rs",
+        "line": 185,
+        "text": "pub model_auto_compact_token_limit_scope: Option<AutoCompactTokenLimitScope>,",
+        "classification": "inert_configuration_or_protocol_compatibility_field"
+      },
+      {
+        "file": "codex-rs/protocol/src/config_types.rs",
+        "line": 43,
+        "text": "/// `model_auto_compact_token_limit`.",
+        "classification": "configuration_compatibility_documentation"
+      }
+    ]
+  },
+  "compression_counts": {
+    "run_auto_compact": 0,
+    "compact_remote_v2": 0,
+    "CompactTask": 0,
+    "replace_compacted_history": 0,
+    "model_auto_compact_token_limit": 21
+  },
+  "socket": {
+    "codex-rs/core/": [],
+    "codex-rs/core/src/": []
+  },
+  "socket_counts": {
+    "codex-rs/core/": 0,
+    "codex-rs/core/src/": 0
+  },
+  "clone_history": [
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 420,
+      "text": "let history = parent_thread.session.clone_history().await;",
+      "function": "wait_for_subagent_notification",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture wait_for_subagent_notification; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 463,
+      "text": ".clone_history()",
+      "function": "mcp_attribution_in_constructed_request",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture mcp_attribution_in_constructed_request; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 821,
+      "text": "let history = thread.session.clone_history().await;",
+      "function": "send_inter_agent_communication_without_turn_queues_message_without_triggering_turn",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture send_inter_agent_communication_without_turn_queues_message_without_triggering_turn; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 1895,
+      "text": "child_thread.session.clone_history().await.raw_items(),",
+      "function": "spawn_agent_fork_from_paginated_parent_uses_model_context_prefix",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_fork_from_paginated_parent_uses_model_context_prefix; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2055,
+      "text": "child_thread.session.clone_history().await.raw_items(),",
+      "function": "spawn_agent_without_fork_from_paginated_parent_stays_fresh_and_paginated",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_without_fork_from_paginated_parent_stays_fresh_and_paginated; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2166,
+      "text": ".clone_history()",
+      "function": "spawn_agent_fork_sanitizes_inherited_compaction_metadata",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_fork_sanitizes_inherited_compaction_metadata; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2307,
+      "text": "let clamped_history = clamped_child_thread.session.clone_history().await;",
+      "function": "spawn_agent_numeric_fork_from_compacted_paginated_parent_clamps_to_provable_turns",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_numeric_fork_from_compacted_paginated_parent_clamps_to_provable_turns; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2369,
+      "text": ".clone_history()",
+      "function": "spawn_agent_can_fork_parent_thread_history_with_sanitized_items",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_can_fork_parent_thread_history_with_sanitized_items; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2469,
+      "text": ".clone_history()",
+      "function": "spawn_agent_can_fork_parent_thread_history_with_sanitized_items",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_can_fork_parent_thread_history_with_sanitized_items; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2523,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "function": "spawn_agent_can_fork_parent_thread_history_with_sanitized_items",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_can_fork_parent_thread_history_with_sanitized_items; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2530,
+      "text": "assert!(assistant_position(&parent_thread.session.clone_history().await).is_some());",
+      "function": "spawn_agent_can_fork_parent_thread_history_with_sanitized_items",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_can_fork_parent_thread_history_with_sanitized_items; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2534,
+      "text": ".clone_history()",
+      "function": "spawn_agent_can_fork_parent_thread_history_with_sanitized_items",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_can_fork_parent_thread_history_with_sanitized_items; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2642,
+      "text": "let no_hint_history = no_hint_child_thread.session.clone_history().await;",
+      "function": "spawn_agent_can_fork_parent_thread_history_with_sanitized_items",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_can_fork_parent_thread_history_with_sanitized_items; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2873,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "function": "spawn_agent_fork_strips_parent_usage_hints_from_compacted_history",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_fork_strips_parent_usage_hints_from_compacted_history; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3067,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "function": "spawn_agent_full_fork_restores_instructions_after_compaction_discards_parent_fragment",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_full_fork_restores_instructions_after_compaction_discards_parent_fragment; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3290,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "function": "spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_once",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_once; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3497,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "function": "spawn_agent_fork_flushes_parent_rollout_before_loading_history",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_fork_flushes_parent_rollout_before_loading_history; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3637,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "function": "spawn_agent_fork_last_n_turns_keeps_only_recent_turns",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_fork_last_n_turns_keeps_only_recent_turns; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3778,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "function": "spawn_agent_fork_last_n_turns_drops_parent_startup_prefix_when_under_limit",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_fork_last_n_turns_drops_parent_startup_prefix_when_under_limit; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3914,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "function": "spawn_agent_fork_last_n_turns_strips_parent_usage_hints",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture spawn_agent_fork_last_n_turns_strips_parent_usage_hints; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 4303,
+      "text": "let root_history = root_thread.session.clone_history().await;",
+      "function": "multi_agent_v2_completion_ignores_dead_direct_parent",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture multi_agent_v2_completion_ignores_dead_direct_parent; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 4402,
+      "text": "let root_history = root_thread.session.clone_history().await;",
+      "function": "multi_agent_v2_completion_queues_message_for_direct_parent",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture multi_agent_v2_completion_queues_message_for_direct_parent; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 4436,
+      "text": "let history = parent_thread.session.clone_history().await;",
+      "function": "completion_watcher_notifies_parent_when_child_is_missing",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture completion_watcher_notifies_parent_when_child_is_missing; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 4885,
+      "text": "resumed_thread.session.clone_history().await.raw_items(),",
+      "function": "resume_agent_from_paginated_rollout_loads_model_context",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture resume_agent_from_paginated_rollout_loads_model_context; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/feedback.rs",
+      "line": 29,
+      "text": "let history = reviewer.clone_history().await;",
+      "function": "record_failed_review",
+      "classification": "diagnostic",
+      "indirect_model_influence": false,
+      "reason": "Failed-review raw items serialize to bounded opt-in diagnostic JSON: ext/guardian-reviewer/src/feedback.rs:85,105,118 -> feedback/src/guardian.rs:94. The sink stores feedback records; no prompt/model dispatch consumes this copy."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/input_budget_tests.rs",
+      "line": 78,
+      "text": "let history = session.clone_history().await;",
+      "function": "cancelled_startup_does_not_record_unselected_review_evidence",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture cancelled_startup_does_not_record_unselected_review_evidence; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/review_session_tests.rs",
+      "line": 35,
+      "text": "session.clone_history().await.history_version(),",
+      "function": "test_review_session",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture test_review_session; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/review_session_tests.rs",
+      "line": 115,
+      "text": "parent_history: session.clone_history().await,",
+      "function": "test_review_params",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture test_review_params; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/review_session_tests.rs",
+      "line": 571,
+      "text": ".clone_history()",
+      "function": "run_review_removes_trunk_when_event_stream_is_broken",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture run_review_removes_trunk_when_event_stream_is_broken; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/prompt_debug.rs",
+      "line": 107,
+      "text": ".clone_history()",
+      "function": "build_prompt_input_from_session",
+      "classification": "debug_api_projection",
+      "indirect_model_influence": false,
+      "reason": "Projects H into build_prompt then returns prompt.input to the debug API; prompt_debug.rs:76-80 shuts down its temporary thread and returns the data. No sampling dispatch follows. This is model-shaped debug output (Q1 A5), not proof that the value has no possible external consumer."
+    },
+    {
+      "file": "codex-rs/core/src/session/handlers.rs",
+      "line": 346,
+      "text": "let history = sess.clone_history().await;",
+      "function": "shutdown",
+      "classification": "telemetry",
+      "indirect_model_influence": false,
+      "reason": "Counts user boundaries for codex.conversation.turn.count at handlers.rs:351-355; then shuts down persistence. Response items are not passed to a request."
+    },
+    {
+      "file": "codex-rs/core/src/session/inject_tests.rs",
+      "line": 43,
+      "text": "let recorded = session.clone_history().await.into_annotated_items();",
+      "function": "harness_authored_configuration_updates_preserve_metadata_and_resume",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture harness_authored_configuration_updates_preserve_metadata_and_resume; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/mod.rs",
+      "line": 1495,
+      "text": "let history = self.clone_history().await;",
+      "function": "get_estimated_token_count",
+      "classification": "trace_only_numeric_estimate",
+      "indirect_model_influence": false,
+      "reason": "Returns Option<i64>; sole production caller is turn.rs:487 inside TRACE event_enabled and immediately logs it at 488-493. This particular clone does not drive the separate token_status/reminder logic. D4 permits token display."
+    },
+    {
+      "file": "codex-rs/core/src/session/mod.rs",
+      "line": 1704,
+      "text": "let history = self.clone_history().await;",
+      "function": "record_initial_history",
+      "classification": "memory_eligibility_control",
+      "indirect_model_influence": true,
+      "reason": "Finds a FunctionCallOutput without call_id, then marks DB memory_mode polluted (stream_events_utils.rs:168-183; state/src/runtime/memories.rs:630-651). No response-item payload is forwarded, but future memory-extraction eligibility changes (memories.rs:241 enabled filter). D3 excludes A17/A19 finished-rollout extraction at design:126; this is indirect model-work influence, not zero influence."
+    },
+    {
+      "file": "codex-rs/core/src/session/mod.rs",
+      "line": 4285,
+      "text": "state.clone_history()",
+      "function": "clone_history",
+      "classification": "forwarding_helper",
+      "indirect_model_influence": null,
+      "reason": "Forwards to state/session.rs:171-172 (self.history.clone) under the existing Session mutex. It has no independent sink; consumers are all other rows in this inventory, including explicitly identified metadata/control paths."
+    },
+    {
+      "file": "codex-rs/core/src/session/notification_tests.rs",
+      "line": 61,
+      "text": "let history = session.clone_history().await;",
+      "function": "task_finish_preserves_notification_budget_and_queued_user_input",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture task_finish_preserves_notification_budget_and_queued_user_input; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/retained_context_tests.rs",
+      "line": 55,
+      "text": "let history = session.clone_history().await;",
+      "function": "shutdown_retains_an_admitted_delivery_until_persistence_finishes",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture shutdown_retains_an_admitted_delivery_until_persistence_finishes; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/retained_context_tests.rs",
+      "line": 109,
+      "text": ".clone_history()",
+      "function": "confirmed_delivery_reserves_order_and_persists_before_a_fast_user_reply",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture confirmed_delivery_reserves_order_and_persists_before_a_fast_user_reply; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 89,
+      "text": "let original_sources = sources(session.clone_history().await.annotated_items());",
+      "function": "recorded_questions_share_queued_input_order_across_resume",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture recorded_questions_share_queued_input_order_across_resume; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 92,
+      "text": ".clone_history()",
+      "function": "recorded_questions_share_queued_input_order_across_resume",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture recorded_questions_share_queued_input_order_across_resume; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 107,
+      "text": "let history = session.clone_history().await;",
+      "function": "recorded_questions_share_queued_input_order_across_resume",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture recorded_questions_share_queued_input_order_across_resume; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 320,
+      "text": "raw_history_items(&session.state.lock().await.clone_history()),",
+      "function": "record_initial_history_reconstructs_typed_inter_agent_message",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_initial_history_reconstructs_typed_inter_agent_message; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 350,
+      "text": "&session.state.lock().await.clone_history()",
+      "function": "record_initial_history_ignores_security_risk_scores",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_initial_history_ignores_security_risk_scores; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 428,
+      "text": "raw_history_items(&session.clone_history().await),",
+      "function": "record_initial_history_restores_world_state_baseline",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_initial_history_restores_world_state_baseline; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2474,
+      "text": "let history = session.state.lock().await.clone_history();",
+      "function": "record_initial_history_reconstructs_resumed_transcript",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_initial_history_reconstructs_resumed_transcript; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2495,
+      "text": "let history = session.clone_history().await;",
+      "function": "record_conversation_items_stamps_missing_turn_id_and_preserves_existing_turn_id",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_conversation_items_stamps_missing_turn_id_and_preserves_existing_turn_id; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2684,
+      "text": "let live = session.clone_history().await;",
+      "function": "inter_agent_communication_waits_for_confirmed_delivery_persistence",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture inter_agent_communication_waits_for_confirmed_delivery_persistence; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2740,
+      "text": "let recorded_history = session.clone_history().await;",
+      "function": "record_inter_agent_communication_sets_turn_id_in_rollout_and_resume",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_inter_agent_communication_sets_turn_id_in_rollout_and_resume; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2796,
+      "text": "strip_response_item_ids(&raw_history_items(&resumed_session.clone_history().await)),",
+      "function": "record_inter_agent_communication_sets_turn_id_in_rollout_and_resume",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_inter_agent_communication_sets_turn_id_in_rollout_and_resume; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2824,
+      "text": "let live_history = session.clone_history().await;",
+      "function": "record_inter_agent_communication_preserves_item_id_in_rollout_and_resume",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_inter_agent_communication_preserves_item_id_in_rollout_and_resume; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2865,
+      "text": "let resumed_history = resumed_session.clone_history().await;",
+      "function": "record_inter_agent_communication_preserves_item_id_in_rollout_and_resume",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_inter_agent_communication_preserves_item_id_in_rollout_and_resume; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2969,
+      "text": "assert_eq!(session.clone_history().await.annotated_items(), &expected);",
+      "function": "annotated_history_uses_explicit_model_without_a_step",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture annotated_history_uses_explicit_model_without_a_step; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3016,
+      "text": "let history = session.state.lock().await.clone_history();",
+      "function": "prepares_image_failures_before_history_insertion",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture prepares_image_failures_before_history_insertion; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3095,
+      "text": "let history = session.state.lock().await.clone_history();",
+      "function": "prepares_resumed_history_before_installing_it",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture prepares_resumed_history_before_installing_it; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3207,
+      "text": "let history = session.clone_history().await;",
+      "function": "record_initial_history_new_defers_initial_context_until_first_turn",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_initial_history_new_defers_initial_context_until_first_turn; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3243,
+      "text": "let history_before_seed = session.state.lock().await.clone_history();",
+      "function": "resumed_history_injects_initial_context_on_first_context_update_only",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture resumed_history_injects_initial_context_on_first_context_update_only; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3253,
+      "text": "let history_after_seed = session.clone_history().await;",
+      "function": "resumed_history_injects_initial_context_on_first_context_update_only",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture resumed_history_injects_initial_context_on_first_context_update_only; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3265,
+      "text": "let history_after_second_seed = session.clone_history().await;",
+      "function": "resumed_history_injects_initial_context_on_first_context_update_only",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture resumed_history_injects_initial_context_on_first_context_update_only; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3893,
+      "text": "let history = session.state.lock().await.clone_history();",
+      "function": "record_initial_history_reconstructs_forked_transcript",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_initial_history_reconstructs_forked_transcript; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3937,
+      "text": "let live_history = session.clone_history().await;",
+      "function": "record_initial_history_assigns_and_persists_id_for_forked_response_item",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_initial_history_assigns_and_persists_id_for_forked_response_item; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 4191,
+      "text": "let history = session.clone_history().await;",
+      "function": "record_initial_history_forked_hydrates_previous_turn_settings",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_initial_history_forked_hydrates_previous_turn_settings; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 9914,
+      "text": "let previous_len = session.clone_history().await.raw_items().len();",
+      "function": "record_context_update_items",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_context_update_items; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 9921,
+      "text": "let history = session.clone_history().await;",
+      "function": "record_context_update_items",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_context_update_items; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 10239,
+      "text": "let history = session.clone_history().await;",
+      "function": "record_context_updates_includes_turn_context_fragments_on_steady_state_turns",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_context_updates_includes_turn_context_fragments_on_steady_state_turns; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 10541,
+      "text": "let history = session.clone_history().await;",
+      "function": "record_context_updates_and_set_reference_context_item_injects_full_context_when_baseline_missing",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_context_updates_and_set_reference_context_item_injects_full_context_when_baseline_missing; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 10594,
+      "text": "raw_history_items(&session.clone_history().await),",
+      "function": "record_context_updates_and_set_reference_context_item_persists_baseline_without_emitting_diffs",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture record_context_updates_and_set_reference_context_item_persists_baseline_without_emitting_diffs; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 11745,
+      "text": "let history = sess.clone_history().await;",
+      "function": "task_finish_emits_turn_item_lifecycle_for_leftover_pending_user_input",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture task_finish_emits_turn_item_lifecycle_for_leftover_pending_user_input; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 12356,
+      "text": "let history = sess.clone_history().await;",
+      "function": "abort_review_task_emits_exited_then_aborted_and_records_history",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture abort_review_task_emits_exited_then_aborted_and_records_history; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/test_support.rs",
+      "line": 81,
+      "text": "let history = thread.session.clone_history().await;",
+      "function": "history_with_tool_call_metadata",
+      "classification": "public_test_support_diagnostic",
+      "indirect_model_influence": false,
+      "reason": "Public test-support helper reads D4 diagnostic metadata and performs no request. All five in-tree callers are core/tests/suite/code_mode.rs assertions (2418,2613,2745,2889,3029). Module is public, NOT cfg(test); external callers are outside this repository reachability audit."
+    },
+    {
+      "file": "codex-rs/core/src/thread_manager_tests.rs",
+      "line": 1508,
+      "text": ".clone_history()",
+      "function": "contribute",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture contribute; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    },
+    {
+      "file": "codex-rs/core/src/tools/context.rs",
+      "line": 105,
+      "text": ".clone_history()",
+      "function": "originating_call",
+      "classification": "tool_origin_control",
+      "indirect_model_influence": true,
+      "reason": "Extracts only matching call item ID plus current window ID, never ResponseItem text. D4 explicitly permits tool-origin lookup (design:128). ID flows through tools/lifecycle.rs:41-60 to Guardian WrapperLag (ext/guardian-v2/src/async_scorer/wrapper_lag.rs:25-68; score.rs:163), affecting score reuse/fallback decisions; also passes through code-mode and MCP execution approval context. This is indirect control influence, not accumulated-history model input."
+    },
+    {
+      "file": "codex-rs/core/src/tools/handlers/extension_tools.rs",
+      "line": 460,
+      "text": ".clone_history()",
+      "function": "passes_step_node_repl_flag_and_scoped_turn_item_emitter_to_extension_call",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Function passes_step_node_repl_flag_and_scoped_turn_item_emitter_to_extension_call is inside #[cfg(test)] mod tests at extension_tools.rs:225-226; fixture/assertion only."
+    },
+    {
+      "file": "codex-rs/core/src/tools/router_tests.rs",
+      "line": 553,
+      "text": ".clone_history()",
+      "function": "extension_tool_executors_are_model_visible_and_dispatchable",
+      "classification": "test",
+      "indirect_model_influence": false,
+      "reason": "Test-only function/fixture extension_tool_executors_are_model_visible_and_dispatchable; reads/asserts host history in a test module, no production model request sink. Test execution may use model mocks; this is not a claim the test cannot send requests."
+    }
+  ],
+  "clone_history_count": 73,
+  "clone_class_counts": {
+    "test": 65,
+    "diagnostic": 1,
+    "debug_api_projection": 1,
+    "telemetry": 1,
+    "trace_only_numeric_estimate": 1,
+    "memory_eligibility_control": 1,
+    "forwarding_helper": 1,
+    "public_test_support_diagnostic": 1,
+    "tool_origin_control": 1
+  },
+  "indirect_model_control_clones": [
+    {
+      "file": "codex-rs/core/src/session/mod.rs",
+      "line": 1704,
+      "text": "let history = self.clone_history().await;",
+      "function": "record_initial_history",
+      "classification": "memory_eligibility_control",
+      "indirect_model_influence": true,
+      "reason": "Finds a FunctionCallOutput without call_id, then marks DB memory_mode polluted (stream_events_utils.rs:168-183; state/src/runtime/memories.rs:630-651). No response-item payload is forwarded, but future memory-extraction eligibility changes (memories.rs:241 enabled filter). D3 excludes A17/A19 finished-rollout extraction at design:126; this is indirect model-work influence, not zero influence."
+    },
+    {
+      "file": "codex-rs/core/src/tools/context.rs",
+      "line": 105,
+      "text": ".clone_history()",
+      "function": "originating_call",
+      "classification": "tool_origin_control",
+      "indirect_model_influence": true,
+      "reason": "Extracts only matching call item ID plus current window ID, never ResponseItem text. D4 explicitly permits tool-origin lookup (design:128). ID flows through tools/lifecycle.rs:41-60 to Guardian WrapperLag (ext/guardian-v2/src/async_scorer/wrapper_lag.rs:25-68; score.rs:163), affecting score reuse/fallback decisions; also passes through code-mode and MCP execution approval context. This is indirect control influence, not accumulated-history model input."
+    }
+  ],
+  "accumulated_response_item_fallback_found": false,
+  "fallback_scope": "Listed clone_history consumers and D3 entry points only; permitted host metadata and control effects are explicit and are not claimed to have no influence.",
+  "rust_new_path_synchronization": {
+    "new_lock_types_or_init_wait": [],
+    "writer_barrier_or_ready_poll": [],
+    "existing_session_mutex_access": [
+      {
+        "file": "codex-rs/core/src/session/vrs_input.rs",
+        "line": 101,
+        "text": ".lock()"
+      },
+      {
+        "file": "codex-rs/core/src/session/vrs_input.rs",
+        "line": 236,
+        "text": "let mut state = self.state.lock().await;"
+      },
+      {
+        "file": "codex-rs/core/src/session/vrs_input.rs",
+        "line": 257,
+        "text": "let state = self.state.lock().await;"
+      },
+      {
+        "file": "codex-rs/core/src/session/vrs_input.rs",
+        "line": 280,
+        "text": ".lock()"
+      },
+      {
+        "file": "codex-rs/core/src/session/vrs_input.rs",
+        "line": 292,
+        "text": "let history_mode = self.state.lock().await.session_configuration.history_mode;"
+      }
+    ],
+    "atomic_CAS": [
+      {
+        "file": "codex-rs/vrs/src/lib.rs",
+        "line": 156,
+        "text": ".compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)"
+      },
+      {
+        "file": "codex-rs/core/src/session/vrs_input.rs",
+        "line": 303,
+        "text": ".fetch_update(Ordering::Relaxed, Ordering::Relaxed, |offset| {"
+      },
+      {
+        "file": "codex-rs/core/src/state/vrs_live_cache.rs",
+        "line": 47,
+        "text": ".compare_exchange(PENDING, CANCELLED, Ordering::Release, Ordering::Relaxed);"
+      }
+    ]
+  },
+  "rust_wait_scope": "Three new production modules only plus manually audited recorder CAS/write path. Session Mutex and existing rollout queue/durability writer remain. Synchronous FFI enters external C code; no end-to-end no-wait claim.",
+  "c_library_separate_evidence": {
+    "library": "$WORK/vrsint/libvrs.a",
+    "sha256": "493759a11d4cf341cf13c70ea4548ffa285b182e9ef405fa404f60924845c61a",
+    "source": "$WORK/vrsint/vrs_lib.cpp",
+    "source_sha256": "21ba6146899e8d1b9673e1f78f74d5c9be3d4abd525eb915947d43d5cee485ea",
+    "nm_exit_code": 0,
+    "defined_symbols": [
+      "0000000000037400 T vrs_assemble_b",
+      "000000000002e000 T vrs_insert",
+      "0000000000038340 T vrs_open",
+      "0000000000017880 T vrs_written"
+    ],
+    "source_findings": [
+      {
+        "file": "$WORK/vrsint/vrs_lib.cpp",
+        "line": 3113,
+        "text": "while (!done.load(std::memory_order_acquire)) { waited = true; std::this_thread::yield(); }"
+      },
+      {
+        "file": "$WORK/vrsint/vrs_lib.cpp",
+        "line": 3126,
+        "text": "if (!uw_del(S, *ss, off)) { S.uw_unknown.fetch_add(1, std::memory_order_relaxed); return -3; }"
+      }
+    ],
+    "existing_runtime_probe": {
+      "command": "taskset -c 0-11 timeout 20s l3check/library_deferred3",
+      "exit_code": 1,
+      "seconds": 0.0063520519906887785,
+      "stdout": "open=0 ready=1 insert=0 written=-3 expected_written=0\n",
+      "stderr": "",
+      "library_sha256": "493759a11d4cf341cf13c70ea4548ffa285b182e9ef405fa404f60924845c61a"
+    },
+    "runtime_probe_reexecuted": false,
+    "e3_3_global_pass": false
+  },
+  "limitations": [
+    "No build, test, readiness, or integration success follows from this inventory.",
+    "Byte-based request estimates are not tokenizer-exact I4 proof.",
+    "C insertion owner wait remains a source-level E3-3 conflict.",
+    "The saved deferred-file probe reports written=-3; it was not rerun by this audit.",
+    "D4 reconciliation uses conservative Rust cut semantics from VI-32, not an exact C snapshot watermark."
+  ]
+}

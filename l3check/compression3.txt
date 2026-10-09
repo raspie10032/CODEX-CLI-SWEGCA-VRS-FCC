@@ -1,0 +1,33 @@
+Source HEAD: 3530ac9a1c3fe78db45abbcf84c23dc4f5ed7059
+Tracked Rust files in current worktree; comments/fixtures counted by symbol grep. Call-path annotations manually reviewed; not a formal reachability proof.
+
+run_auto_compact: 0 matching occurrences
+
+compact_remote_v2: 0 matching occurrences
+
+CompactTask: 0 matching occurrences
+
+replace_compacted_history: 0 matching occurrences
+
+model_auto_compact_token_limit: 21 matching occurrences
+codex-rs/app-server-protocol/src/protocol/v2/config.rs:285: pub model_auto_compact_token_limit: Option<i64>, [inert_configuration_or_protocol_compatibility_field]
+codex-rs/app-server-protocol/src/protocol/v2/config.rs:286: pub model_auto_compact_token_limit_scope: Option<AutoCompactTokenLimitScope>, [inert_configuration_or_protocol_compatibility_field]
+codex-rs/app-server-protocol/src/protocol/v2/tests.rs:2100: model_auto_compact_token_limit: None, [compatibility_test_config_or_fixture]
+codex-rs/app-server-protocol/src/protocol/v2/tests.rs:2101: model_auto_compact_token_limit_scope: None, [compatibility_test_config_or_fixture]
+codex-rs/app-server-protocol/src/protocol/v2/tests.rs:2141: model_auto_compact_token_limit: None, [compatibility_test_config_or_fixture]
+codex-rs/app-server-protocol/src/protocol/v2/tests.rs:2142: model_auto_compact_token_limit_scope: None, [compatibility_test_config_or_fixture]
+codex-rs/app-server/tests/common/config.rs:172: "compact_prompt = \"{compact_prompt}\"\nmodel_auto_compact_token_limit = {auto_compact_limit}" [compatibility_test_config_or_fixture]
+codex-rs/app-server/tests/common/config_tests.rs:59: "model_auto_compact_token_limit = 321", [compatibility_test_config_or_fixture]
+codex-rs/app-server/tests/suite/logging.rs:589: .with_root_config("compact_prompt = \"compact\"\nmodel_auto_compact_token_limit = 100000") [compatibility_test_config_or_fixture]
+codex-rs/app-server/tests/suite/v2/executor_mcp.rs:1059: "compact_prompt = \"compact\"\nmodel_auto_compact_token_limit = 1024\nmcp_oauth_credentials_store = \"file\"\nmcp_oauth_callback_port = {global_callback_port}" [compatibility_test_config_or_fixture]
+codex-rs/app-server/tests/suite/v2/external_agent_config.rs:2508: "compact_prompt = \"Summarize the conversation.\"\nmodel_auto_compact_token_limit = 200", [compatibility_test_config_or_fixture]
+codex-rs/app-server/tests/suite/v2/guardian_v2_history_tests.rs:262: .with_root_config("approvals_reviewer = \"auto_review\"\nmodel_auto_compact_token_limit = 1000000") [compatibility_test_config_or_fixture]
+codex-rs/app-server/tests/suite/v2/mcp_server_status.rs:1490: .with_root_config("compact_prompt = \"compact\"\nmodel_auto_compact_token_limit = 1024") [compatibility_test_config_or_fixture]
+codex-rs/app-server/tests/suite/v2/mcp_tool.rs:1624: "compact_prompt = \"compact\"\nmodel_auto_compact_token_limit = {auto_compact_limit}" [compatibility_test_config_or_fixture]
+codex-rs/app-server/tests/suite/v2/multi_agent_v2_developer_instructions.rs:376: "developer_instructions = {PARENT_INSTRUCTIONS:?}\nmodel_context_window = 100\nmodel_auto_compact_token_limit = 90\ncompact_prompt = {COMPACT_PROMPT:?}" [compatibility_test_config_or_fixture]
+codex-rs/app-server/tests/suite/v2/selected_environment.rs:29: .with_root_config("compact_prompt = \"compact\"\nmodel_auto_compact_token_limit = 100000") [compatibility_test_config_or_fixture]
+codex-rs/app-server/tests/suite/v2/selected_environment.rs:238: .with_root_config("compact_prompt = \"compact\"\nmodel_auto_compact_token_limit = 100000") [compatibility_test_config_or_fixture]
+codex-rs/app-server/tests/suite/v2/thread_settings_update.rs:701: .with_root_config("compact_prompt = \"compact\"\nmodel_auto_compact_token_limit = 200000") [compatibility_test_config_or_fixture]
+codex-rs/config/src/config_toml.rs:181: pub model_auto_compact_token_limit: Option<i64>, [inert_configuration_or_protocol_compatibility_field]
+codex-rs/config/src/config_toml.rs:185: pub model_auto_compact_token_limit_scope: Option<AutoCompactTokenLimitScope>, [inert_configuration_or_protocol_compatibility_field]
+codex-rs/protocol/src/config_types.rs:43: /// `model_auto_compact_token_limit`. [configuration_compatibility_documentation]
