@@ -89,6 +89,7 @@ pub struct RolloutRecorder {
     writer_task: Arc<RolloutWriterTask>,
     pub(crate) rollout_path: PathBuf,
     reservations: Arc<RolloutReservations>,
+    repaired_on_resume: bool,
 }
 
 #[derive(Clone)]
@@ -898,7 +899,7 @@ impl RolloutRecorder {
     ) -> std::io::Result<Self> {
         // Clone the cwd for the spawned task to collect git info asynchronously.
         let cwd = config.cwd().to_path_buf();
-        let (state, reservations) = match params {
+        let (state, reservations, repaired_on_resume) = match params {
             RolloutRecorderParams::Create {
                 session_id,
                 conversation_id,
@@ -982,10 +983,11 @@ impl RolloutRecorder {
                         last_logged_error: None,
                     },
                     reservations,
+                    false,
                 )
             }
             RolloutRecorderParams::Resume { path } => {
-                let (path, file, ordinal_state) =
+                let (path, file, ordinal_state, repaired) =
                     open_rollout_for_append(path.as_path(), writer_lock.clone()).await?;
                 let reservations = Arc::new(RolloutReservations::new(
                     ordinal_state,
@@ -1001,6 +1003,7 @@ impl RolloutRecorder {
                         last_logged_error: None,
                     },
                     reservations,
+                    repaired,
                 )
             }
         };
@@ -1036,11 +1039,18 @@ impl RolloutRecorder {
             writer_task,
             rollout_path,
             reservations,
+            repaired_on_resume,
         })
     }
 
     pub fn rollout_path(&self) -> &Path {
         self.rollout_path.as_path()
+    }
+
+    /// Whether opening this recorder repaired a tail or abandoned byte reservation.
+    /// A snapshot captured before such recovery is not the complete recovered history.
+    pub fn repaired_on_resume(&self) -> bool {
+        self.repaired_on_resume
     }
 
     pub async fn record_canonical_items(&self, items: &[RolloutItem]) -> std::io::Result<()> {
@@ -1988,7 +1998,7 @@ pub async fn append_rollout_item_to_path(
     rollout_path: &Path,
     item: &RolloutItem,
 ) -> std::io::Result<()> {
-    let (rollout_path, file, ordinal_state) =
+    let (rollout_path, file, ordinal_state, _) =
         open_rollout_for_append(rollout_path, /*writer_lock*/ None).await?;
     let reservations = RolloutReservations::new(ordinal_state, file.metadata()?.len());
     let line = reservations.insert(&rollout_path, item)?;
@@ -1999,12 +2009,12 @@ pub async fn append_rollout_item_to_path(
 async fn open_rollout_for_append(
     path: &Path,
     writer_lock: Option<Arc<crate::WriterLockGuard>>,
-) -> std::io::Result<(PathBuf, File, RolloutOrdinalState)> {
+) -> std::io::Result<(PathBuf, File, RolloutOrdinalState, bool)> {
     let refresh_modified_time =
         !tokio::fs::try_exists(compression::plain_rollout_path(path)).await?;
     let path = compression::materialize_rollout_for_append(path, writer_lock.clone()).await?;
     let path_for_open = path.clone();
-    let (file, ordinal_state) = tokio::task::spawn_blocking(move || {
+    let (file, ordinal_state, repaired) = tokio::task::spawn_blocking(move || {
         let _writer_lock = writer_lock;
         let mut file = File::options()
             .read(true)
@@ -2013,25 +2023,26 @@ async fn open_rollout_for_append(
         if refresh_modified_time {
             file.set_times(std::fs::FileTimes::new().set_modified(std::time::SystemTime::now()))?;
         }
-        seal_abandoned_rollout_holes(&mut file)?;
-        ensure_rollout_is_newline_terminated(&mut file)?;
+        let holes_repaired = seal_abandoned_rollout_holes(&mut file)?;
+        let tail_repaired = ensure_rollout_is_newline_terminated(&mut file)?;
         let ordinal_state = ordinal_state_for_rollout(&mut file, path_for_open.as_path())?;
-        Ok::<_, std::io::Error>((file, ordinal_state))
+        Ok::<_, std::io::Error>((file, ordinal_state, holes_repaired || tail_repaired))
     })
     .await
     .map_err(IoError::other)??;
-    Ok((path, file, ordinal_state))
+    Ok((path, file, ordinal_state, repaired))
 }
 
 /// Called only while opening an exclusively owned, inactive rollout for append. Persisting
 /// blank lines in abandoned reservations preserves the file size and every valid record's byte
 /// offset. Subsequent live readers can therefore stop at new NUL holes without confusing them
 /// with holes from a previous writer. Interior NUL bytes remain corruption, not reservations.
-fn seal_abandoned_rollout_holes(file: &mut File) -> std::io::Result<()> {
+fn seal_abandoned_rollout_holes(file: &mut File) -> std::io::Result<bool> {
     file.seek(SeekFrom::Start(0))?;
     let mut bytes = [0; 64 * 1024];
     let mut offset = 0;
     let mut at_record_start = true;
+    let mut repaired = false;
     loop {
         let len = file.read(&mut bytes)?;
         if len == 0 {
@@ -2046,6 +2057,7 @@ fn seal_abandoned_rollout_holes(file: &mut File) -> std::io::Result<()> {
                     position += 1;
                 }
                 write_all_at(file, &bytes[start..position], offset + start as u64)?;
+                repaired = true;
             } else {
                 at_record_start = bytes[position] == b'\n';
                 position += 1;
@@ -2053,7 +2065,8 @@ fn seal_abandoned_rollout_holes(file: &mut File) -> std::io::Result<()> {
         }
         offset += len as u64;
     }
-    file.flush()
+    file.flush()?;
+    Ok(repaired)
 }
 
 fn write_all_at(file: &File, bytes: &[u8], offset: u64) -> std::io::Result<()> {
@@ -2077,9 +2090,9 @@ fn write_all_at(file: &File, bytes: &[u8], offset: u64) -> std::io::Result<()> {
     }
 }
 
-fn ensure_rollout_is_newline_terminated(file: &mut File) -> std::io::Result<()> {
+fn ensure_rollout_is_newline_terminated(file: &mut File) -> std::io::Result<bool> {
     if file.metadata()?.len() == 0 {
-        return Ok(());
+        return Ok(false);
     }
 
     file.seek(SeekFrom::End(-1))?;
@@ -2088,8 +2101,9 @@ fn ensure_rollout_is_newline_terminated(file: &mut File) -> std::io::Result<()> 
     if final_byte[0] != b'\n' {
         file.write_all(b"\n")?;
         file.flush()?;
+        return Ok(true);
     }
-    Ok(())
+    Ok(false)
 }
 
 /// An immutable line published to VRS before it is queued for disk persistence.

@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
@@ -49,6 +50,7 @@ use crate::DeleteThreadParams;
 use crate::ForkBoundary;
 use crate::ListThreadsParams;
 use crate::ListTurnsParams;
+use crate::LoadThreadHistoryParams;
 use crate::PersistContext;
 use crate::PrepareForkParams;
 use crate::PreparedFork;
@@ -3016,12 +3018,20 @@ async fn resume_seals_old_holes_but_live_projection_stops_at_new_holes() {
         .expect("live read before recovery");
     assert!(steps.is_empty());
     assert_eq!(end, metadata_len);
-    store
+    let snapshot = store
+        .load_history(LoadThreadHistoryParams {
+            thread_id,
+            include_archived: false,
+        })
+        .await
+        .expect("read snapshot before recovery");
+    let history = Arc::new(snapshot.items);
+    let resumed = store
         .resume_thread(ResumeThreadParams {
-            history_revision: None,
+            history_revision: snapshot.revision,
             thread_id,
             rollout_path: Some(path.clone()),
-            history: None,
+            history: Some(Arc::clone(&history)),
             include_archived: false,
             metadata: ThreadPersistenceMetadata {
                 cwd: Some(home.path().to_path_buf()),
@@ -3031,6 +3041,14 @@ async fn resume_seals_old_holes_but_live_projection_stops_at_new_holes() {
         })
         .await
         .expect("recover inactive holes");
+    assert!(
+        !Arc::ptr_eq(&history, &resumed),
+        "recovery must invalidate a matching physical revision captured before the hole"
+    );
+    assert!(resumed.iter().any(|item| matches!(
+        item,
+        RolloutItem::EventMsg(EventMsg::TurnComplete(event)) if event.turn_id == "recovered"
+    )));
     let after = fs::read(&path).expect("sealed holes");
     assert_eq!(before.len(), after.len());
     for (before, after) in before.iter().zip(&after) {

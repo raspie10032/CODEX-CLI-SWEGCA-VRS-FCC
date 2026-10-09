@@ -86,6 +86,10 @@ pub(super) async fn resume_thread(
         model_provider_id: params.metadata.model_provider.clone(),
         generate_memories: matches!(params.metadata.memory_mode, ThreadMemoryMode::Enabled),
     };
+    // Materializing a compressed file changes its physical revision without changing its
+    // history. Validate the supplied snapshot under ownership before that conversion.
+    let reusable_snapshot = params.history_revision.is_some()
+        && params.history_revision == super::history_revision::read(&rollout_path).await;
     let recorder = RolloutRecorder::new_with_writer_lock(
         &config,
         RolloutRecorderParams::resume(rollout_path.clone()),
@@ -106,13 +110,7 @@ pub(super) async fn resume_thread(
         {
             history
         }
-        Some(history)
-            if params.history_revision.is_some()
-                && params.history_revision
-                    == super::history_revision::read(&rollout_path).await =>
-        {
-            history
-        }
+        Some(history) if reusable_snapshot && !recorder.repaired_on_resume() => history,
         _ => Arc::new(
             super::model_context::load_from_rollout_path(store, params.thread_id, &rollout_path)
                 .await?

@@ -143,15 +143,20 @@ fn write_session_file(root: &Path, ts: &str, uuid: Uuid) -> std::io::Result<Path
     Ok(path)
 }
 
-#[test]
-fn append_repair_terminates_nonempty_rollout_tail() -> std::io::Result<()> {
+#[tokio::test]
+async fn append_repair_terminates_nonempty_rollout_tail() -> std::io::Result<()> {
     let home = TempDir::new().expect("temp dir");
     let rollout_path = home.path().join("rollout.jsonl");
-    fs::write(&rollout_path, b"{\"type\":\"event_msg\"}")?;
-    drop(open_log_file(&rollout_path)?);
-    drop(open_log_file(&rollout_path)?);
+    write_paginated_rollout(&rollout_path, ThreadId::default(), &[1])?;
+    let expected = fs::read(&rollout_path)?;
+    assert_eq!(expected.last(), Some(&b'\n'));
+    fs::write(&rollout_path, &expected[..expected.len() - 1])?;
+    // A live writer may reopen an out-of-order reservation. Only an exclusively
+    // resumed rollout can repair its abandoned tail before allocating more bytes.
+    drop(open_rollout_for_append(&rollout_path, /*writer_lock*/ None).await?);
+    drop(open_rollout_for_append(&rollout_path, /*writer_lock*/ None).await?);
 
-    assert_eq!(fs::read(&rollout_path)?, b"{\"type\":\"event_msg\"}\n");
+    assert_eq!(fs::read(&rollout_path)?, expected);
     Ok(())
 }
 
@@ -1914,8 +1919,8 @@ async fn resumed_reservations_start_at_existing_file_size() -> std::io::Result<(
     let home = TempDir::new().expect("temp dir");
     let config = test_config(home.path());
     let path = home.path().join("rollout.jsonl");
-    let original = encode_rollout_line(&agent_message_item("existing"), None)?;
-    fs::write(&path, &original)?;
+    write_paginated_rollout(&path, ThreadId::default(), &[1])?;
+    let original = fs::read(&path)?;
     let recorder =
         RolloutRecorder::new(&config, RolloutRecorderParams::resume(path.clone())).await?;
     recorder
@@ -1923,8 +1928,9 @@ async fn resumed_reservations_start_at_existing_file_size() -> std::io::Result<(
         .await?;
     recorder.shutdown().await?;
     let bytes = fs::read(path)?;
-    assert_eq!(&bytes[..original.len()], original.as_bytes());
+    assert_eq!(&bytes[..original.len()], original.as_slice());
     let appended = crate::parse_rollout_line_bytes(&bytes[original.len()..])?;
+    assert_eq!(appended.ordinal, Some(2));
     assert!(matches!(
         appended.item,
         RolloutItem::ResponseItem(_) | RolloutItem::EventMsg(_)
