@@ -1,0 +1,26 @@
+{
+  "command": [
+    "taskset",
+    "-c",
+    "0-11",
+    "cargo",
+    "build",
+    "--release",
+    "-j",
+    "10",
+    "-p",
+    "codex-cli"
+  ],
+  "cwd": "$WORK/codexint/codex-rs",
+  "environment": {
+    "VRS_LIB_DIR": "$WORK/codexint/vrslib_frozen",
+    "CODEX_HOME": "$WORK/codexint/l3check/build-home3",
+    "CARGO_TARGET_DIR": "$WORK/codexint/codex-rs/target",
+    "RUST_MIN_STACK": "33554432"
+  },
+  "library_sha256": "66bdc739d08e5ec071851c6834a8dc7cb8926f6be304dc8c714291f413c06417",
+  "started_utc": "2026-10-09T12:54:30.916459+00:00",
+  "exit_code": 0,
+  "elapsed_minutes": 10.353,
+  "binary_sha256": "27b9e2d369e933113a06b2a720f27a2c705a599fe6e94183c05570959f308563"
+}

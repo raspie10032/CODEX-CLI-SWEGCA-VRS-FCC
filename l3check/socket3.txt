@@ -1,4 +1,4 @@
-Source HEAD: cf57711dfccad7da3db6b3dd46b7cef4a7bc53db
+Source HEAD: c5aa1ef68ed425fe5d7fa0681341855bc86f8fd3
 Tracked Rust files in current worktree; comments/fixtures counted by symbol grep. Call-path annotations manually reviewed; not a formal reachability proof.
 
 codex-rs/core/: 0 matching occurrences

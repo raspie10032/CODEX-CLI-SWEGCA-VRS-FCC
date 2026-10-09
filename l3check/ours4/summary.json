@@ -1,0 +1,29 @@
+{
+  "binary": "$WORK/codexint/codex-rs/target/debug/deps/all-5e669204b2e46c40",
+  "command": [
+    "taskset",
+    "-c",
+    "0-11",
+    "$WORK/codexint/codex-rs/target/debug/deps/all-5e669204b2e46c40",
+    "--exact",
+    "<test>",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "registered_cases": 2210,
+  "unique_filters": 2120,
+  "selected_filters": 2120,
+  "jobs": 10,
+  "rust_min_stack": "33554432",
+  "timeout_seconds": 120,
+  "elapsed_minutes": 1.991,
+  "counts": {
+    "passed": 1601,
+    "failed": 470,
+    "ignored": 49,
+    "timeout": 0
+  },
+  "complete": true,
+  "started_utc": "2026-10-09T13:09:10.126831+00:00",
+  "binary_sha256": "607bda74d66c61ee6a7d3277cdd1116b96573de7815c743ba5febc58c0b44ffd"
+}

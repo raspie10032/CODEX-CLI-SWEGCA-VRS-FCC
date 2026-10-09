@@ -29,3 +29,39 @@ These are the existing byte-based token estimates, not a model tokenizer. `core/
 - Existing no-startup FFI test additionally checks an explicit positive budget remains `NotReady` without opening, and zero is `OverWindow` without selecting a default.
 
 Existing recording failure and non-local resume failure tests were updated only to pass the new captured-step/base-instructions parameters; their failure assertions are preserved. `rustfmt` parsing and `git diff --check` passed. Runtime/build status must be read from REPORT3.
+
+## Follow-up: what the byte-bound concern establishes
+
+The captured-model and fixed-cost wiring was re-read after the fixture fixes.
+`vrs_prompt_input` uses the captured `StepContext` and the same instructions
+object as the subsequent prompt; the final check runs after normalization and
+Guardian preparation. Both normal and Responses Lite request builders include
+tools and schema. No remaining omitted model override, process-default budget,
+or missing tools/schema binding was found in this route.
+
+The unresolved issue is the strength of the cost function. It is not an upper
+bound capable of enforcing the physical-window part of D5:
+
+- `guardian/request_budget.rs:37-50` sums the content estimator plus byte-based
+  instructions/tools/schema estimates. `context_manager/history.rs:633-634`
+  explicitly describes the inherited history estimate as a coarse lower bound.
+- `history.rs:1123-1135` estimates a Message from its content only. Roles and
+  message framing add zero, and an empty Message adds zero independently of the
+  number of other items. Nonempty text uses ceiling(bytes / 4), rather than a
+  tokenizer or a documented tokenizer-independent upper bound.
+- This is a source witness for the **final Rust estimator's omission**, not a
+  complete end-to-end overflow reproduction. External C `codex_tokens` also
+  gates selection and counts serialized payload framing. Its own bytes / 4 and
+  image/encrypted-content heuristics still do not supply a physical upper bound.
+- The guard can therefore certify only that these estimates fit. A real
+  tokenizer/backend overflow was not reproduced in this audit. Calling the
+  source-level guard an exact prevention mechanism would be incorrect; calling
+  this an observed I4 failure would also exceed the evidence. I4 additionally
+  requires the specified long-running experiment.
+
+Preserving the old numerical formula while removing waits does not close this
+accounting limitation. A stronger admission rule needs a justified cost bound
+for each model input modality and opaque payload, or an authoritative tokenizer
+and framing contract. An arbitrary safety margin is not proof and must not be
+selected from failing test results. This audit did not loosen or tighten a
+threshold, change tests, or issue a model request.

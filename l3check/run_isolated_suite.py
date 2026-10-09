@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Run each libtest case in a fresh, affinity-limited process with an individual deadline."""
-import argparse, concurrent.futures, hashlib, json, os, pathlib, re, signal, subprocess, time
+import argparse, concurrent.futures, datetime, hashlib, json, os, pathlib, re, signal, subprocess, time
 p=argparse.ArgumentParser(); p.add_argument('binary'); p.add_argument('output'); p.add_argument('-j',type=int,default=10); p.add_argument('--timeout',type=int,default=120); p.add_argument('--names-file'); a=p.parse_args()
 assert 1 <= a.j <= 10
 out=pathlib.Path(a.output); out.mkdir(parents=True,exist_ok=True)
 started=time.monotonic()
+started_utc=datetime.datetime.now(datetime.timezone.utc).isoformat()
+with pathlib.Path(a.binary).open('rb') as binary_file:
+    binary_sha256=hashlib.file_digest(binary_file, 'sha256').hexdigest()
 env=os.environ.copy()
 for k in ('CODEX_VRS_SOCK','CODEX_VRS_LOG','CODEX_VRS_DUMP'): env.pop(k,None)
 env['PATH']='~/.cargo/bin:/usr/local/bin:/usr/bin:/bin'
@@ -55,6 +58,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=a.j) as pool, (out/'resul
         results.append(result); journal.write(json.dumps(result)+'\n'); journal.flush()
         if len(results)%50==0: print(f'{len(results)}/{len(names)} completed',flush=True)
 summary=dict(binary=str(pathlib.Path(a.binary).resolve()),command=prefix+['--exact','<test>','--nocapture','--test-threads=1'],registered_cases=len(registered),unique_filters=len(set(registered)),selected_filters=len(names),jobs=a.j,rust_min_stack=env['RUST_MIN_STACK'],timeout_seconds=a.timeout,elapsed_minutes=round((time.monotonic()-started)/60,3),counts={s:sum(r['status']==s for r in results) for s in ['passed','failed','ignored','timeout']},complete=len(results)==len(names))
+summary.update(started_utc=started_utc,binary_sha256=binary_sha256)
 (out/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
 for status in ('failed','timeout'):
     (out/f'{status}.txt').write_text(''.join(r['name']+'\n' for r in results if r['status']==status))

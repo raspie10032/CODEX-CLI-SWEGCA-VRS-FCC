@@ -157,10 +157,61 @@ for label, pattern in lock_patterns.items():
 library = Path('$WORK/vrsint/libvrs.a')
 lib_source = Path('$WORK/vrsint/vrs_lib.cpp')
 lib_text = lib_source.read_text(encoding='utf-8')
-lib_hits = []
-for number, line in enumerate(lib_text.splitlines(), 1):
-    if ('while (!done.load' in line or 'if (!uw_del(S, *ss, off))' in line):
-        lib_hits.append({'file': str(lib_source), 'line': number, 'text': line.strip()})
+library_hash = digest(library)
+lib_source_hash = hashlib.sha256(lib_text.encode('utf-8')).hexdigest()
+
+
+def c_hits(pattern):
+    return [{'file': str(lib_source), 'line': number, 'text': line.strip()}
+            for number, line in enumerate(lib_text.splitlines(), 1)
+            if re.search(pattern, line)]
+
+
+def c_function_waits(name):
+    # These reviewed C++ functions have a column-zero closing brace. This only
+    # locates known source evidence; it is not a C++ control-flow analyzer.
+    match = re.search(r'^[^\n]*\b' + re.escape(name) + r'\([^\n]*\) \{\n.*?^\}',
+                      lib_text, re.M | re.S)
+    if match is None:
+        raise RuntimeError(f'External function changed; review audit: {name}')
+    first = lib_text.count('\n', 0, match.start()) + 1
+    return [{'file': str(lib_source), 'line': first + offset,
+             'function': name, 'text': line.strip()}
+            for offset, line in enumerate(match.group().splitlines())
+            if 'std::this_thread::yield' in line]
+
+
+lib_findings = {
+    'old_completion_pointer_wait': c_hits(r'while\s*\(!done\.load'),
+    'all_yield_occurrences_not_all_are_request_waits': c_hits(r'std::this_thread::yield'),
+    'session_pointer_waits': c_function_waits('get_sess'),
+    'uw_hazard_slot_waits': c_function_waits('uw_slot'),
+    'snapshot_hazard_slot_waits': c_function_waits('haz_slot'),
+    'restore_busy_waits_separate_from_request_path': c_function_waits('run_task'),
+    'per_session_owner': c_hits(r'void owner_loop|bool drain\(|ss\.busy\.compare_exchange_strong'),
+    'insert_enqueues': c_hits(r'ss->inbox\.compare_exchange_weak'),
+    'insert_success_without_publication': c_hits(r'if \(!drain\(S, \*ss\)\) S\.insert_left'),
+    'offset_gap_holds_accepted_row': c_hits(r'ss\.held(?:\[off\]|\.emplace\(off)'),
+    'snapshot_publication': c_hits(r'ss\.snap\.exchange\(sn'),
+    'assembly_uses_published_snapshot': c_hits(r'const Snap\* sn = haz_protect|if \(sn->lin_pending\)|A = C\.assemble'),
+    'delayed_path_permanently_classified_memory': c_hits(r's->memmode = !base'),
+    'memory_insert_skips_pending_bytes': c_hits(r'if \(!ss->memmode\) uw_add'),
+    'written_requires_pending_bytes': c_hits(r'if \(!uw_del\(S, \*ss, off\)\)'),
+}
+
+
+def saved_probe(filename, comparison_hash):
+    path = OUT / filename
+    result = json.loads(path.read_text(encoding='utf-8'))
+    return {'file': str(path.relative_to(ROOT)), 'file_sha256': digest(path),
+            'recorded_result': result,
+            'recorded_library_matches_current_archive':
+                result.get('library_sha256') == comparison_hash,
+            'reexecuted_by_inventory': False}
+
+
+candidate_archive = OUT / 'library_candidate3/libvrs.a'
+candidate_hash = digest(candidate_archive) if candidate_archive.exists() else None
 nm = subprocess.run(['nm', '--defined-only', str(library)], capture_output=True, text=True)
 symbol_lines = [line for line in nm.stdout.splitlines()
                 if re.search(r'\b(?:vrs_written|vrs_assemble_b|vrs_insert|vrs_open)$', line)]
@@ -193,24 +244,40 @@ report = {
                        'Session Mutex and existing rollout queue/durability writer remain. '
                        'Synchronous FFI enters external C code; no end-to-end no-wait claim.',
     'c_library_separate_evidence': {
-        'library': str(library), 'sha256': digest(library),
-        'source': str(lib_source), 'source_sha256': digest(lib_source),
+        'library': str(library), 'sha256': library_hash,
+        'source': str(lib_source), 'source_sha256': lib_source_hash,
+        'source_and_archive_build_provenance_verified': False,
         'nm_exit_code': nm.returncode, 'defined_symbols': symbol_lines,
-        'source_findings': lib_hits,
-        'existing_runtime_probe': json.loads((OUT / 'library_deferred3.json').read_text()),
-        'runtime_probe_reexecuted': False,
+        'source_findings': lib_findings,
+        'publication_counterexample':
+            'Source interleaving only, not executed: a ready insert can return 0 after '
+            'losing busy or entering held at a byte gap; the next assembly can read '
+            'the prior snapshot. Pending original bytes are not snapshot membership.',
+        'real_library_saved_probe': saved_probe('deferred_owner_final3.json', library_hash),
+        'isolated_candidate_saved_probe': {
+            **saved_probe('deferred_candidate3.json', candidate_hash),
+            'current_candidate_archive_sha256': candidate_hash,
+            'scope': 'Deferred acknowledgement diagnostic only; does not fix publication '
+                     'or waits, and is not protected real-library integration evidence.',
+        },
+        'source_evidence_report': 'l3check/vrs_library_candidate3.md',
         'e3_3_global_pass': False,
     },
     'limitations': [
         'No build, test, readiness, or integration success follows from this inventory.',
         'Byte-based request estimates are not tokenizer-exact I4 proof.',
-        'C insertion owner wait remains a source-level E3-3 conflict.',
-        'The saved deferred-file probe reports written=-3; it was not rerun by this audit.',
+        'C explicit completion wait is removed; session/hazard-slot waits and a '
+        'per-session publication owner remain. Successful queue insertion is not '
+        'proof of immediate snapshot visibility.',
+        'The saved current-owner deferred-file probe reports written=-3; the isolated '
+        'candidate reports written=0. Neither was rerun by this inventory.',
         'D4 reconciliation uses conservative Rust cut semantics from VI-32, not an exact C snapshot watermark.',
     ],
 }
 if git('rev-parse', 'HEAD').strip() != head:
     raise RuntimeError('HEAD changed during inventory; regenerate from a stable snapshot')
+if digest(lib_source) != lib_source_hash or digest(library) != library_hash:
+    raise RuntimeError('External C source/archive changed during inventory; regenerate')
 (OUT / 'inventory3.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 (OUT / 'clone_history3.tsv').write_text(
     'file:line\tfunction\tclassification\tindirect_model_influence\treason\n' +

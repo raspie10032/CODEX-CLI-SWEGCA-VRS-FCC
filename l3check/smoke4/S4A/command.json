@@ -1,0 +1,27 @@
+{
+  "command": [
+    "taskset",
+    "-c",
+    "0-11",
+    "$WORK/codexint/codex-rs/target/release/codex",
+    "exec",
+    "--skip-git-repo-check",
+    "--json",
+    "-m",
+    "gpt-6-astra",
+    "-c",
+    "model_reasoning_effort=\"low\"",
+    "현재 폴더에 f01.txt부터 f20.txt까지 파일 20개를 만들어. 번호 i인 파일에는 hello 줄을 정확히 i개 넣어. 실제 도구를 최소 10회 이상 호출해야 해. 파일 생성은 호출마다 정확히 두 파일씩, 10번의 서로 다른 도구 호출로 해. 그 다음 별도 도구 호출에서 wc -l로 20개 파일 각각의 줄 수와 합계를 확인하고 최종 답에 합계를 말해. 이 폴더 밖 파일은 수정하지 마."
+  ],
+  "binary_sha256": "27b9e2d369e933113a06b2a720f27a2c705a599fe6e94183c05570959f308563",
+  "cwd": "$WORK/vrsint_smoke/S4A",
+  "environment": {
+    "CODEX_HOME": "~/.codex",
+    "CODEX_VRS_LOG": "$WORK/codexint/l3check/smoke4/S4A/vrs.jsonl",
+    "RUST_LOG": "error,codex_api::responses_websocket_timing=trace"
+  },
+  "started_utc": "2026-10-09T13:05:54.561816+00:00",
+  "started_unix_ms": 1791551154561,
+  "timeout_seconds": 600,
+  "pid": 3325322
+}

@@ -1,9 +1,9 @@
 {
-  "source_head": "cf57711dfccad7da3db6b3dd46b7cef4a7bc53db",
-  "captured_utc": "2026-10-09T12:10:45.034277+00:00",
+  "source_head": "c5aa1ef68ed425fe5d7fa0681341855bc86f8fd3",
+  "captured_utc": "2026-10-09T12:35:19.976527+00:00",
   "scope": "Tracked Rust files in current worktree; comments/fixtures counted by symbol grep. Call-path annotations manually reviewed; not a formal reachability proof.",
   "tracked_rust_files": 5057,
-  "tracked_rust_combined_sha256": "18fe99b9a61eb8a1551f12a72572cb5a239de4e06e0f771973af9f4e51bf424e",
+  "tracked_rust_combined_sha256": "5fdb95a257dc266f4f7a1e03e789b83bd0aa755026f98a6f2104a525b46feddd",
   "tracked_rust_dirty": [],
   "builds_or_tests_run_by_inventory": false,
   "compression": {
@@ -899,44 +899,273 @@
   "rust_wait_scope": "Three new production modules only plus manually audited recorder CAS/write path. Session Mutex and existing rollout queue/durability writer remain. Synchronous FFI enters external C code; no end-to-end no-wait claim.",
   "c_library_separate_evidence": {
     "library": "$WORK/vrsint/libvrs.a",
-    "sha256": "493759a11d4cf341cf13c70ea4548ffa285b182e9ef405fa404f60924845c61a",
+    "sha256": "973be90010ff35d92fb2624c072f37499dba453aa637c246402c6dcb02ed8e43",
     "source": "$WORK/vrsint/vrs_lib.cpp",
-    "source_sha256": "21ba6146899e8d1b9673e1f78f74d5c9be3d4abd525eb915947d43d5cee485ea",
+    "source_sha256": "b0cbea09a9bbbb7cb755797af48ed6031bb2e98e800986b272e68ffc0525239c",
+    "source_and_archive_build_provenance_verified": false,
     "nm_exit_code": 0,
     "defined_symbols": [
-      "0000000000037400 T vrs_assemble_b",
-      "000000000002e000 T vrs_insert",
-      "0000000000038340 T vrs_open",
-      "0000000000017880 T vrs_written"
+      "000000000003b310 T vrs_assemble_b",
+      "0000000000037920 T vrs_insert",
+      "000000000003d000 T vrs_open",
+      "0000000000016b50 T vrs_written"
     ],
-    "source_findings": [
-      {
-        "file": "$WORK/vrsint/vrs_lib.cpp",
-        "line": 3113,
-        "text": "while (!done.load(std::memory_order_acquire)) { waited = true; std::this_thread::yield(); }"
-      },
-      {
-        "file": "$WORK/vrsint/vrs_lib.cpp",
-        "line": 3126,
-        "text": "if (!uw_del(S, *ss, off)) { S.uw_unknown.fetch_add(1, std::memory_order_relaxed); return -3; }"
-      }
-    ],
-    "existing_runtime_probe": {
-      "command": "taskset -c 0-11 timeout 20s l3check/library_deferred3",
-      "exit_code": 1,
-      "seconds": 0.0063520519906887785,
-      "stdout": "open=0 ready=1 insert=0 written=-3 expected_written=0\n",
-      "stderr": "",
-      "library_sha256": "493759a11d4cf341cf13c70ea4548ffa285b182e9ef405fa404f60924845c61a"
+    "source_findings": {
+      "old_completion_pointer_wait": [],
+      "all_yield_occurrences_not_all_are_request_waits": [
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 1002,
+          "text": "std::this_thread::yield();"
+        },
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 1246,
+          "text": "std::this_thread::yield();"
+        },
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3023,
+          "text": "std::this_thread::yield();"
+        },
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3293,
+          "text": "for (;;) { int z = 0; if (ss.busy.compare_exchange_strong(z, 1)) break; S.insert_waits.fetch_add(1, std::memory_order_relaxed); std::this_thread::yield(); }"
+        },
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3332,
+          "text": "if (v) { Sess* s; while (!(s = S.sp[v].load(std::memory_order_acquire))) { S.insert_waits.fetch_add(1, std::memory_order_relaxed); std::this_thread::yield(); } return s; }"
+        },
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3347,
+          "text": "Sess* s; while (!(s = S.sp[e].load(std::memory_order_acquire))) { S.insert_waits.fetch_add(1, std::memory_order_relaxed); std::this_thread::yield(); }"
+        }
+      ],
+      "session_pointer_waits": [
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3332,
+          "function": "get_sess",
+          "text": "if (v) { Sess* s; while (!(s = S.sp[v].load(std::memory_order_acquire))) { S.insert_waits.fetch_add(1, std::memory_order_relaxed); std::this_thread::yield(); } return s; }"
+        },
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3347,
+          "function": "get_sess",
+          "text": "Sess* s; while (!(s = S.sp[e].load(std::memory_order_acquire))) { S.insert_waits.fetch_add(1, std::memory_order_relaxed); std::this_thread::yield(); }"
+        }
+      ],
+      "uw_hazard_slot_waits": [
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 1246,
+          "function": "uw_slot",
+          "text": "std::this_thread::yield();"
+        }
+      ],
+      "snapshot_hazard_slot_waits": [
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3023,
+          "function": "haz_slot",
+          "text": "std::this_thread::yield();"
+        }
+      ],
+      "restore_busy_waits_separate_from_request_path": [
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3293,
+          "function": "run_task",
+          "text": "for (;;) { int z = 0; if (ss.busy.compare_exchange_strong(z, 1)) break; S.insert_waits.fetch_add(1, std::memory_order_relaxed); std::this_thread::yield(); }"
+        }
+      ],
+      "per_session_owner": [
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3215,
+          "text": "bool drain(Store& S, Sess& ss);"
+        },
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3256,
+          "text": "void owner_loop(Store& S, Sess& ss) {"
+        },
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3265,
+          "text": "if (!ss.busy.compare_exchange_strong(z, 1)) return;"
+        },
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3268,
+          "text": "bool drain(Store& S, Sess& ss) {  // false = somebody else holds the file; the work left in the inbox is theirs"
+        },
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3270,
+          "text": "if (!ss.busy.compare_exchange_strong(z, 1)) return false;"
+        },
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3293,
+          "text": "for (;;) { int z = 0; if (ss.busy.compare_exchange_strong(z, 1)) break; S.insert_waits.fetch_add(1, std::memory_order_relaxed); std::this_thread::yield(); }"
+        }
+      ],
+      "insert_enqueues": [
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3554,
+          "text": "do { n->next = head; } while (!ss->inbox.compare_exchange_weak(head, n, std::memory_order_release, std::memory_order_relaxed));"
+        }
+      ],
+      "insert_success_without_publication": [
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3556,
+          "text": "if (!drain(S, *ss)) S.insert_left.fetch_add(1, std::memory_order_relaxed);"
+        }
+      ],
+      "offset_gap_holds_accepted_row": [
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 2781,
+          "text": "else ss.held.emplace(off, std::move(line));"
+        }
+      ],
+      "snapshot_publication": [
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3014,
+          "text": "Snap* old = ss.snap.exchange(sn, std::memory_order_seq_cst);"
+        }
+      ],
+      "assembly_uses_published_snapshot": [
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3441,
+          "text": "const Snap* sn = haz_protect(S, *ss, slot);"
+        },
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3442,
+          "text": "if (sn->lin_pending) { haz_release(S, slot); return 1; }  // VI-11: the lineage cannot be told yet"
+        },
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3445,
+          "text": "A = C.assemble(ss->sg, sn->lastth, B);"
+        }
+      ],
+      "delayed_path_permanently_classified_memory": [
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3320,
+          "text": "s->memmode = !base && ::access(path.c_str(), F_OK) != 0;  // no file behind it: an ephemeral thread keeps its lines in memory (P-4)"
+        }
+      ],
+      "memory_insert_skips_pending_bytes": [
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3548,
+          "text": "if (!ss->memmode) uw_add(S, *ss, off, line, len);  // P-3': the bytes stay here until vrs_written; fetch reads them from here first"
+        }
+      ],
+      "written_requires_pending_bytes": [
+        {
+          "file": "$WORK/vrsint/vrs_lib.cpp",
+          "line": 3567,
+          "text": "if (!uw_del(S, *ss, off)) { S.uw_unknown.fetch_add(1, std::memory_order_relaxed); return -3; }"
+        }
+      ]
     },
-    "runtime_probe_reexecuted": false,
+    "publication_counterexample": "Source interleaving only, not executed: a ready insert can return 0 after losing busy or entering held at a byte gap; the next assembly can read the prior snapshot. Pending original bytes are not snapshot membership.",
+    "real_library_saved_probe": {
+      "file": "l3check/deferred_owner_final3.json",
+      "file_sha256": "ae1ef84bef25064308fc80f4a2f5a0f278b0c204aa7bd288d544feeb27aaa4c4",
+      "recorded_result": {
+        "build_command": [
+          "taskset",
+          "-c",
+          "0-11",
+          "c++",
+          "-std=c++20",
+          "-O2",
+          "-pthread",
+          "l3check/library_deferred3.cpp",
+          "$WORK/vrsint/libvrs.a",
+          "-o",
+          "l3check/deferred_owner_final3"
+        ],
+        "build_exit": 0,
+        "build_seconds": 0.7810104579984909,
+        "library_sha256": "75ce1177d15a8e01703aec8bb30fc2c7ac5192e7b581adbca059104bf6e3ff42",
+        "build_stderr": "",
+        "command": [
+          "taskset",
+          "-c",
+          "0-11",
+          "timeout",
+          "20s",
+          "l3check/deferred_owner_final3"
+        ],
+        "exit_code": 1,
+        "seconds": 0.01883193600224331,
+        "stdout": "open=0 ready=1 insert=0 written=-3 expected_written=0\n",
+        "stderr": ""
+      },
+      "recorded_library_matches_current_archive": false,
+      "reexecuted_by_inventory": false
+    },
+    "isolated_candidate_saved_probe": {
+      "file": "l3check/deferred_candidate3.json",
+      "file_sha256": "8f87de78dc35921c0e0064946d1759f40bbc4c0f9daeb06340cfd834166d5c79",
+      "recorded_result": {
+        "build_command": [
+          "taskset",
+          "-c",
+          "0-11",
+          "c++",
+          "-std=c++20",
+          "-O2",
+          "-pthread",
+          "l3check/library_deferred3.cpp",
+          "l3check/library_candidate3/libvrs.a",
+          "-o",
+          "l3check/deferred_candidate3"
+        ],
+        "build_exit": 0,
+        "build_seconds": 0.5517887220048578,
+        "library_sha256": "f97603b8006e2ffe5b8a02ff5c6d56711c8d6ee72ea2384ae648ec727a183be6",
+        "build_stderr": "",
+        "command": [
+          "taskset",
+          "-c",
+          "0-11",
+          "timeout",
+          "20s",
+          "l3check/deferred_candidate3"
+        ],
+        "exit_code": 0,
+        "seconds": 0.006717775992001407,
+        "stdout": "open=0 ready=1 insert=0 written=0 expected_written=0\n",
+        "stderr": ""
+      },
+      "recorded_library_matches_current_archive": true,
+      "reexecuted_by_inventory": false,
+      "current_candidate_archive_sha256": "f97603b8006e2ffe5b8a02ff5c6d56711c8d6ee72ea2384ae648ec727a183be6",
+      "scope": "Deferred acknowledgement diagnostic only; does not fix publication or waits, and is not protected real-library integration evidence."
+    },
+    "source_evidence_report": "l3check/vrs_library_candidate3.md",
     "e3_3_global_pass": false
   },
   "limitations": [
     "No build, test, readiness, or integration success follows from this inventory.",
     "Byte-based request estimates are not tokenizer-exact I4 proof.",
-    "C insertion owner wait remains a source-level E3-3 conflict.",
-    "The saved deferred-file probe reports written=-3; it was not rerun by this audit.",
+    "C explicit completion wait is removed; session/hazard-slot waits and a per-session publication owner remain. Successful queue insertion is not proof of immediate snapshot visibility.",
+    "The saved current-owner deferred-file probe reports written=-3; the isolated candidate reports written=0. Neither was rerun by this inventory.",
     "D4 reconciliation uses conservative Rust cut semantics from VI-32, not an exact C snapshot watermark."
   ]
 }

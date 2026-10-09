@@ -1,9 +1,11 @@
-# Round 3 source audit at cf57711df
+# Round 3 source audit and external-library evidence
 
-This audit reads tracked Rust source at `cf57711dfccad7da3db6b3dd46b7cef4a7bc53db`.
-Production source is unchanged from `8fdfd4f55`; intervening source commits
-`3530ac9a1` and `8d24b8e53` repair unit-test error-kind/detail assertions. No product source, snapshot expectations, build,
-service, or test was changed or run by this audit. Existing reports remain intact.
+The exact tracked Rust source head, combined content hash, and dirty source paths
+are recorded by `inventory3.json`; regenerate it after subsequent source changes.
+The prior inventory was at `cf57711df`; this refresh includes the later fixture
+corrections and current external-library observations. No product source, snapshot
+expectations, build, service, or test was changed or run by this audit. Existing
+reports remain intact.
 The parent owns the final build/test comparison and REPORT3.
 
 Run `python3 l3check/audit3_inventory.py` to regenerate the mechanically counted
@@ -176,16 +178,48 @@ filesystem I/O (`vrs_input.rs:28-50`); this is diagnostic I/O, not a producer
 readiness barrier. It is not claimed to be latency-free.
 
 **End-to-end E3-3 does not pass.** The Rust FFI calls external C synchronously.
-At the captured library source, `$WORK/vrsint/vrs_lib.cpp:3111-3114`
-waits for another per-file owner to finish `vrs_insert` using a yield loop.
-This is a real phase/owner wait below the Rust boundary. The current library
-also returns -3 at line 3126 when `vrs_written` cannot find its retained copy.
-The saved probe `library_deferred3.json` records
-`open=0 ready=1 insert=0 written=-3 expected_written=0`, exit 1. This audit did
-not rerun it. `inventory3.json` records the saved probe hash separately from the
-currently read library hash; source and archive identity are not assumed equal.
-`nm --defined-only` confirms vrs_open, vrs_insert, vrs_written, and vrs_assemble_b
-are defined in the currently read archive. A symbol is not correctness evidence.
+The old completion-pointer/yield-until-done loop was removed by owner source
+`f741af0` and remains absent in the newer source `b0cbea0`. The earlier audit's
+claim that this specific loop still exists is superseded. Removing it does not
+make publication synchronous or eliminate the other waiting paths.
+
+The owner changed again while this audit was in progress. The latest inspected
+source is SHA-256
+`b0cbea09a9bbbb7cb755797af48ed6031bb2e98e800986b272e68ffc0525239c`,
+and the current archive is
+`5e63320dd244765334bd31e26975afd4fcafe174afed19a8be287810c7dda62d`.
+Their build provenance is not independently established merely by reading both
+hashes. The following line numbers refer to **b0cbea0**. The fuller previous
+source interleaving and diagnostic patch are pinned to **f741af0** in
+`vrs_library_candidate3.md`; they are not silently relabeled as this revision.
+
+| External C evidence | Current source | Consequence |
+| --- | --- | --- |
+| Completed insert can remain in the inbox | `vrs_insert:3554-3557`, `drain:3268-3272` | CAS enqueue followed by a failed busy acquisition still returns 0 before the publishing owner has processed that row. |
+| Later reservation can remain held | `feed:2781` | A later offset can return success while the earlier caller is descheduled; immutable raw bytes do not give that row membership in the published snapshot. |
+| Assembly consumes an older snapshot | `assemble_impl:3441-3445`, `publish_snap:3014` | The snapshot only rejects lineage-pending state. A ready, previously nonempty session can return successful A without an insert that already returned success. This is a source counterexample, not an executed concurrency reproduction. |
+| Single per-session publishing owner | `owner_loop:3256-3266`, `drain:3268-3272` | Publication still runs under the `busy` owner; deleting its caller wait does not satisfy I6's no-single-writer contract. |
+| Session publication waits | `get_sess:3332,3347` | A request can yield waiting for a session pointer created by another caller. |
+| Hazard-capacity waits | `uw_slot:1246`, `haz_slot:3023` | Requests can yield when all hazard slots are occupied. The inventory separately lists all source yield occurrences, without treating each background yield as a request wait. |
+| Delayed files still classified as permanent memory | `make_sess:3320`, `vrs_insert:3548`, `vrs_written:3567` | A normal file-before-materialization insert skips UW; acknowledgement later returns -3 because no pending original exists. |
+
+The new source increments `insert_waits` on several yield paths. The **f741af0**
+finding that this counter had no increment sites is historical and does not apply
+to **b0cbea0**. A zero counter from a particular execution would still describe
+that execution only, not prove absence of waits or deferred publication.
+
+Saved runtime evidence is kept separate:
+
+| Saved artifact | Recorded archive | Result | Boundary |
+| --- | --- | --- | --- |
+| `deferred_owner_final3.json` | protected real `75ce1177d15a8e01703aec8bb30fc2c7ac5192e7b581adbca059104bf6e3ff42` | build 0, probe 1; `insert=0 written=-3` | A real-library delayed-write defect on that archive. It is not a runtime result for the newer `5e63320d` archive. |
+| `deferred_candidate3.json` | isolated candidate `f97603b8006e2ffe5b8a02ff5c6d56711c8d6ee72ea2384ae648ec727a183be6` | build 0, probe 0; `insert=0 written=0` | Narrow acknowledgement diagnostic only. It does not fix or validate publication, wait freedom, all input contents, or real-library integration. |
+
+This audit did not compile or rerun either probe. `inventory3.json` stores the
+saved result and artifact hash, current archive hashes, and explicit identity
+match booleans; it fails regeneration if protected source/archive changes during
+the read. `nm --defined-only` confirms vrs_open, vrs_insert, vrs_written, and
+vrs_assemble_b in the observed archive. A symbol is not correctness evidence.
 
 No release build, remaining-tests compilation, test-difference resolution,
 I4 physical-window bound, I7 memory measurement, or I8 concurrency result is

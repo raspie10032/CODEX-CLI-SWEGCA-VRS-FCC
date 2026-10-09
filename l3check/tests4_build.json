@@ -1,0 +1,55 @@
+{
+  "cwd": "$WORK/codexint/codex-rs",
+  "command": [
+    "taskset",
+    "-c",
+    "0-11",
+    "cargo",
+    "test",
+    "-j",
+    "10",
+    "-p",
+    "codex-core",
+    "--test",
+    "all",
+    "--no-run"
+  ],
+  "environment": {
+    "VRS_LIB_DIR": "$WORK/codexint/vrslib_frozen",
+    "CODEX_HOME": "$WORK/codexint/l3check/build-home3",
+    "CARGO_TARGET_DIR": "$WORK/codexint/codex-rs/target",
+    "RUST_MIN_STACK": "33554432"
+  },
+  "started_utc": "2026-10-09T13:07:30.661337+00:00",
+  "before": {
+    "head": "5546fb314fbe30f87eed8d31983419458f549568",
+    "tracked_changes": [
+      "l3check/audit3_inventory.py",
+      "l3check/compression3.txt",
+      "l3check/inventory3.json",
+      "l3check/run_isolated_suite.py",
+      "l3check/socket3.txt",
+      "l3check/source_audit3.md",
+      "l3check/window_admission3.md"
+    ],
+    "library_sha256": "66bdc739d08e5ec071851c6834a8dc7cb8926f6be304dc8c714291f413c06417",
+    "rust_sources_and_manifests_sha256": "a26d43f90f2e63f9cf2415227c5ad32d904257dddb78c7a4c1f3a679ba49b677"
+  },
+  "log": "$WORK/codexint/l3check/tests4_build.log",
+  "exit_code": 0,
+  "elapsed_minutes": 1.636,
+  "after": {
+    "head": "5546fb314fbe30f87eed8d31983419458f549568",
+    "tracked_changes": [
+      "l3check/audit3_inventory.py",
+      "l3check/compression3.txt",
+      "l3check/inventory3.json",
+      "l3check/run_isolated_suite.py",
+      "l3check/socket3.txt",
+      "l3check/source_audit3.md",
+      "l3check/window_admission3.md"
+    ],
+    "library_sha256": "66bdc739d08e5ec071851c6834a8dc7cb8926f6be304dc8c714291f413c06417",
+    "rust_sources_and_manifests_sha256": "a26d43f90f2e63f9cf2415227c5ad32d904257dddb78c7a4c1f3a679ba49b677"
+  }
+}

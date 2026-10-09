@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a120c4-44fa-7800-a088-b81e93c03d73"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"방금 “a.txt 파일 내용을 읽고 그 내용을 한 단어로 답해.”라고 물으셨고, 저는 “hello”라고 답했습니다."}}
+{"type":"turn.completed","usage":{"input_tokens":56953,"cached_input_tokens":30464,"cache_write_input_tokens":0,"output_tokens":84,"reasoning_output_tokens":0}}

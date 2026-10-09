@@ -1,0 +1,8 @@
+{
+  "run_auto_compact": [],
+  "compact_remote_v2": [],
+  "CompactTask": [],
+  "replace_compacted_history": [],
+  "UnixStream": [],
+  "CODEX_VRS_SOCK": []
+}

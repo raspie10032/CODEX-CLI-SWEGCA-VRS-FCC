@@ -1,0 +1,38 @@
+{
+  "exit_code": 0,
+  "timed_out": false,
+  "elapsed_seconds": 6.281,
+  "finished_unix_ms": 1791551101685,
+  "thread_id": "01a120c4-44fa-7800-a088-b81e93c03d73",
+  "vrs_receipts": 4,
+  "vrs_failed_receipts": [],
+  "vrs_error_lines": [],
+  "event_errors": [],
+  "final_messages": [
+    "a.txt 파일을 읽겠습니다.\n",
+    "hello"
+  ],
+  "first_assembly_seconds": 1.73,
+  "first_assembly_us": 428,
+  "request_start_seconds": [
+    1.732,
+    4.453
+  ],
+  "executed_commands": 1,
+  "command_failures": [],
+  "rollouts": [
+    {
+      "path": "~/.codex/sessions/2026/10/09/rollout-2026-10-09T22-04-56-01a120c4-44fa-7800-a088-b81e93c03d73.jsonl",
+      "bytes": 64294,
+      "nul_bytes": 0,
+      "final_newline": true,
+      "lines": 23,
+      "parse_errors": [],
+      "ordinals_strictly_increasing": true,
+      "compaction_events": 0,
+      "tool_calls": 1
+    }
+  ],
+  "base_pass": true,
+  "pass": true
+}

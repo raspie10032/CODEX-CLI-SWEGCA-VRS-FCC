@@ -1,0 +1,388 @@
+   Compiling codex-vrs v0.162.0-alpha.2 ($WORK/codexint/codex-rs/vrs)
+   Compiling codex-rollout v0.162.0-alpha.2 ($WORK/codexint/codex-rs/rollout)
+   Compiling codex-arg0 v0.162.0-alpha.2 ($WORK/codexint/codex-rs/arg0)
+   Compiling codex-feedback v0.162.0-alpha.2 ($WORK/codexint/codex-rs/feedback)
+   Compiling codex-app-server-protocol v0.162.0-alpha.2 ($WORK/codexint/codex-rs/app-server-protocol)
+   Compiling codex-model-provider v0.162.0-alpha.2 ($WORK/codexint/codex-rs/model-provider)
+   Compiling codex-mcp v0.162.0-alpha.2 ($WORK/codexint/codex-rs/codex-mcp)
+   Compiling codex-backend-client v0.162.0-alpha.2 ($WORK/codexint/codex-rs/backend-client)
+   Compiling codex-cloud-config v0.162.0-alpha.2 ($WORK/codexint/codex-rs/cloud-config)
+   Compiling codex-cloud-tasks-client v0.162.0-alpha.2 ($WORK/codexint/codex-rs/cloud-tasks-client)
+   Compiling codex-cloud-tasks-mock-client v0.162.0-alpha.2 ($WORK/codexint/codex-rs/cloud-tasks-mock-client)
+   Compiling codex-extension-api v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/extension-api)
+   Compiling codex-agent-message-board-extension v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/agent-message-board)
+   Compiling codex-git-attribution v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/git-attribution)
+   Compiling codex-home v0.162.0-alpha.2 ($WORK/codexint/codex-rs/codex-home)
+   Compiling codex-agent-message-board-client v0.162.0-alpha.2 ($WORK/codexint/codex-rs/agent-message-board-client)
+   Compiling codex-analytics v0.162.0-alpha.2 ($WORK/codexint/codex-rs/analytics)
+   Compiling codex-thread-store v0.162.0-alpha.2 ($WORK/codexint/codex-rs/thread-store)
+   Compiling codex-core-plugins v0.162.0-alpha.2 ($WORK/codexint/codex-rs/core-plugins)
+   Compiling codex-skills-extension v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/skills)
+   Compiling codex-guardian-reviewer v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/guardian-reviewer)
+   Compiling codex-core v0.162.0-alpha.2 ($WORK/codexint/codex-rs/core)
+   Compiling codex-connectors-extension v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/connectors)
+warning: associated items `new`, `trigger`, `reason`, `implementation`, and `phase` are never used
+   --> core/src/responses_metadata.rs:131:19
+    |
+130 | impl CompactionTurnMetadata {
+    | --------------------------- associated items in this implementation
+131 |     pub(crate) fn new(
+    |                   ^^^
+...
+146 |     pub(crate) fn trigger(self) -> CompactionTrigger {
+    |                   ^^^^^^^
+...
+150 |     pub(crate) fn reason(self) -> CompactionReason {
+    |                   ^^^^^^
+...
+154 |     pub(crate) fn implementation(self) -> CompactionImplementation {
+    |                   ^^^^^^^^^^^^^^
+...
+158 |     pub(crate) fn phase(self) -> CompactionPhase {
+    |                   ^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: variant `Compaction` is never constructed
+   --> core/src/responses_metadata.rs:167:5
+    |
+164 | pub(crate) enum CodexResponsesRequestKind {
+    |                 ------------------------- variant in this enum
+...
+167 |     Compaction(CompactionTurnMetadata),
+    |     ^^^^^^^^^^
+    |
+    = note: `CodexResponsesRequestKind` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: variant `RemoteCompactionV2` is never constructed
+  --> core/src/responses_retry.rs:29:5
+   |
+27 | pub(crate) enum ResponsesStreamRequest {
+   |                 ---------------------- variant in this enum
+28 |     Sampling,
+29 |     RemoteCompactionV2,
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `ResponsesStreamRequest` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: methods `estimated_tokens_after_last_model_generated_item`, `previous_turn_settings`, `capture_speculative_step_context`, and `update_token_usage_info` are never used
+    --> core/src/session/mod.rs:1468:25
+     |
+1189 | impl Session {
+     | ------------ methods in this implementation
+...
+1468 |     pub(crate) async fn estimated_tokens_after_last_model_generated_item(&self) -> i64 {
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1797 |     async fn previous_turn_settings(&self) -> Option<PreviousTurnSettings> {
+     |              ^^^^^^^^^^^^^^^^^^^^^^
+...
+3605 |     async fn capture_speculative_step_context(
+     |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+4421 |     pub(crate) async fn update_token_usage_info(
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_last_assistant_message_from_turn` is never used
+    --> core/src/session/turn.rs:2740:15
+     |
+2740 | pub(crate) fn get_last_assistant_message_from_turn<'a>(
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `with_model` is never used
+   --> core/src/session/turn_context.rs:777:25
+    |
+401 | impl TurnContext {
+    | ---------------- method in this implementation
+...
+777 |     pub(crate) async fn with_model(
+    |                         ^^^^^^^^^^
+
+warning: method `fallback_buffer_tokens` is never used
+    --> core/src/config/mod.rs:1274:19
+     |
+1201 | impl TokenBudgetConfig {
+     | ---------------------- method in this implementation
+...
+1274 |     pub(crate) fn fallback_buffer_tokens(&self) -> i64 {
+     |                   ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `CompactionSummary` is never constructed
+ --> core/src/context/compaction_summary.rs:5:19
+  |
+5 | pub(crate) struct CompactionSummary {
+  |                   ^^^^^^^^^^^^^^^^^
+
+warning: associated function `new` is never used
+  --> core/src/context/compaction_summary.rs:10:19
+   |
+ 9 | impl CompactionSummary {
+   | ---------------------- associated function in this implementation
+10 |     pub(crate) fn new(summary: impl Into<String>) -> Self {
+   |                   ^^^
+
+warning: associated function `message_ids` is never used
+  --> core/src/context/user_goal.rs:29:19
+   |
+25 | impl UserGoalUpdate {
+   | ------------------- associated function in this implementation
+...
+29 |     pub(crate) fn message_ids<'a>(
+   |                   ^^^^^^^^^^^
+
+warning: methods `record_items`, `replay_annotated_item`, `remove_first_item`, `drop_last_n_user_turns`, `estimated_tokens_after_last_model_generated_item`, and `trim_pre_turn_context_updates` are never used
+    --> core/src/context_manager/history.rs:496:19
+     |
+ 226 | impl ContextManager {
+     | ------------------- methods in this implementation
+...
+ 496 |     pub(crate) fn record_items<I>(&mut self, items: I, policy: TruncationPolicy)
+     |                   ^^^^^^^^^^^^
+...
+ 523 |     pub(crate) fn replay_annotated_item(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+...
+ 661 |     pub(crate) fn remove_first_item(&mut self) {
+     |                   ^^^^^^^^^^^^^^^^^
+...
+ 798 |     pub(crate) fn drop_last_n_user_turns(&mut self, num_turns: u32) {
+     |                   ^^^^^^^^^^^^^^^^^^^^^^
+...
+ 979 |     pub(crate) fn estimated_tokens_after_last_model_generated_item(&self) -> i64 {
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1022 |     fn trim_pre_turn_context_updates(
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `estimate_image_reference_bytes` is never used
+    --> core/src/context_manager/history.rs:1357:15
+     |
+1357 | pub(crate) fn estimate_image_reference_bytes(
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `user_message_positions` is never used
+    --> core/src/context_manager/history.rs:1456:4
+     |
+1456 | fn user_message_positions(items: &[ResponseItemEnvelope]) -> Vec<usize> {
+     |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `remove_corresponding_for` is never used
+   --> core/src/context_manager/normalize.rs:227:15
+    |
+227 | pub(crate) fn remove_corresponding_for(items: &mut Vec<ResponseItemEnvelope>, item: &ResponseItem) {
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `remove_first_matching` is never used
+   --> core/src/context_manager/normalize.rs:319:4
+    |
+319 | fn remove_first_matching<F>(items: &mut Vec<ResponseItemEnvelope>, predicate: F)
+    |    ^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `CONTEXTUAL_DEVELOPER_PREFIXES` is never used
+  --> core/src/event_mapping.rs:40:7
+   |
+40 | const CONTEXTUAL_DEVELOPER_PREFIXES: &[&str] = &[
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `is_contextual_dev_message_content` is never used
+  --> core/src/event_mapping.rs:73:15
+   |
+73 | pub(crate) fn is_contextual_dev_message_content(message: &[ContentItem]) -> bool {
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `has_non_contextual_dev_message_content` is never used
+  --> core/src/event_mapping.rs:79:15
+   |
+79 | pub(crate) fn has_non_contextual_dev_message_content(message: &[ContentItem]) -> bool {
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `is_contextual_dev_fragment` is never used
+  --> core/src/event_mapping.rs:85:4
+   |
+85 | fn is_contextual_dev_fragment(content_item: &ContentItem) -> bool {
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variant `Compaction` is never constructed
+ --> core/src/tools/executed_tool_calls/request_metadata.rs:8:5
+  |
+6 | enum RequestKind {
+  |      ----------- variant in this enum
+7 |     Sampling,
+8 |     Compaction,
+  |     ^^^^^^^^^^
+  |
+  = note: `RequestKind` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `attach_to_compaction_prompt` is never used
+  --> core/src/tools/executed_tool_calls/request_metadata.rs:12:19
+   |
+11 | impl ExecutedToolCalls {
+   | ---------------------- method in this implementation
+12 |     pub(crate) fn attach_to_compaction_prompt(&self, items: &mut [ResponseItem]) {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variant `Compaction` is never constructed
+  --> core/src/turn_timing.rs:78:5
+   |
+76 | enum TurnProfilePhase {
+   |      ---------------- variant in this enum
+77 |     Sampling,
+78 |     Compaction,
+   |     ^^^^^^^^^^
+   |
+   = note: `TurnProfilePhase` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: method `begin_compaction` is never used
+   --> core/src/turn_timing.rs:158:19
+    |
+ 89 | impl TurnTimingState {
+    | -------------------- method in this implementation
+...
+158 |     pub(crate) fn begin_compaction(self: &Arc<Self>) -> TurnProfileTimingGuard {
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: method `begin_compaction` is never used
+   --> core/src/turn_timing.rs:271:8
+    |
+227 | impl TurnProfileState {
+    | --------------------- method in this implementation
+...
+271 |     fn begin_compaction(&mut self, now: Instant) -> bool {
+    |        ^^^^^^^^^^^^^^^^
+
+warning: struct `AutoCompactWindowSnapshot` is never constructed
+  --> core/src/state/auto_compact_window.rs:23:19
+   |
+23 | pub(crate) struct AutoCompactWindowSnapshot {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variants `ServerObserved` and `Estimated` are never constructed
+  --> core/src/state/auto_compact_window.rs:29:5
+   |
+28 | enum AutoCompactWindowPrefill {
+   |      ------------------------ variants in this enum
+29 |     ServerObserved(i64),
+   |     ^^^^^^^^^^^^^^
+30 |     Estimated(i64),
+   |     ^^^^^^^^^
+   |
+   = note: `AutoCompactWindowPrefill` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: methods `ensure_server_observed_prefill_from_usage`, `set_estimated_prefill`, and `snapshot` are never used
+   --> core/src/state/auto_compact_window.rs:80:19
+    |
+ 46 | impl AutoCompactWindow {
+    | ---------------------- methods in this implementation
+...
+ 80 |     pub(super) fn ensure_server_observed_prefill_from_usage(&mut self, usage: &TokenUsage) {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 93 |     pub(super) fn set_estimated_prefill(&mut self, tokens: i64) {
+    |                   ^^^^^^^^^^^^^^^^^^^^^
+...
+104 |     pub(super) fn snapshot(&self) -> AutoCompactWindowSnapshot {
+    |                   ^^^^^^^^
+
+warning: variant `Compacted` is never constructed
+  --> core/src/state/session.rs:37:5
+   |
+35 | pub(crate) enum ReasoningEffortPin {
+   |                 ------------------ variant in this enum
+36 |     Unset,
+37 |     Compacted,
+   |     ^^^^^^^^^
+
+warning: methods `ensure_auto_compact_window_server_prefill_from_usage`, `set_auto_compact_window_estimated_prefill`, and `auto_compact_window_snapshot` are never used
+   --> core/src/state/session.rs:297:19
+    |
+108 | impl SessionState {
+    | ----------------- methods in this implementation
+...
+297 |     pub(crate) fn ensure_auto_compact_window_server_prefill_from_usage(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+305 |     pub(crate) fn set_auto_compact_window_estimated_prefill(&mut self, tokens: i64) {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+309 |     pub(crate) fn auto_compact_window_snapshot(&self) -> AutoCompactWindowSnapshot {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+   Compiling codex-memories-write v0.162.0-alpha.2 ($WORK/codexint/codex-rs/memories/write)
+   Compiling codex-app-server-transport v0.162.0-alpha.2 ($WORK/codexint/codex-rs/app-server-transport)
+   Compiling codex-goal-extension v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/goal)
+   Compiling codex-history-notes-extension v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/history-notes)
+   Compiling codex-chatgpt v0.162.0-alpha.2 ($WORK/codexint/codex-rs/chatgpt)
+   Compiling codex-image-generation-extension v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/image-generation)
+   Compiling codex-mcp-extension v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/mcp)
+   Compiling codex-queue-extension v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/queue)
+   Compiling codex-web-search-extension v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/web-search)
+   Compiling codex-memories-extension v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/memories)
+   Compiling codex-external-agent-migration v0.162.0-alpha.2 ($WORK/codexint/codex-rs/external-agent-migration)
+   Compiling codex-guardian-v2 v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/guardian-v2)
+warning: unused import: `super::sampler::LunaSampler`
+ --> ext/guardian-v2/src/async_scorer/approval.rs:8:5
+  |
+8 | use super::sampler::LunaSampler;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `codex_core::context::GuardianContextMode`
+  --> ext/guardian-v2/src/async_scorer/approval.rs:12:5
+   |
+12 | use codex_core::context::GuardianContextMode;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `codex_extension_api::ResponseItem`
+  --> ext/guardian-v2/src/async_scorer/classification.rs:26:5
+   |
+26 | use codex_extension_api::ResponseItem;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `codex_protocol::models::ResponseItem`
+  --> ext/guardian-v2/src/async_scorer/conversation.rs:17:5
+   |
+17 | use codex_protocol::models::ResponseItem;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+   Compiling codex-agent-extension v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ext/agent)
+   Compiling codex-lmstudio v0.162.0-alpha.2 ($WORK/codexint/codex-rs/lmstudio)
+   Compiling codex-ollama v0.162.0-alpha.2 ($WORK/codexint/codex-rs/ollama)
+   Compiling codex-app-server-daemon v0.162.0-alpha.2 ($WORK/codexint/codex-rs/app-server-daemon)
+   Compiling codex-utils-oss v0.162.0-alpha.2 ($WORK/codexint/codex-rs/utils/oss)
+   Compiling codex-app-server-test-client v0.162.0-alpha.2 ($WORK/codexint/codex-rs/app-server-test-client)
+   Compiling codex-app-server v0.162.0-alpha.2 ($WORK/codexint/codex-rs/app-server)
+warning: variable does not need to be mutable
+    --> app-server/src/lib.rs:1503:5
+     |
+1503 |     mut loader_overrides: LoaderOverrides,
+     |     ----^^^^^^^^^^^^^^^^
+     |     |
+     |     help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling codex-app-server-client v0.162.0-alpha.2 ($WORK/codexint/codex-rs/app-server-client)
+warning: `codex-guardian-v2` (lib) generated 4 warnings (run `cargo fix --lib -p codex-guardian-v2` to apply 4 suggestions)
+   Compiling codex-tui v0.162.0-alpha.2 ($WORK/codexint/codex-rs/tui)
+   Compiling codex-exec v0.162.0-alpha.2 ($WORK/codexint/codex-rs/exec)
+   Compiling codex-cloud-tasks v0.162.0-alpha.2 ($WORK/codexint/codex-rs/cloud-tasks)
+warning: unused import: `codex_http_client::HttpClientFactory`
+  --> cloud-tasks/src/lib.rs:16:5
+   |
+16 | use codex_http_client::HttpClientFactory;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `codex_http_client::OutboundProxyPolicy`
+  --> cloud-tasks/src/lib.rs:17:5
+   |
+17 | use codex_http_client::OutboundProxyPolicy;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+   Compiling codex-cli v0.162.0-alpha.2 ($WORK/codexint/codex-rs/cli)
+warning: `codex-core` (lib) generated 29 warnings
+warning: `codex-app-server` (lib) generated 1 warning (run `cargo fix --lib -p codex-app-server` to apply 1 suggestion)
+warning: `codex-cloud-tasks` (lib) generated 2 warnings (run `cargo fix --lib -p codex-cloud-tasks` to apply 2 suggestions)
+    Finished `release` profile [optimized + debuginfo] target(s) in 10m 20s

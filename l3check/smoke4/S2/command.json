@@ -1,0 +1,29 @@
+{
+  "command": [
+    "taskset",
+    "-c",
+    "0-11",
+    "$WORK/codexint/codex-rs/target/release/codex",
+    "exec",
+    "resume",
+    "01a120c4-44fa-7800-a088-b81e93c03d73",
+    "--skip-git-repo-check",
+    "--json",
+    "-m",
+    "gpt-6-astra",
+    "-c",
+    "model_reasoning_effort=\"low\"",
+    "방금 내가 뭘 물었고 너는 뭐라고 답했지?"
+  ],
+  "binary_sha256": "27b9e2d369e933113a06b2a720f27a2c705a599fe6e94183c05570959f308563",
+  "cwd": "$WORK/vrsint_smoke/S2",
+  "environment": {
+    "CODEX_HOME": "~/.codex",
+    "CODEX_VRS_LOG": "$WORK/codexint/l3check/smoke4/S2/vrs.jsonl",
+    "RUST_LOG": "error,codex_api::responses_websocket_timing=trace"
+  },
+  "started_utc": "2026-10-09T13:05:02.363284+00:00",
+  "started_unix_ms": 1791551102363,
+  "timeout_seconds": 600,
+  "pid": 3323250
+}
