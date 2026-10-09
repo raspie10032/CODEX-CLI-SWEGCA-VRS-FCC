@@ -15,7 +15,6 @@ use codex_core_api::Arg0DispatchPaths;
 use codex_core_api::AskForApproval;
 use codex_core_api::AuthKeyringBackendKind;
 use codex_core_api::AuthManager;
-use codex_core_api::AutoCompactTokenLimitScope;
 use codex_core_api::CodexAppsToolsCache;
 use codex_core_api::CodexHomeUserInstructionsProvider;
 use codex_core_api::CodexThread;
@@ -246,9 +245,6 @@ async fn new_config(
         service_tier: None,
         review_model: None,
         model_context_window: None,
-        model_auto_compact_token_limit: None,
-        model_auto_compact_token_limit_scope: AutoCompactTokenLimitScope::Total,
-        model_post_turn_compact_threshold_percent: 0,
         model_provider_id,
         model_provider,
         personality: None,

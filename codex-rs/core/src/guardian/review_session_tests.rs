@@ -3,6 +3,7 @@ use crate::agents_md_manager::AgentsMdManager;
 use crate::context::ContextualUserFragment;
 use crate::context_manager::ContextManager;
 use crate::session::Submission;
+use codex_features::Feature;
 use codex_guardian_reviewer::ReviewerRequest;
 use codex_guardian_reviewer::guardian_output_contract_prompt;
 use codex_history::CodexHarnessMetadata;
@@ -18,117 +19,6 @@ use codex_protocol::protocol::TurnAbortReason;
 use codex_protocol::protocol::TurnAbortedEvent;
 use codex_protocol::protocol::TurnCompleteEvent;
 use pretty_assertions::assert_eq;
-
-#[tokio::test]
-async fn run_review_preserves_evidence_during_parent_compaction() {
-    const EVIDENCE: &str = "The inspected repository is public.";
-    let (parent, turn, _events) =
-        crate::session::tests::make_session_and_context_with_auth_and_config_and_rx(
-            codex_login::CodexAuth::from_api_key("Test API Key"),
-            Vec::new(),
-            |config| {
-                config.features.disable(Feature::TokenBudget).unwrap();
-            },
-        )
-        .await;
-    let mut params = test_review_params().await;
-    params.spawn_config = build_guardian_review_session_config(
-        crate::guardian::test_host::build_reviewer_config(turn.config.as_ref())
-            .expect("reviewer config"),
-        /*live_network_config*/ None,
-        &params.review_model.model,
-        params.review_model.reasoning_effort.clone(),
-        params.reasoning_summary,
-        params.personality,
-        ResolvedModelMessages::bundled(),
-    )
-    .unwrap();
-    params.parent_session = Arc::clone(&parent);
-    params.parent_context = GuardianReviewContext::from(Arc::clone(&turn));
-    let evidence: ResponseItem = serde_json::from_value(serde_json::json!({
-        "type": "function_call_output", "call_id": "prior-inspection", "output": EVIDENCE
-    }))
-    .unwrap();
-    parent
-        .record_conversation_items(&turn, turn.model_info(), &[evidence])
-        .await;
-    params.parent_history = parent.clone_history().await;
-
-    // An idle, prewarmed reviewer is a normal manager state.
-    let (mut reviewer, tx_event, rx_sub) = test_review_session().await;
-    reviewer.reuse_key = GuardianReviewSessionReuseKey::from_spawn_config(
-        &params.spawn_config,
-        parent.inherited_instructions().await,
-        params.parent_history.history_version(),
-        GuardianContextMode::ThreadOwned,
-    )
-    .with_environments(params.parent_context.environments())
-    .with_node_repl_policy_eligibility(
-        params
-            .parent_context
-            .turn()
-            .model_info()
-            .node_repl_auto_review_required,
-    )
-    .with_node_repl_policy(&params.node_repl_policy);
-    let manager = prewarm_test_session(&params, reviewer).await;
-    // Capture the review context, then compact the parent before the reviewer builds its prompt.
-    let prepared = setup::prepare_review(params).await.unwrap();
-    let checkpoint: ResponseItem = serde_json::from_value(serde_json::json!({
-        "type": "compaction", "id": "cmp_new", "encrypted_content": "new-checkpoint"
-    }))
-    .unwrap();
-    let (window_number, window_ids) = parent.advance_auto_compact_window().await;
-    parent
-        .replace_compacted_history(
-            vec![checkpoint.into()],
-            /*reference_context_item*/ None,
-            /*world_state_baseline*/ None,
-            crate::compact::CompactedHistoryMetadata {
-                input_goal_ids: Default::default(),
-                message: String::new(),
-                window_number,
-                window_ids,
-                compaction_response_id: None,
-                compaction_model_hash: Some("matching".to_owned()),
-                reviewer_compaction_hash: Some("matching".to_owned()),
-            },
-        )
-        .await;
-    let ((outcome, _), submitted_text) = tokio::join!(manager.review(prepared), async {
-        let submission = rx_sub.recv().await.unwrap();
-        let id = submission.id;
-        let Op::TurnInput { request, reply, .. } = submission.op else {
-            panic!("expected reviewer prompt");
-        };
-        let codex_protocol::turn_input::TurnInput::UserInput { content, .. } = request.input else {
-            panic!("expected user input");
-        };
-        let text = serde_json::to_string(&content).unwrap();
-        reply
-            .send(Ok(TurnInputSubmission::Started {
-                turn_id: id.clone(),
-            }))
-            .unwrap();
-        tx_event
-            .send(turn_complete_event(
-                &id,
-                Some("review finished"),
-                /*time_to_first_token_ms*/ None,
-            ))
-            .await
-            .unwrap();
-        text
-    });
-    assert!(matches!(
-        outcome,
-        GuardianReviewSessionOutcome::Completed(Ok(_))
-    ));
-    assert!(
-        submitted_text.contains(EVIDENCE),
-        "review must retain evidence from before the concurrent compaction: {submitted_text}"
-    );
-}
 
 async fn test_review_session() -> (
     GuardianReviewSession,
@@ -529,50 +419,6 @@ async fn guardian_prompt_cache_key_is_scoped_to_parent_thread() {
             /*parent_thread_id*/ None
         )
     );
-}
-
-#[tokio::test]
-async fn guardian_review_session_compact_scope_change_invalidates_cached_session() {
-    let parent_config = crate::config::test_config().await;
-    let cached_spawn_config = build_guardian_review_session_config(
-        crate::guardian::test_host::build_reviewer_config(&parent_config).expect("reviewer config"),
-        /*live_network_config*/ None,
-        "active-model",
-        /*reasoning_effort*/ None,
-        ReasoningSummaryConfig::default(),
-        /*personality*/ None,
-        ResolvedModelMessages::bundled(),
-    )
-    .expect("cached guardian config");
-    let cached_reuse_key = GuardianReviewSessionReuseKey::from_spawn_config(
-        &cached_spawn_config,
-        SessionInstructions::default(),
-        /*parent_history_version*/ 0,
-        GuardianContextMode::Legacy,
-    );
-
-    let mut changed_parent_config = parent_config;
-    changed_parent_config.model_auto_compact_token_limit_scope =
-        AutoCompactTokenLimitScope::BodyAfterPrefix;
-    let next_spawn_config = build_guardian_review_session_config(
-        crate::guardian::test_host::build_reviewer_config(&changed_parent_config)
-            .expect("reviewer config"),
-        /*live_network_config*/ None,
-        "active-model",
-        /*reasoning_effort*/ None,
-        ReasoningSummaryConfig::default(),
-        /*personality*/ None,
-        ResolvedModelMessages::bundled(),
-    )
-    .expect("next guardian config");
-    let next_reuse_key = GuardianReviewSessionReuseKey::from_spawn_config(
-        &next_spawn_config,
-        SessionInstructions::default(),
-        /*parent_history_version*/ 0,
-        GuardianContextMode::Legacy,
-    );
-
-    assert_ne!(cached_reuse_key, next_reuse_key);
 }
 
 #[test_case::test_case(

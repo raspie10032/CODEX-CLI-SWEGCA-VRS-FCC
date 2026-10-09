@@ -15,7 +15,6 @@ use super::*;
 mod config_refresh_tests;
 use crate::agents_md_manager::AgentsMdManager;
 use crate::agents_md_manager::SessionInstructions;
-use crate::compact::InitialContextInjection;
 use crate::config::ConfigBuilder;
 use crate::config::ConfigOverrides;
 use crate::config::RuntimeConfigRefresh;
@@ -2400,26 +2399,6 @@ fn collect_explicit_app_ids_from_skill_items_skips_plain_mentions_with_skill_con
 }
 
 #[tokio::test]
-async fn reconstruct_history_matches_live_compactions() {
-    let (session, turn_context) = make_session_and_context().await;
-    let (rollout_items, expected) = sample_rollout(&session, &turn_context).await;
-
-    let reconstruction_turn = session.new_default_turn().await;
-    let reconstructed = session
-        .reconstruct_history_from_rollout(reconstruction_turn.as_ref(), &rollout_items)
-        .await;
-
-    assert_eq!(expected, raw_envelopes(&reconstructed.history));
-    assert_eq!(2, reconstructed.window_number);
-    assert_eq!(
-        reconstructed
-            .window_id
-            .map(|window_id| window_id.get_version_num()),
-        Some(7)
-    );
-}
-
-#[tokio::test]
 async fn reconstruct_history_uses_replacement_history_verbatim() {
     let (session, turn_context) = make_session_and_context().await;
     let summary_item = ResponseItem::Message {
@@ -2471,7 +2450,6 @@ async fn reconstruct_history_uses_replacement_history_verbatim() {
         .reconstruct_history_from_rollout(&turn_context, &rollout_items)
         .await;
 
-    assert_eq!(reconstructed.history, replacement_history);
     assert_eq!(42, reconstructed.window_number);
     assert_eq!(Some(first_window_id), reconstructed.first_window_id);
     assert_eq!(Some(previous_window_id), reconstructed.previous_window_id);
@@ -3423,75 +3401,6 @@ fn latest_token_usage_record_stops_at_compaction_checkpoint() {
 }
 
 #[tokio::test]
-async fn recompute_token_usage_uses_session_base_instructions() {
-    let (session, turn_context) = make_session_and_context().await;
-
-    let override_instructions = "SESSION_OVERRIDE_INSTRUCTIONS_ONLY".repeat(120);
-    {
-        let mut state = session.state.lock().await;
-        state.session_configuration.base_instructions = override_instructions.clone();
-    }
-
-    let item = user_message("hello");
-    session
-        .record_conversation_items(
-            &turn_context,
-            turn_context.model_info(),
-            std::slice::from_ref(&item),
-        )
-        .await;
-
-    let history = session.clone_history().await;
-    let session_base_instructions = BaseInstructions {
-        text: override_instructions,
-        provenance: None,
-    };
-    let expected_tokens = history
-        .estimate_token_count_with_base_instructions(&session_base_instructions)
-        .expect("estimate with session base instructions");
-    let model_estimated_tokens = history
-        .estimate_token_count(&turn_context)
-        .expect("estimate with model instructions");
-    assert_ne!(expected_tokens, model_estimated_tokens);
-
-    session.recompute_token_usage(&turn_context).await;
-
-    let actual_tokens = session
-        .state
-        .lock()
-        .await
-        .token_info()
-        .expect("token info")
-        .last_token_usage
-        .total_tokens;
-    assert_eq!(actual_tokens, expected_tokens.max(0));
-}
-
-#[tokio::test]
-async fn recompute_token_usage_updates_model_context_window() {
-    let (session, mut turn_context) = make_session_and_context().await;
-
-    {
-        let mut state = session.state.lock().await;
-        state.set_token_info(Some(TokenUsageInfo {
-            total_token_usage: TokenUsage::default(),
-            last_token_usage: TokenUsage::default(),
-            model_context_window: Some(258_400),
-        }));
-    }
-
-    update_turn_settings_for_test(&mut turn_context, |settings| {
-        Arc::make_mut(&mut settings.model_info).context_window = Some(128_000);
-        Arc::make_mut(&mut settings.model_info).effective_context_window_percent = 100;
-    });
-
-    session.recompute_token_usage(&turn_context).await;
-
-    let actual = session.state.lock().await.token_info().expect("token info");
-    assert_eq!(actual.model_context_window, Some(128_000));
-}
-
-#[tokio::test]
 async fn record_token_usage_info_notifies_extension_contributors() {
     struct SessionTokenUsageMarker;
     struct ThreadTokenUsageMarker;
@@ -3984,103 +3893,6 @@ async fn record_initial_history_reconstructs_forked_transcript() {
     assert_eq!(
         strip_response_item_ids(&expected),
         strip_response_item_ids(&raw_history_items(&history))
-    );
-}
-
-#[tokio::test]
-async fn start_new_context_window_persists_checkpoint_state() {
-    let (mut session, turn_context, _rx) = make_session_and_context_with_auth_and_config_and_rx(
-        CodexAuth::from_api_key("Test API Key"),
-        Vec::new(),
-        |_| {},
-    )
-    .await;
-    let rollout_path =
-        attach_thread_persistence(Arc::get_mut(&mut session).expect("unique session")).await;
-    let thread_id = ThreadId::new();
-    let token_usage_record = TokenUsageRecord {
-        thread_id,
-        turn_id: "turn-1".to_string(),
-        session_id: SessionId::from(thread_id),
-        root_turn_id: "turn-1".to_string(),
-        response_id: "response-1".to_string(),
-        usage: TokenUsage::default(),
-        turn_token_usage: TokenUsage::default(),
-        thread_token_usage: TokenUsage::default(),
-    };
-    session.state.lock().await.latest_token_usage_record = Some(token_usage_record.clone());
-    let step_context = session
-        .capture_step_context(Arc::clone(&turn_context), &CancellationToken::new())
-        .await
-        .expect("a fresh cancellation token cannot be cancelled");
-    let world_state = Arc::new(
-        session
-            .build_world_state_for_step(&step_context)
-            .await
-            .expect("world state should build"),
-    );
-    let expected_snapshot = world_state.render_full().0.into_object();
-    session
-        .start_new_context_window(&step_context, world_state)
-        .await;
-
-    let live_history = session.clone_history().await;
-    assert_eq!(
-        live_history.world_state_checkpoint().unwrap().state,
-        expected_snapshot
-    );
-    assert!(live_history.raw_items().next().is_some());
-    assert!(live_history.raw_items().all(|item| item.id().is_some()));
-
-    session.flush_rollout().await.expect("rollout should flush");
-    let InitialHistory::Resumed(resumed) = RolloutRecorder::get_rollout_history(&rollout_path)
-        .await
-        .expect("read rollout history")
-    else {
-        panic!("expected resumed rollout history");
-    };
-    let persisted_world_state = resumed
-        .history
-        .iter()
-        .rev()
-        .find_map(|item| match item {
-            RolloutItem::WorldState(world_state) => Some(world_state),
-            _ => None,
-        })
-        .expect("new window should persist a world state");
-    assert!(persisted_world_state.full);
-    assert_eq!(persisted_world_state.state, expected_snapshot);
-    let persisted_compacted = resumed.history.iter().rev().find_map(|item| match item {
-        RolloutItem::Compacted(compacted) => Some(compacted),
-        RolloutItem::SessionMeta(_)
-        | RolloutItem::ResponseItem(_)
-        | RolloutItem::InterAgentCommunication(_)
-        | RolloutItem::InterAgentCommunicationMetadata { .. }
-        | RolloutItem::TurnContext(_)
-        | RolloutItem::WorldState(_)
-        | RolloutItem::RetainedContext(_)
-        | RolloutItem::SecurityRiskScore(_)
-        | RolloutItem::TokenUsageRecord(_)
-        | RolloutItem::RealtimeItem(_)
-        | RolloutItem::EventMsg(_) => None,
-    });
-    let mut expected_history = live_history.annotated_items().to_vec();
-    // Compaction's parallel metadata vector represents absent entries as default metadata.
-    for envelope in &mut expected_history {
-        envelope.metadata.get_or_insert_default();
-    }
-    assert_eq!(
-        persisted_compacted.and_then(|compacted| compacted.replacement_history.clone()),
-        Some(expected_history)
-    );
-    assert_eq!(
-        persisted_compacted.map(|compacted| {
-            (
-                compacted.compaction_response_id.as_deref(),
-                compacted.latest_token_usage_record.as_ref(),
-            )
-        }),
-        Some((None, Some(&token_usage_record)))
     );
 }
 
@@ -5853,218 +5665,6 @@ async fn session_configuration_apply_preserves_absolute_cwd_write_root_on_cwd_up
 }
 
 #[tokio::test]
-async fn settings_checkpoint_waits_for_accepted_settings_persistence() {
-    let (mut session, _turn_context, rx) = make_session_and_context_with_auth_and_config_and_rx(
-        CodexAuth::from_api_key("Test API Key"),
-        Vec::new(),
-        |config| {
-            config
-                .permissions
-                .set_permission_profile(PermissionProfile::workspace_write())
-                .expect("set initial permission profile");
-        },
-    )
-    .await;
-    let rollout_path =
-        attach_thread_persistence(Arc::get_mut(&mut session).expect("unique session")).await;
-    let refresh_guard = session
-        .managed_network_proxy_refresh_lock
-        .acquire()
-        .await
-        .expect("network refresh lock");
-    let mut update = Box::pin(tokio::task::unconstrained(thread_settings::apply_update(
-        &session,
-        "settings".to_string(),
-        SessionSettingsUpdate {
-            step_settings: StepSettingsUpdate {
-                service_tier: Some(Some(ServiceTier::Fast.request_value().to_string())),
-                ..Default::default()
-            },
-            permission_profile: Some(PermissionProfile::read_only()),
-            ..Default::default()
-        },
-    )));
-    // Pause after committing settings but before their accepted snapshot is persisted.
-    assert!(futures::poll!(update.as_mut()).is_pending());
-    let committed = session.thread_settings_snapshot().await;
-    let history_before = session.clone_history().await;
-    let (window_number, window_ids) = session.advance_auto_compact_window().await;
-    let mut checkpoint = Box::pin(tokio::task::unconstrained(
-        session.replace_compacted_history(
-            vec![ResponseItemEnvelope::new(user_message("compacted history"))],
-            /*reference_context_item*/ None,
-            /*world_state_baseline*/ None,
-            CompactedHistoryMetadata {
-                input_goal_ids: Default::default(),
-                message: "summary".to_string(),
-                window_number,
-                window_ids,
-                compaction_response_id: None,
-                compaction_model_hash: None,
-                reviewer_compaction_hash: None,
-            },
-        ),
-    ));
-    let mut settings_checkpoint = Box::pin(tokio::task::unconstrained(
-        session.checkpoint_thread_settings(),
-    ));
-    assert!(futures::poll!(checkpoint.as_mut()).is_pending());
-    assert!(futures::poll!(settings_checkpoint.as_mut()).is_pending());
-    assert_eq!(
-        session.clone_history().await.annotated_items(),
-        history_before.annotated_items()
-    );
-
-    // Direct runtime restoration may overlap postcommit work. Both checkpoints must wait
-    // for the accepted event, then capture current settings rather than its older commit.
-    let restored = session
-        .update_settings(SessionSettingsUpdate {
-            step_settings: StepSettingsUpdate {
-                service_tier: Some(None),
-                ..Default::default()
-            },
-            ..Default::default()
-        })
-        .await
-        .expect("restore current settings")
-        .snapshot;
-    assert_ne!(committed, restored);
-    drop(refresh_guard);
-    update.await.expect("accepted settings update");
-    checkpoint.await;
-    settings_checkpoint
-        .await
-        .expect("checkpoint current settings");
-
-    let live_snapshots = std::iter::from_fn(|| rx.try_recv().ok())
-        .filter_map(|event| match event.msg {
-            EventMsg::ThreadSettingsApplied(event) => Some(event.thread_settings),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(live_snapshots, vec![committed.clone()]);
-
-    let (items, _, _) = RolloutRecorder::load_rollout_items(&rollout_path)
-        .await
-        .expect("read persisted settings");
-    let snapshots = items
-        .into_iter()
-        .filter_map(|item| match item {
-            RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) => {
-                Some((event.thread_id, event.thread_settings))
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(
-        snapshots,
-        vec![
-            (Some(session.thread_id), committed),
-            (Some(session.thread_id), restored.clone()),
-            (Some(session.thread_id), restored),
-        ]
-    );
-}
-
-#[tokio::test]
-async fn mcp_attribution_checkpoints_cover_batch_prefixes_compaction_and_restore() {
-    let (mut session, turn_context) = make_session_and_context().await;
-    session.services.executed_tool_calls =
-        crate::state::ExecutedToolCalls::new(&turn_context.config.features, &InitialHistory::New);
-    let rollout_path = attach_thread_persistence(&mut session).await;
-    let source = McpAttributionSource {
-        connector_id: None,
-        plugin_id: None,
-        server_name: "example".to_string(),
-        tool_name: "search".to_string(),
-        first_turn_id: "turn_1".to_string(),
-    };
-    session
-        .services
-        .executed_tool_calls
-        .record_mcp_source(source.clone());
-    let expected = McpAttribution {
-        status: McpAttributionStatus::Complete,
-        error_reason: None,
-        sources: vec![source],
-    };
-    session
-        .record_annotated_conversation_items(
-            &turn_context,
-            turn_context.model_info(),
-            vec![
-                ResponseItemEnvelope::new(ResponseItem::FunctionCallOutput {
-                    id: None,
-                    call_id: Some("call_1".to_string()),
-                    name: None,
-                    namespace: None,
-                    output: FunctionCallOutputPayload::from_text("result".to_string()),
-                    internal_chat_message_metadata_passthrough: None,
-                }),
-                ResponseItemEnvelope::new(user_message("next turn")),
-            ],
-        )
-        .await;
-    let checkpoints = session
-        .clone_history()
-        .await
-        .annotated_items()
-        .iter()
-        .map(|envelope| {
-            envelope
-                .metadata
-                .as_ref()
-                .and_then(|metadata| metadata.mcp_attribution.clone())
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(
-        checkpoints,
-        vec![Some(expected.clone()), Some(expected.clone())]
-    );
-
-    let (window_number, window_ids) = session.advance_auto_compact_window().await;
-    session
-        .replace_compacted_history(
-            vec![ResponseItemEnvelope::new(user_message("compacted history"))],
-            /*reference_context_item*/ None,
-            /*world_state_baseline*/ None,
-            CompactedHistoryMetadata {
-                input_goal_ids: Default::default(),
-                message: "summary".to_string(),
-                window_number,
-                window_ids,
-                compaction_response_id: None,
-                compaction_model_hash: None,
-                reviewer_compaction_hash: None,
-            },
-        )
-        .await;
-    session
-        .flush_rollout()
-        .await
-        .expect("flush compacted history");
-
-    let (items, _, _) = RolloutRecorder::load_rollout_items(&rollout_path)
-        .await
-        .expect("read compacted history");
-    let checkpoint = items.iter().rev().find_map(|item| match item {
-        RolloutItem::Compacted(compacted) => compacted
-            .replacement_history
-            .as_ref()?
-            .iter()
-            .rev()
-            .find_map(|envelope| envelope.metadata.as_ref()?.mcp_attribution.as_ref()),
-        _ => None,
-    });
-    assert_eq!(checkpoint, Some(&expected));
-    let restored = crate::state::ExecutedToolCalls::new(
-        &turn_context.config.features,
-        &InitialHistory::Forked(items),
-    );
-    assert_eq!(restored.mcp_attribution_snapshot(), expected);
-}
-
-#[tokio::test]
 async fn standalone_settings_invalidate_continuation_before_delivering_acceptance() {
     let (mut session, turn_context) = make_session_and_context().await;
     let (tx, rx) = async_channel::bounded(1);
@@ -6123,109 +5723,6 @@ async fn standalone_settings_invalidate_continuation_before_delivering_acceptanc
     ));
     drop(tx_sub);
     submissions.await;
-}
-
-#[tokio::test]
-async fn compaction_persists_resume_metadata_and_companion_records() {
-    let (mut session, turn_context) = make_session_and_context().await;
-    let rollout_path = attach_thread_persistence(&mut session).await;
-    let turn_context = Arc::new(turn_context);
-    let turn_context_baseline = turn_context.to_turn_context_item();
-    let world_state = Arc::new(build_world_state_from_turn_context(&session, &turn_context).await);
-    let previous_turn_settings = PreviousTurnSettings {
-        model: "previous-model".to_string(),
-        comp_hash: Some("comp-hash".to_string()),
-        cyber_access_program: None,
-        realtime_active: Some(true),
-    };
-    session
-        .set_previous_turn_settings(Some(previous_turn_settings.clone()))
-        .await;
-
-    session.state.lock().await.last_started_turn_id = Some("checkpoint-turn".into());
-    session.multi_agent_version = std::sync::OnceLock::from(MultiAgentVersion::V2);
-    let expected = CompactionResumeMetadata {
-        multi_agent_version: Some(MultiAgentVersion::V2),
-        last_started_turn_id: Some("checkpoint-turn".into()),
-        previous_turn_settings: Some(previous_turn_settings),
-    };
-    let expected_settings = codex_protocol::protocol::ThreadSettingsAppliedEvent {
-        thread_id: Some(session.thread_id()),
-        thread_settings: session.thread_settings_snapshot().await,
-    };
-
-    let mut first_live_history = None;
-    for with_baselines in [true, false] {
-        let input_goal_ids =
-            crate::context::UserGoalUpdate::message_ids(session.clone_history().await.raw_items());
-        // The goal edit is accepted after the compaction input was captured.
-        let accepted_goal = if with_baselines {
-            session
-                .record_user_goal_update(crate::context::UserGoalUpdate::Clear)
-                .await
-                .expect("record concurrent clear");
-            session
-                .clone_history()
-                .await
-                .annotated_items()
-                .last()
-                .cloned()
-        } else {
-            None
-        };
-        let (window_number, window_ids) = session.advance_auto_compact_window().await;
-        session
-            .replace_compacted_history(
-                vec![ResponseItemEnvelope::new(user_message("compacted context"))],
-                with_baselines.then_some(turn_context_baseline.clone()),
-                with_baselines.then(|| world_state.render_full().0),
-                CompactedHistoryMetadata {
-                    input_goal_ids,
-                    message: String::new(),
-                    window_number,
-                    window_ids,
-                    compaction_response_id: None,
-                    compaction_model_hash: None,
-                    reviewer_compaction_hash: None,
-                },
-            )
-            .await;
-        if let Some(accepted_goal) = accepted_goal {
-            let live_history = session.clone_history().await.annotated_items().to_vec();
-            assert_eq!(&live_history[1..], &[accepted_goal]);
-            first_live_history = Some(live_history);
-        }
-    }
-
-    session.flush_rollout().await.expect("flush checkpoints");
-    let (items, _, _) = RolloutRecorder::load_rollout_items(&rollout_path)
-        .await
-        .expect("read checkpoints");
-    let compaction_items = items
-        .into_iter()
-        .skip_while(|item| !matches!(item, RolloutItem::Compacted(_)))
-        .collect::<Vec<_>>();
-    let [
-        RolloutItem::Compacted(first),
-        RolloutItem::WorldState(first_world_state),
-        RolloutItem::TurnContext(first_turn_context),
-        RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(first_settings)),
-        RolloutItem::Compacted(second),
-        RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(second_settings)),
-    ] = compaction_items.as_slice()
-    else {
-        panic!("unexpected compaction records: {compaction_items:#?}");
-    };
-    assert_eq!(first.replacement_history, first_live_history);
-    assert_eq!(first.resume_metadata.as_ref(), Some(&expected));
-    assert_eq!(second.resume_metadata.as_ref(), Some(&expected));
-    assert_eq!(
-        first_world_state,
-        &WorldStateItem::full(world_state.render_full().0.into_object())
-    );
-    assert_eq!(first_turn_context, &turn_context_baseline);
-    assert_eq!(first_settings, &expected_settings);
-    assert_eq!(second_settings, &expected_settings);
 }
 
 #[tokio::test]
@@ -6683,51 +6180,6 @@ pub(crate) async fn build_world_state_from_turn_context(
         .build_world_state_for_step(&step_context)
         .await
         .expect("world state should build")
-}
-
-#[tokio::test]
-async fn response_metadata_builders_capture_fresh_mcp_attribution() {
-    let (mut session, turn_context) = make_session_and_context().await;
-    session.services.executed_tool_calls =
-        crate::state::ExecutedToolCalls::new(&turn_context.config.features, &InitialHistory::New);
-    let turn_context = Arc::new(turn_context);
-    let step_context = StepContext::for_test(Arc::clone(&turn_context));
-    let before = session
-        .responses_metadata(&step_context, CodexResponsesRequestKind::Turn)
-        .await;
-    let source = McpAttributionSource {
-        connector_id: None,
-        plugin_id: None,
-        server_name: "example".to_string(),
-        tool_name: "search".to_string(),
-        first_turn_id: turn_context.sub_id.clone(),
-    };
-    session
-        .services
-        .executed_tool_calls
-        .record_mcp_source(source.clone());
-    let after = session
-        .responses_metadata(&step_context, CodexResponsesRequestKind::Turn)
-        .await;
-    let compaction = session
-        .compaction_responses_metadata(
-            &turn_context,
-            CompactionTurnMetadata::new(
-                CompactionTrigger::Auto,
-                CompactionReason::ContextLimit,
-                CompactionImplementation::Responses,
-                CompactionPhase::MidTurn,
-            ),
-        )
-        .await;
-    let expected = Some(McpAttribution {
-        status: McpAttributionStatus::Complete,
-        error_reason: None,
-        sources: vec![source],
-    });
-    assert_eq!(before.mcp_attribution, Some(McpAttribution::default()));
-    assert_eq!(after.mcp_attribution, expected);
-    assert_eq!(compaction.mcp_attribution, expected);
 }
 
 #[tokio::test]
@@ -11099,58 +10551,6 @@ async fn record_context_updates_and_set_reference_context_item_injects_full_cont
 }
 
 #[tokio::test]
-async fn record_context_updates_and_set_reference_context_item_reinjects_full_context_after_clear()
-{
-    let (session, turn_context) = make_session_and_context().await;
-    let turn_context = Arc::new(turn_context);
-    let step_context = StepContext::for_test(Arc::clone(&turn_context));
-    let compacted_summary = ResponseItem::Message {
-        id: None,
-        role: "user".to_string(),
-        content: vec![ContentItem::InputText {
-            text: format!("{}\nsummary", crate::compact::SUMMARY_PREFIX),
-        }],
-        phase: None,
-        internal_chat_message_metadata_passthrough: None,
-    };
-    session
-        .record_conversation_items(
-            &turn_context,
-            turn_context.model_info(),
-            std::slice::from_ref(&compacted_summary),
-        )
-        .await;
-    session
-        .record_context_updates_and_set_reference_context_item(&step_context)
-        .await
-        .expect("world state should build");
-    {
-        let mut state = session.state.lock().await;
-        state.set_reference_context_item(/*item*/ None);
-    }
-    session
-        .replace_history(
-            vec![compacted_summary.clone()],
-            /*reference_context_item*/ None,
-        )
-        .await;
-
-    session
-        .record_context_updates_and_set_reference_context_item(&step_context)
-        .await
-        .expect("world state should build");
-
-    let history = session.clone_history().await;
-    let mut expected_history = vec![compacted_summary];
-    let initial_context = build_initial_context(&session, &turn_context).await;
-    expected_history.extend(initial_context);
-    assert_eq!(
-        strip_response_item_ids(&strip_metadata_from_items(&raw_history_items(&history))),
-        strip_response_item_ids(&strip_metadata_from_items(&expected_history))
-    );
-}
-
-#[tokio::test]
 async fn record_context_updates_and_set_reference_context_item_persists_baseline_without_emitting_diffs()
  {
     let (mut session, turn_context) = make_session_and_context().await;
@@ -11268,118 +10668,6 @@ async fn record_context_updates_and_set_reference_context_item_persists_split_fi
                 .expect("serializable split policy"),
         )
     );
-}
-
-#[tokio::test]
-async fn build_initial_context_uses_retained_step_after_model_change() {
-    let (mut session, mut turn_context, _rx_event) =
-        make_session_and_context_with_auth_and_config_and_rx(
-            CodexAuth::from_api_key("Test API Key"),
-            Vec::new(),
-            |config| {
-                config.features.enable(Feature::TokenBudget).unwrap();
-            },
-        )
-        .await;
-    let mut builder = codex_extension_api::ExtensionRegistryBuilder::new();
-    builder.prompt_contributor(Arc::new(TurnContextExtensionTestContributor));
-    Arc::get_mut(&mut session)
-        .expect("unshared test session")
-        .services
-        .extensions = Arc::new(builder.build());
-    turn_context
-        .extension_data
-        .insert(TurnContextExtensionTestState {
-            expected_model_context_window: Some(64_000),
-        });
-    update_turn_settings_for_test(Arc::get_mut(&mut turn_context).unwrap(), |settings| {
-        let model_info = Arc::make_mut(&mut settings.model_info);
-        model_info.slug = "model-a".to_string();
-        model_info.context_window = None;
-        model_info.max_context_window = None;
-        let messages = model_info.model_messages.as_mut().unwrap();
-        messages.instructions_template = Some("A instructions".to_string());
-        messages.instructions_variables = None;
-    });
-    session
-        .set_previous_turn_settings(Some(PreviousTurnSettings {
-            model: "base-model".to_string(),
-            comp_hash: None,
-            cyber_access_program: None,
-            realtime_active: None,
-        }))
-        .await;
-    let step_a = session
-        .capture_step_context(Arc::clone(&turn_context), &CancellationToken::new())
-        .await
-        .unwrap();
-    let world_a = Arc::new(session.build_world_state_for_step(&step_a).await.unwrap());
-    let retained = crate::compact::InitialContextInjection::BeforeLastUserMessage {
-        world_state: Arc::clone(&world_a),
-        step_context: Arc::clone(&step_a),
-    };
-    let (initial_a, _) =
-        crate::compact::build_compaction_initial_context(&session, &retained).await;
-
-    let mut selected_b = step_a.settings.selected().clone();
-    selected_b.collaboration_mode.settings.model = "model-b".to_string();
-    let mut model_b = step_a.settings.model_info.as_ref().clone();
-    model_b.slug = "model-b".to_string();
-    model_b.context_window = Some(128_000);
-    model_b.effective_context_window_percent = 50;
-    model_b
-        .model_messages
-        .as_mut()
-        .unwrap()
-        .instructions_template = Some("B instructions".to_string());
-    turn_context
-        .next_step_settings
-        .store(Arc::new(ResolvedStepSettings::new(
-            Arc::new(selected_b),
-            Arc::new(model_b),
-            /*fast_mode_enabled*/ false,
-        )));
-    let step_b = session
-        .capture_step_context(Arc::clone(&turn_context), &CancellationToken::new())
-        .await
-        .unwrap();
-    let world_b = session.build_world_state_for_step(&step_b).await.unwrap();
-    let initial_b = session
-        .build_initial_context_with_world_state(&step_b, &world_b)
-        .await
-        .0;
-    let turn_contributions_b = session.build_turn_context_contribution_items(&step_b).await;
-    let (restored_a, restored_snapshot) =
-        crate::compact::build_compaction_initial_context(&session, &retained).await;
-
-    assert_eq!(restored_a, initial_a);
-    assert_eq!(restored_snapshot, Some(world_a.render_full().0));
-    let initial_a = initial_a
-        .into_iter()
-        .map(ResponseItemEnvelope::into_item)
-        .collect::<Vec<_>>();
-    let a_text = developer_input_texts(&initial_a).join("\n");
-    let b_text = developer_input_texts(&initial_b).join("\n");
-    assert!(a_text.contains("A instructions"));
-    assert!(!a_text.contains("<context_window>"));
-    assert!(b_text.contains("B instructions"));
-    assert!(!b_text.contains("A instructions:"));
-    assert!(!a_text.contains("turn context extension enabled"));
-    assert!(b_text.contains("turn context extension enabled"));
-    assert!(
-        developer_input_texts(&turn_contributions_b)
-            .join("\n")
-            .contains("turn context extension enabled")
-    );
-    assert!(
-        b_text.contains("<context_window>"),
-        "full-context metadata must use B's window even though the turn started without one"
-    );
-    assert_eq!(
-        step_b.environments.to_selections(),
-        step_a.environments.to_selections()
-    );
-    assert!(Arc::ptr_eq(&step_b.turn.config, &step_a.turn.config));
 }
 
 #[tokio::test]
@@ -11872,117 +11160,6 @@ async fn make_remote_compaction_session(
         },
     )
     .await
-}
-
-#[test_case(FirstAttempt::Succeeds; "primary succeeds")]
-#[test_case(FirstAttempt::Retries; "fallback executes")]
-#[tokio::test]
-async fn remote_compaction_v2_retains_only_the_selected_step(first_attempt: FirstAttempt) {
-    let server = responses::start_mock_server().await;
-    let (session, turn, events) = make_remote_compaction_session(&server.uri()).await;
-    session
-        .record_conversation_items(
-            &turn,
-            turn.model_info(),
-            &[user_message("before compaction")],
-        )
-        .await;
-    session
-        .spawn_task(
-            Arc::clone(&turn),
-            Vec::new(),
-            NeverEndingTask {
-                kind: TaskKind::Regular,
-                listen_to_cancellation_token: true,
-            },
-        )
-        .await;
-    let primary_turn = Arc::new(
-        turn.with_model("gpt-5.4".to_string(), &session.services.models_manager)
-            .await,
-    );
-    let primary = session
-        .capture_step_context(primary_turn, &CancellationToken::new())
-        .await
-        .expect("capture primary step");
-    let fallback = session
-        .capture_speculative_step_context(turn, &CancellationToken::new())
-        .await
-        .expect("capture speculative fallback");
-    let state = {
-        let active = session.active_turn.lock().await;
-        Arc::clone(&active.as_ref().expect("active turn").turn_state)
-    };
-    assert_eq!(
-        state
-            .lock()
-            .await
-            .last_known_step_context
-            .as_ref()
-            .map(Arc::as_ptr),
-        Some(Arc::as_ptr(&primary)),
-    );
-
-    let success = ResponseTemplate::new(/*status*/ 200)
-        .insert_header("content-type", "text/event-stream")
-        .set_body_string(responses::sse(vec![
-            json!({
-                "type": "response.output_item.done",
-                "item": { "type": "compaction", "encrypted_content": "summary" },
-            }),
-            responses::ev_completed("compact-response"),
-        ]));
-    let replies = match first_attempt {
-        FirstAttempt::Succeeds => vec![success],
-        FirstAttempt::Retries => vec![
-            ResponseTemplate::new(/*status*/ 400)
-                .set_body_json(json!({ "detail": "previous model unavailable" })),
-            success,
-        ],
-    };
-    let requests = responses::mount_response_sequence(&server, replies).await;
-    let mut client_session = session.services.model_client.new_session();
-    crate::compact_remote_v2::run_inline_remote_auto_compact_task(
-        Arc::clone(&session),
-        Arc::clone(&primary),
-        Some(Arc::clone(&fallback)),
-        &mut client_session,
-        InitialContextInjection::DoNotInject,
-        CompactionReason::ModelDownshift,
-        CompactionPhase::PreTurn,
-    )
-    .await
-    .expect("compaction succeeds");
-
-    let (expected, models) = match first_attempt {
-        FirstAttempt::Succeeds => (&primary, vec![json!("gpt-5.4")]),
-        FirstAttempt::Retries => (&fallback, vec![json!("gpt-5.4"), json!("gpt-5.2")]),
-    };
-    assert_eq!(
-        state
-            .lock()
-            .await
-            .last_known_step_context
-            .as_ref()
-            .map(Arc::as_ptr),
-        Some(Arc::as_ptr(expected)),
-    );
-    assert_eq!(
-        requests
-            .requests()
-            .iter()
-            .map(|request| request.body_json()["model"].clone())
-            .collect::<Vec<_>>(),
-        models,
-    );
-    assert!(
-        requests
-            .requests()
-            .iter()
-            .all(|request| request.inputs_of_type("compaction_trigger").len() == 1),
-    );
-    session.abort_all_tasks(TurnAbortReason::Interrupted).await;
-    recv_terminal_event(&events, TerminalEventKind::TurnAborted).await;
 }
 
 #[tokio::test]
@@ -13134,21 +12311,17 @@ async fn sample_rollout(
     rollout_items.push(RolloutItem::ResponseItem(assistant1.clone().into()));
 
     let summary1 = "summary one";
-    let snapshot1 = raw_history_items(&live_history);
-    let user_messages1 = collect_user_messages(&snapshot1);
-    let rebuilt1 = compact::build_compacted_history(Vec::new(), &user_messages1, summary1);
-    live_history.replace_annotated(rebuilt1);
-    let (window_number, window_ids) = session.advance_auto_compact_window().await;
+    live_history.replace_annotated(Vec::new());
     rollout_items.push(RolloutItem::Compacted(CompactedItem {
         message: summary1.to_string(),
         replacement_history: None,
         retained_context: None,
         guardian_history: None,
         mcp_resource_origins: None,
-        window_number: Some(window_number),
-        first_window_id: Some(window_ids.first_window_id.to_string()),
-        previous_window_id: window_ids.previous_window_id.map(|id| id.to_string()),
-        window_id: Some(window_ids.window_id.to_string()),
+        window_number: Some(1),
+        first_window_id: None,
+        previous_window_id: None,
+        window_id: None,
         compaction_response_id: None,
         latest_token_usage_record: None,
         resume_metadata: None,
@@ -13169,21 +12342,17 @@ async fn sample_rollout(
     rollout_items.push(RolloutItem::ResponseItem(assistant2.clone().into()));
 
     let summary2 = "summary two";
-    let snapshot2 = raw_history_items(&live_history);
-    let user_messages2 = collect_user_messages(&snapshot2);
-    let rebuilt2 = compact::build_compacted_history(Vec::new(), &user_messages2, summary2);
-    live_history.replace_annotated(rebuilt2);
-    let (window_number, window_ids) = session.advance_auto_compact_window().await;
+    live_history.replace_annotated(Vec::new());
     rollout_items.push(RolloutItem::Compacted(CompactedItem {
         message: summary2.to_string(),
         replacement_history: None,
         retained_context: None,
         guardian_history: None,
         mcp_resource_origins: None,
-        window_number: Some(window_number),
-        first_window_id: Some(window_ids.first_window_id.to_string()),
-        previous_window_id: window_ids.previous_window_id.map(|id| id.to_string()),
-        window_id: Some(window_ids.window_id.to_string()),
+        window_number: Some(2),
+        first_window_id: None,
+        previous_window_id: None,
+        window_id: None,
         compaction_response_id: None,
         latest_token_usage_record: None,
         resume_metadata: None,

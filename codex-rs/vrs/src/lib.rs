@@ -63,6 +63,8 @@ mod ffi {
         pub cpus: *const c_uint,
         pub ncpus: c_uint,
         pub segwin: c_int,
+        /// libvrs extension: token budget of `vrs_assemble`; 0 selects the library default.
+        pub budget: u64,
     }
 
     unsafe extern "C" {
@@ -116,6 +118,9 @@ fn open_handle() -> Result<Handle, String> {
     let home = codex_utils_home_dir::find_codex_home().map_err(|err| err.to_string())?;
     let sessions = home.as_path().join("sessions");
     let index = home.as_path().join("vrs").join("idx");
+    // libvrs refuses to open without its rollout tree, and its index lives beside it.
+    std::fs::create_dir_all(&sessions)
+        .map_err(|err| format!("create {}: {err}", sessions.display()))?;
     std::fs::create_dir_all(&index).map_err(|err| format!("create {}: {err}", index.display()))?;
     let sessions_c = c_path(&sessions).map_err(|err| err.to_string())?;
     let index_c = c_path(&index).map_err(|err| err.to_string())?;
@@ -127,6 +132,7 @@ fn open_handle() -> Result<Handle, String> {
         cpus: cpus.as_ptr(),
         ncpus: cpus.len() as c_uint,
         segwin: SEGWIN,
+        budget: 0,
     };
     let mut raw: *mut ffi::VrsH = std::ptr::null_mut();
     // SAFETY: `opts` and the buffers it points to outlive the call; `raw` is a valid out pointer.
@@ -194,21 +200,25 @@ pub fn assemble(path: &Path) -> Result<Assembled, VrsError> {
     let mut len: usize = 0;
     // SAFETY: the handle is live for the process lifetime; the out pointers are valid.
     let rc = unsafe { ffi::vrs_assemble(handle.raw, path.as_ptr(), &mut json, &mut len) };
+    // The library may return a JSON body (an error message) with a non-zero code too.
+    let body = if json.is_null() {
+        None
+    } else {
+        // SAFETY: the library returns `len` readable bytes at `json`.
+        let bytes = unsafe { std::slice::from_raw_parts(json.cast::<u8>(), len) };
+        let parsed = if rc == 0 { Some(parse_reply(bytes)) } else { None };
+        // SAFETY: `json` was allocated by the library and is not used after this point.
+        unsafe { ffi::vrs_free(json) };
+        parsed
+    };
     match rc {
-        0 => {}
-        1 => return Err(VrsError::NotReady),
-        2 => return Err(VrsError::OverWindow),
-        other => return Err(VrsError::Failed(other)),
+        0 => body.unwrap_or_else(|| {
+            Err(VrsError::Unavailable("vrs_assemble returned no JSON".to_string()))
+        }),
+        1 => Err(VrsError::NotReady),
+        2 => Err(VrsError::OverWindow),
+        other => Err(VrsError::Failed(other)),
     }
-    if json.is_null() {
-        return Err(VrsError::Unavailable("vrs_assemble returned no JSON".to_string()));
-    }
-    // SAFETY: on success the library returns `len` readable bytes at `json`.
-    let bytes = unsafe { std::slice::from_raw_parts(json.cast::<u8>(), len) };
-    let parsed = parse_reply(bytes);
-    // SAFETY: `json` was allocated by the library and is not used after this point.
-    unsafe { ffi::vrs_free(json) };
-    parsed
 }
 
 #[cfg(not(target_os = "linux"))]

@@ -68,9 +68,6 @@ mod code_mode_model_messages;
 mod codex_apps_protocol;
 mod codex_delegate;
 mod collaboration_instructions;
-mod compact;
-mod compact_remote;
-mod compact_resume_fork;
 mod context_annotations;
 mod current_time_reminder;
 mod cyber_access_program;
@@ -219,8 +216,6 @@ mod tool_lifecycle;
 mod tool_parallelism;
 mod tools;
 mod truncation;
-#[path = "turn_error_details_tests.rs"]
-mod turn_error_details;
 mod turn_input_submission;
 mod turn_phase_trace;
 mod turn_state;
@@ -243,7 +238,6 @@ mod web_search;
 #[path = "web_search_system_proxy_tests.rs"]
 mod web_search_system_proxy;
 mod websocket_fallback;
-mod window_headers;
 #[cfg(target_os = "windows")]
 mod windows_sandbox;
 mod workspace_roots;

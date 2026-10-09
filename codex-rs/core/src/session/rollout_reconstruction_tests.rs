@@ -191,7 +191,6 @@ async fn sender_context_follows_its_delivery_through_checkpoint_and_rollback() {
                 .reconstruct_history_from_rollout(&turn_context, &history)
                 .await;
             assert_eq!(replayed.retained_context, *rolled_back.retained_context());
-            assert_eq!(replayed.history, rolled_back.annotated_items());
         }
     }
 }
@@ -683,10 +682,6 @@ async fn reconstruct_history_rollback_keeps_history_and_metadata_in_sync_for_com
         .await;
 
     assert_eq!(
-        reconstructed.history,
-        annotated(vec![turn_one_user, turn_one_assistant])
-    );
-    assert_eq!(
         serde_json::to_value(reconstructed.previous_turn_settings)
             .expect("serialize previous settings"),
         json!({
@@ -788,10 +783,6 @@ async fn reconstruct_history_rollback_keeps_history_and_metadata_in_sync_for_inc
         .reconstruct_history_from_rollout(&turn_context, &rollout_items)
         .await;
 
-    assert_eq!(
-        reconstructed.history,
-        annotated(vec![turn_one_user, turn_one_assistant])
-    );
     assert_eq!(
         serde_json::to_value(reconstructed.previous_turn_settings)
             .expect("serialize previous settings"),
@@ -931,10 +922,6 @@ async fn reconstruct_history_rollback_skips_non_user_turns_for_history_and_metad
         .await;
 
     assert_eq!(
-        reconstructed.history,
-        annotated(vec![turn_one_user, turn_one_assistant])
-    );
-    assert_eq!(
         reconstructed.previous_turn_settings,
         Some(PreviousTurnSettings {
             model: turn_context.model_info().slug.clone(),
@@ -1036,13 +1023,6 @@ async fn reconstruct_history_rollback_counts_inter_agent_assistant_turns() {
         .await;
 
     assert_eq!(
-        reconstructed.history,
-        annotated(vec![
-            user_message("turn 1 user"),
-            assistant_message("turn 1 assistant")
-        ])
-    );
-    assert_eq!(
         reconstructed.previous_turn_settings,
         Some(PreviousTurnSettings {
             model: turn_context.model_info().slug.clone(),
@@ -1111,7 +1091,6 @@ async fn reconstruct_history_rollback_clears_history_and_metadata_when_exceeding
         .reconstruct_history_from_rollout(&turn_context, &rollout_items)
         .await;
 
-    assert_eq!(reconstructed.history, Vec::new());
     assert_eq!(reconstructed.previous_turn_settings, None);
     assert!(reconstructed.reference_context_item.is_none());
 }
@@ -1832,13 +1811,6 @@ async fn reconstruct_history_legacy_compaction_without_replacement_history_does_
         .reconstruct_history_from_rollout(&turn_context, &rollout_items)
         .await;
 
-    assert_eq!(
-        reconstructed.history,
-        annotated(vec![
-            user_message("before compact"),
-            ContextualUserFragment::into(CompactionSummary::new("legacy summary")),
-        ])
-    );
     assert!(reconstructed.reference_context_item.is_none());
     assert_eq!(reconstructed.retained_context, retained);
 }

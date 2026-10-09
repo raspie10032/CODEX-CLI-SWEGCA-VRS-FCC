@@ -85,7 +85,6 @@ async fn strict_tool_collisions_fail_the_turn_before_sampling(
         config.tool_registry.error_on_tool_collisions = true;
         config.update_plan_enabled = true;
         if pre_compact {
-            config.model_auto_compact_token_limit = Some(0);
         }
     });
     let test = builder.build_with_auto_env(&server).await?;
@@ -194,52 +193,6 @@ async fn strict_tool_collisions_fail_the_turn_before_sampling(
             .all(|request| request.url.path() != "/v1/responses"),
         "a colliding turn should fail before making a model request"
     );
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn strict_tool_collisions_do_not_duplicate_unrelated_compaction_errors() -> Result<()> {
-    skip_if_no_network!(Ok(()));
-
-    let server = start_mock_server().await;
-    let error = json!({
-        "error": {
-            "message": "compaction request is invalid",
-            "code": "invalid_request",
-        },
-    });
-    let compact_mock =
-        mount_response_once(&server, ResponseTemplate::new(400).set_body_json(&error)).await;
-    let mut builder = test_codex().with_config(|config| {
-        config.tool_registry.error_on_tool_collisions = true;
-        config.model_auto_compact_token_limit = Some(0);
-    });
-    let test = builder.build_with_auto_env(&server).await?;
-
-    test.codex
-        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
-            text: "trigger compaction".to_string(),
-            text_elements: Vec::new(),
-        }]))
-        .await?;
-
-    let mut errors = Vec::new();
-    wait_for_event(&test.codex, |event| match event {
-        EventMsg::Error(error) => {
-            errors.push(error.message.clone());
-            false
-        }
-        EventMsg::TurnComplete(_) => true,
-        _ => false,
-    })
-    .await;
-
-    assert_eq!(
-        errors,
-        vec![format!("Error running remote compact task: {error}")]
-    );
-    assert_eq!(compact_mock.requests().len(), 1);
 
     Ok(())
 }

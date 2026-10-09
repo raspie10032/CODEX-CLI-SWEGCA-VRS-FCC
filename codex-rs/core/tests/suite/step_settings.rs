@@ -2151,7 +2151,6 @@ async fn model_activation_uses_destination_metadata_defaults(
     let test = step_settings_test()
         .with_config(move |config| {
             config.model_context_window = None;
-            config.model_auto_compact_token_limit = None;
             config.model_reasoning_summary = configured_summary;
             config.service_tier = Some(ServiceTier::Fast.request_value().to_string());
             config.base_instructions = None;
@@ -3244,5 +3243,3 @@ async fn captured_step_controls_mcp_resource_output() -> Result<()> {
     Ok(())
 }
 
-#[path = "step_settings_compaction.rs"]
-mod compaction;

@@ -201,7 +201,6 @@ pub(super) async fn migration_scenario() -> Result<Vec<responses::ResponsesReque
                 .features
                 .enable(Feature::DefaultModeRequestUserInput)
                 .expect("enable user input");
-            config.model_auto_compact_token_limit = Some(100_000);
             config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
             config.approvals_reviewer = ApprovalsReviewer::AutoReview;
         })

@@ -9,7 +9,6 @@ mod decisions;
 mod extension;
 mod metrics;
 mod observation;
-mod parent_compaction;
 mod request;
 mod sampler;
 mod score;

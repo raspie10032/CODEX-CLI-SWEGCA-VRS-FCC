@@ -30,8 +30,6 @@ use super::conversation::ConversationBackend;
 use super::coverage::scores_tool;
 use super::extension::GuardianV2Extension;
 use super::metrics::record_classification;
-use super::parent_compaction::ParentCompactionError;
-use super::parent_compaction::select_parent_compaction;
 use super::sampler::LunaSampler;
 use super::score::GuardianV2ScoreProgress;
 use codex_protocol::openai_models::GuardianUnscoredAction as UnscoredAction;
@@ -241,36 +239,9 @@ impl GuardianV2Extension {
         let guardian_evidence = input
             .thread_store
             .get_or_init(GuardianReviewEvidence::default);
-        let selected_compaction = match select_parent_compaction(
-            context_mode,
-            &guardian_config,
-            input.conversation_history.as_ref(),
-            &sampler,
-            parent_model
-                .as_ref()
-                .and_then(|model| model.comp_hash.as_deref()),
-        ) {
-            Ok(compaction) => compaction,
-            Err(error) => {
-                let (outcome, failure_reason) = if error == ParentCompactionError::RequiresSync {
-                    score_progress.invalidate(tool_call_index);
-                    ("skipped", None)
-                } else {
-                    ("failure", Some("parent_compaction_error"))
-                };
-                score_progress.fail_closed(sampled_at);
-                record_classification(
-                    metrics.as_deref(),
-                    context_mode,
-                    classification_started_at.elapsed(),
-                    outcome,
-                    failure_reason,
-                );
-                return;
-            }
-        };
-        let parent_compaction = selected_compaction.item;
-        let parent_compaction_hash = selected_compaction.model_hash;
+        // The input is assembled from VRS, which carries no parent compaction checkpoint.
+        let parent_compaction = None;
+        let parent_compaction_hash = None;
         let call_id = input.call_id.to_owned();
         let mcp_tool = input.mcp_tool.cloned();
         let action = GuardianAction {

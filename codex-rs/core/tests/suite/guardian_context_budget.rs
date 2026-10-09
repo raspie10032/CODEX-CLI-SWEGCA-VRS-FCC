@@ -62,7 +62,6 @@ async fn independent_review_preserves_oversized_instruction_order() -> Result<()
                 .expect("review the legacy transcript rather than the opaque checkpoint");
             config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
             config.approvals_reviewer = ApprovalsReviewer::AutoReview;
-            config.model_auto_compact_token_limit = Some(1_000_000);
         })
         .build_with_auto_env(&server)
         .await?;

@@ -1871,7 +1871,6 @@ async fn interrupt_during_mcp_startup_preserves_user_input_in_history(
                 startup_phase,
                 InterruptedMcpStartupPhase::PreSamplingCompaction
             ) {
-                config.model_auto_compact_token_limit = Some(0);
             }
             insert_mcp_server(
                 config,

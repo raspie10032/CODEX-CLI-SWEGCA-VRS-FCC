@@ -702,7 +702,6 @@ async fn opted_in_clock_failures_reach_the_model_without_aborting() -> Result<()
     let test = test_codex()
         .with_config(move |config| {
             config.model_provider = model_provider;
-            config.model_auto_compact_token_limit = Some(200);
             enable_current_time_reminder(config, /*interval*/ 0, CurrentTimeSource::External);
             config.include_environment_context = true;
             config

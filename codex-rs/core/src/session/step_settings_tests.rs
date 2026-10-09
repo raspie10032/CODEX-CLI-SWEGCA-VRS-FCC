@@ -443,7 +443,6 @@ async fn model_resolution_preserves_startup_overrides_and_instruction_provenance
     config.model = Some("model-a".to_string());
     config.model_catalog = Some(catalog);
     config.model_context_window = Some(160_000);
-    config.model_auto_compact_token_limit = Some(70_000);
     config.tool_output_token_limit = Some(777);
     config.base_instructions = Some(configured_instructions.to_string());
     let explicit_instructions = matches!(&provenance, BaseInstructionsProvenance::Custom);

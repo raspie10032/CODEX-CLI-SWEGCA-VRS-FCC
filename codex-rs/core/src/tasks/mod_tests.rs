@@ -1,6 +1,5 @@
 use super::SessionTask;
 use super::SessionTaskResult;
-use super::TASK_COMPACT_METRIC;
 use super::emit_turn_memory_metric;
 use super::emit_turn_network_proxy_metric;
 use crate::session::TurnInput;

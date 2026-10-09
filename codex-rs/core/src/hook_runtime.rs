@@ -2,7 +2,6 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
-use codex_analytics::CompactionTrigger;
 use codex_analytics::HookRunFact;
 use codex_analytics::build_track_events_context;
 use codex_connectors::AppToolPolicyEvaluator;
@@ -541,70 +540,6 @@ pub(crate) async fn run_turn_interrupt_hooks(
     emit_hook_completed_events(sess, turn_context, outcome.hook_events).await;
 }
 
-pub(crate) async fn run_pre_compact_hooks(
-    sess: &Arc<Session>,
-    turn_context: &Arc<TurnContext>,
-    trigger: CompactionTrigger,
-) -> PreCompactHookOutcome {
-    let request = codex_hooks::PreCompactRequest {
-        session_id: sess.session_id().into(),
-        turn_id: turn_context.sub_id.clone(),
-        subagent: thread_spawn_subagent_hook_context(sess, turn_context),
-        #[allow(deprecated)]
-        cwd: turn_context.cwd.clone(),
-        transcript_path: sess.hook_transcript_path().await,
-        model: turn_context.model_info().slug.clone(),
-        trigger: compaction_trigger_label(trigger).to_string(),
-    };
-    let preview_runs = sess.hooks().preview_pre_compact(&request);
-    emit_hook_started_events(sess, turn_context, preview_runs).await;
-
-    let outcome = sess.hooks().run_pre_compact(request).await;
-    emit_hook_completed_events(sess, turn_context, outcome.hook_events).await;
-    if outcome.should_stop {
-        PreCompactHookOutcome::Stopped
-    } else {
-        PreCompactHookOutcome::Continue
-    }
-}
-
-pub(crate) enum PreCompactHookOutcome {
-    Continue,
-    Stopped,
-}
-
-pub(crate) enum PostCompactHookOutcome {
-    Continue,
-    Stopped,
-}
-
-pub(crate) async fn run_post_compact_hooks(
-    sess: &Arc<Session>,
-    turn_context: &Arc<TurnContext>,
-    trigger: CompactionTrigger,
-) -> PostCompactHookOutcome {
-    let request = codex_hooks::PostCompactRequest {
-        session_id: sess.session_id().into(),
-        turn_id: turn_context.sub_id.clone(),
-        subagent: thread_spawn_subagent_hook_context(sess, turn_context),
-        #[allow(deprecated)]
-        cwd: turn_context.cwd.clone(),
-        transcript_path: sess.hook_transcript_path().await,
-        model: turn_context.model_info().slug.clone(),
-        trigger: compaction_trigger_label(trigger).to_string(),
-    };
-    let preview_runs = sess.hooks().preview_post_compact(&request);
-    emit_hook_started_events(sess, turn_context, preview_runs).await;
-
-    let outcome = sess.hooks().run_post_compact(request).await;
-    emit_hook_completed_events(sess, turn_context, outcome.hook_events).await;
-    if outcome.should_stop {
-        PostCompactHookOutcome::Stopped
-    } else {
-        PostCompactHookOutcome::Continue
-    }
-}
-
 #[instrument(level = "trace", skip_all)]
 pub(crate) async fn run_legacy_after_agent_hook(
     sess: &Arc<Session>,
@@ -1057,13 +992,6 @@ fn subagent_hook_context(sess: &Arc<Session>, agent_role: &Option<String>) -> Su
         agent_type: agent_role
             .clone()
             .unwrap_or_else(|| crate::agent::role::DEFAULT_ROLE_NAME.to_string()),
-    }
-}
-
-fn compaction_trigger_label(value: CompactionTrigger) -> &'static str {
-    match value {
-        CompactionTrigger::Manual => "manual",
-        CompactionTrigger::Auto => "auto",
     }
 }
 

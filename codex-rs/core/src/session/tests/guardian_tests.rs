@@ -1,5 +1,4 @@
 use super::*;
-use crate::compact::InitialContextInjection;
 use crate::config::Constrained;
 use crate::exec_policy::ExecPolicyManager;
 use crate::guardian::GUARDIAN_REVIEWER_NAME;
@@ -1088,76 +1087,6 @@ async fn guardian_allows_unified_exec_additional_permissions_requests_past_polic
     assert_eq!(
         output,
         "missing `additional_permissions`; provide at least one of `network` or `file_system` when using `with_additional_permissions`"
-    );
-}
-
-#[tokio::test]
-async fn compaction_initial_context_preserves_separate_guardian_developer_message() {
-    let (session, mut turn_context) = make_session_and_context().await;
-    update_turn_settings_for_test(&mut turn_context, |settings| {
-        update_selected_settings_for_test(settings, |selected| {
-            selected.collaboration_mode.settings.reasoning_effort =
-                Some(ReasoningEffortConfig::Persistent);
-        });
-    });
-    let guardian_policy = "guardian policy".to_string();
-    let guardian_source =
-        SessionSource::SubAgent(SubAgentSource::Other(GUARDIAN_REVIEWER_NAME.to_string()));
-
-    {
-        let mut state = session.state.lock().await;
-        state.session_configuration.session_source = guardian_source.clone();
-    }
-    turn_context.session_source = guardian_source;
-    turn_context.developer_instructions = Some(guardian_policy.clone());
-    let turn_context = Arc::new(turn_context);
-    let step_context = StepContext::for_test(Arc::clone(&turn_context));
-    let world_state = Arc::new(
-        session
-            .build_world_state_for_step(&step_context)
-            .await
-            .expect("world state should build"),
-    );
-    let initial_context_injection = InitialContextInjection::BeforeLastUserMessage {
-        world_state,
-        step_context,
-    };
-
-    let (refreshed, _) =
-        crate::compact::build_compaction_initial_context(&session, &initial_context_injection)
-            .await;
-
-    let developer_messages = refreshed
-        .iter()
-        .filter_map(|envelope| match &envelope.item {
-            ResponseItem::Message { role, content, .. } if role == "developer" => {
-                crate::content_items_to_text(content).map(|text| {
-                    (
-                        text,
-                        envelope
-                            .item
-                            .executed_tool_call_metadata()
-                            .and_then(|metadata| metadata.content_item_kinds.clone()),
-                    )
-                })
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
-    assert!(
-        !developer_messages
-            .iter()
-            .any(|(message, _)| message.contains("<persistent_mode>")),
-        "guardian context must not inherit persistent-mode proactivity"
-    );
-    assert!(developer_messages.len() >= 2);
-    assert_eq!(
-        developer_messages.last(),
-        Some(&(
-            guardian_policy,
-            Some(vec![ContentItemKind("guardian.policy".to_string())]),
-        ))
     );
 }
 

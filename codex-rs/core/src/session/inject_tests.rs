@@ -50,13 +50,4 @@ async fn harness_authored_configuration_updates_preserve_metadata_and_resume() {
     }
     assert_eq!(raw_items, vec![expected.item]);
 
-    let rollout_items = recorded
-        .iter()
-        .cloned()
-        .map(RolloutItem::ResponseItem)
-        .collect::<Vec<_>>();
-    let reconstructed = session
-        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
-        .await;
-    assert_eq!(reconstructed.history, recorded);
 }

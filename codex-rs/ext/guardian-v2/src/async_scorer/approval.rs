@@ -5,7 +5,6 @@ use super::authorization::ScoreAuthorization;
 use super::config::GuardianV2Config;
 use super::metrics::TOOL_CALL_LAG_METRIC;
 use super::metrics::record_fast_decision;
-use super::parent_compaction::select_parent_compaction;
 use super::sampler::LunaSampler;
 use super::score::GuardianV2ScoreProgress;
 use codex_core::CodexThread;
@@ -148,24 +147,6 @@ async fn cached_evidence(
     if !action_fits || cached.oversized {
         record_fast_decision(metrics, "deferred", "scoring_failure");
         return Err(GuardianReviewReason::ScoringFailure);
-    }
-    let context_mode = GuardianContextMode::from_history(history.as_ref());
-    if context_mode != GuardianContextMode::Legacy {
-        let sampler = store
-            .get::<LunaSampler>()
-            .ok_or(GuardianReviewReason::MissingScore)?;
-        if select_parent_compaction(
-            context_mode,
-            config,
-            history.as_ref(),
-            &sampler,
-            /*legacy_model_hash*/ None,
-        )
-        .is_err()
-        {
-            record_fast_decision(metrics, "deferred", "incompatible_compaction");
-            return Err(GuardianReviewReason::IncompatibleCompaction);
-        }
     }
     let action = input.action;
     if input.category == GuardianScope::ComputerUse
