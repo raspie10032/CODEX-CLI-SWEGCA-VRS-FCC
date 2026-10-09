@@ -1,0 +1,73 @@
+file:line	classification	reason
+codex-rs/core/src/agent/control_tests.rs:420	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:463	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:821	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:1895	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:2055	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:2166	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:2307	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:2369	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:2469	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:2523	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:2530	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:2534	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:2642	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:2873	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:3067	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:3290	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:3497	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:3637	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:3778	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:3914	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:4303	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:4402	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:4436	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/agent/control_tests.rs:4885	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/guardian/feedback.rs:29	non_request	Stores local failed-review feedback; no model sampling or prompt item construction.
+codex-rs/core/src/guardian/input_budget_tests.rs:78	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/guardian/review_session_tests.rs:35	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/guardian/review_session_tests.rs:115	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/guardian/review_session_tests.rs:571	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/prompt_debug.rs:107	non_request	Renders the debug response; excluded from model requests by D3 A5.
+codex-rs/core/src/session/handlers.rs:346	non_request	Counts user-turn boundaries for shutdown telemetry.
+codex-rs/core/src/session/inject_tests.rs:43	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/mod.rs:1496	non_request	Returns only the token-count estimate, not response items.
+codex-rs/core/src/session/mod.rs:1704	non_request	Checks for injected external context to mark memory mode polluted; does not construct model input from history.
+codex-rs/core/src/session/mod.rs:4265	helper	Delegates to the state history copy; production consumers are the six non-request entries in this inventory.
+codex-rs/core/src/session/notification_tests.rs:61	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/retained_context_tests.rs:55	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/retained_context_tests.rs:109	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/rollout_reconstruction_tests.rs:89	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/rollout_reconstruction_tests.rs:92	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/rollout_reconstruction_tests.rs:107	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/rollout_reconstruction_tests.rs:320	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/rollout_reconstruction_tests.rs:350	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/rollout_reconstruction_tests.rs:428	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:2473	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:2494	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:2683	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:2739	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:2795	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:2823	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:2864	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:2968	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:3015	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:3094	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:3206	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:3242	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:3252	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:3264	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:3892	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:3936	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:4190	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:9911	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:9918	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:10236	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:10538	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:10591	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:11599	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/session/tests.rs:12210	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/thread_manager_tests.rs:1508	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/tools/context.rs:105	non_request	Finds the originating call ID for provenance/window metadata; does not return history as prompt input.
+codex-rs/core/src/tools/handlers/extension_tools.rs:460	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.
+codex-rs/core/src/tools/router_tests.rs:553	test	Test assertion/setup in a test file or cfg(test) module; no production model request path.

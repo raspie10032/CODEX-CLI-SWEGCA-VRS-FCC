@@ -1,0 +1,17 @@
+[
+  {
+    "command": "git diff --check",
+    "exit": 0,
+    "output": ""
+  },
+  {
+    "command": "git diff bfdcbaf61 HEAD --check",
+    "exit": 0,
+    "output": ""
+  },
+  {
+    "command": "git diff --unified=0 bfdcbaf61 HEAD -- codex-rs/vrs/src/lib.rs codex-rs/core/src/session/vrs_input.rs codex-rs/rollout/src/recorder.rs; inspect added Mutex/RwLock/OnceLock/get_or_init",
+    "added_matching_lines": [],
+    "scope": "three integration files only; not a runtime or whole-workspace E3-3 proof"
+  }
+]

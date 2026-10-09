@@ -1,0 +1,18 @@
+   Compiling codex-rollout v0.162.0-alpha.2 ($WORK/codexint/codex-rs/rollout)
+warning: methods `current` and `advance` are never used
+  --> rollout/src/ordinal.rs:35:19
+   |
+22 | impl RolloutOrdinalState {
+   | ------------------------ methods in this implementation
+...
+35 |     pub(crate) fn current(&self) -> io::Result<Option<u64>> {
+   |                   ^^^^^^^
+...
+46 |     pub(crate) fn advance(&mut self) {
+   |                   ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `codex-rollout` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.42s
+  Executable unittests src/lib.rs (codex-rs/target/debug/deps/codex_rollout-c7233e05958f2c25)

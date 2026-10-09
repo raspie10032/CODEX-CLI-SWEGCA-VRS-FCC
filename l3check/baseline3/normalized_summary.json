@@ -1,0 +1,20 @@
+{
+  "revision": "3da13917bdcd4d8bede271be71e40000f0ff0bd3",
+  "execution_entries": 2353,
+  "unique_exact_filters": 2257,
+  "duplicate_filter_names": 96,
+  "unique_filter_counts": {
+    "passed": 1940,
+    "failed": 310,
+    "ignored": 7
+  },
+  "inconsistent_repeated_filter_outcomes": 0,
+  "failed_unique_file": "l3check/baseline3/failed_unique.txt",
+  "limitations": [
+    "The binary registers 96 duplicate display names; --exact selects all matching cases.",
+    "The harness repeated duplicate exact filters and reused their log paths, which can overwrite/interleave logs.",
+    "Exit outcomes are retained per invocation in results.jsonl and were consistent for every repeated name.",
+    "Counts describe exact filters; duplicate cases were not individually disambiguated.",
+    "The earlier default-stack baseline2 run was discarded; baseline3 uses RUST_MIN_STACK=33554432."
+  ]
+}

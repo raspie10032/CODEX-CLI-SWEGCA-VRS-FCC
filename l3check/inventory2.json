@@ -1,0 +1,631 @@
+{
+  "source_head": "072ace03116ca52f22b3f362bb746620868cf625",
+  "evidence_type": "source_inspection_only",
+  "compaction": {
+    "run_auto_compact": [],
+    "compact_remote_v2": [],
+    "CompactTask": [],
+    "replace_compacted_history": [],
+    "model_auto_compact_token_limit": [
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/config.rs",
+        "line": 285,
+        "text": "pub model_auto_compact_token_limit: Option<i64>,"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/config.rs",
+        "line": 286,
+        "text": "pub model_auto_compact_token_limit_scope: Option<AutoCompactTokenLimitScope>,"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "line": 2100,
+        "text": "model_auto_compact_token_limit: None,"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "line": 2101,
+        "text": "model_auto_compact_token_limit_scope: None,"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "line": 2141,
+        "text": "model_auto_compact_token_limit: None,"
+      },
+      {
+        "file": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "line": 2142,
+        "text": "model_auto_compact_token_limit_scope: None,"
+      },
+      {
+        "file": "codex-rs/app-server/tests/common/config.rs",
+        "line": 172,
+        "text": "\"compact_prompt = \\\"{compact_prompt}\\\"\\nmodel_auto_compact_token_limit = {auto_compact_limit}\""
+      },
+      {
+        "file": "codex-rs/app-server/tests/common/config_tests.rs",
+        "line": 59,
+        "text": "\"model_auto_compact_token_limit = 321\","
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/logging.rs",
+        "line": 589,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 100000\")"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/executor_mcp.rs",
+        "line": 1059,
+        "text": "\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 1024\\nmcp_oauth_credentials_store = \\\"file\\\"\\nmcp_oauth_callback_port = {global_callback_port}\""
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/external_agent_config.rs",
+        "line": 2508,
+        "text": "\"compact_prompt = \\\"Summarize the conversation.\\\"\\nmodel_auto_compact_token_limit = 200\","
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/guardian_v2_history_tests.rs",
+        "line": 262,
+        "text": ".with_root_config(\"approvals_reviewer = \\\"auto_review\\\"\\nmodel_auto_compact_token_limit = 1000000\")"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/mcp_server_status.rs",
+        "line": 1490,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 1024\")"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/mcp_tool.rs",
+        "line": 1624,
+        "text": "\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = {auto_compact_limit}\""
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/multi_agent_v2_developer_instructions.rs",
+        "line": 376,
+        "text": "\"developer_instructions = {PARENT_INSTRUCTIONS:?}\\nmodel_context_window = 100\\nmodel_auto_compact_token_limit = 90\\ncompact_prompt = {COMPACT_PROMPT:?}\""
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/selected_environment.rs",
+        "line": 29,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 100000\")"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/selected_environment.rs",
+        "line": 238,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 100000\")"
+      },
+      {
+        "file": "codex-rs/app-server/tests/suite/v2/thread_settings_update.rs",
+        "line": 701,
+        "text": ".with_root_config(\"compact_prompt = \\\"compact\\\"\\nmodel_auto_compact_token_limit = 200000\")"
+      },
+      {
+        "file": "codex-rs/config/src/config_toml.rs",
+        "line": 181,
+        "text": "pub model_auto_compact_token_limit: Option<i64>,"
+      },
+      {
+        "file": "codex-rs/config/src/config_toml.rs",
+        "line": 185,
+        "text": "pub model_auto_compact_token_limit_scope: Option<AutoCompactTokenLimitScope>,"
+      },
+      {
+        "file": "codex-rs/protocol/src/config_types.rs",
+        "line": 43,
+        "text": "/// `model_auto_compact_token_limit`."
+      }
+    ]
+  },
+  "core_UnixStream_or_CODEX_VRS_SOCK": [],
+  "clone_history": [
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 420,
+      "text": "let history = parent_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 463,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 821,
+      "text": "let history = thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 1895,
+      "text": "child_thread.session.clone_history().await.raw_items(),",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2055,
+      "text": "child_thread.session.clone_history().await.raw_items(),",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2166,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2307,
+      "text": "let clamped_history = clamped_child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2369,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2469,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2523,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2530,
+      "text": "assert!(assistant_position(&parent_thread.session.clone_history().await).is_some());",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2534,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2642,
+      "text": "let no_hint_history = no_hint_child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 2873,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3067,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3290,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3497,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3637,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3778,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 3914,
+      "text": "let history = child_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 4303,
+      "text": "let root_history = root_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 4402,
+      "text": "let root_history = root_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 4436,
+      "text": "let history = parent_thread.session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/agent/control_tests.rs",
+      "line": 4885,
+      "text": "resumed_thread.session.clone_history().await.raw_items(),",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/feedback.rs",
+      "line": 29,
+      "text": "let history = reviewer.clone_history().await;",
+      "classification": "non_request",
+      "reason": "Stores local failed-review feedback; no model sampling or prompt item construction."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/input_budget_tests.rs",
+      "line": 78,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/review_session_tests.rs",
+      "line": 35,
+      "text": "session.clone_history().await.history_version(),",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/review_session_tests.rs",
+      "line": 115,
+      "text": "parent_history: session.clone_history().await,",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/guardian/review_session_tests.rs",
+      "line": 571,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/prompt_debug.rs",
+      "line": 107,
+      "text": ".clone_history()",
+      "classification": "non_request",
+      "reason": "Renders the debug response; excluded from model requests by D3 A5."
+    },
+    {
+      "file": "codex-rs/core/src/session/handlers.rs",
+      "line": 346,
+      "text": "let history = sess.clone_history().await;",
+      "classification": "non_request",
+      "reason": "Counts user-turn boundaries for shutdown telemetry."
+    },
+    {
+      "file": "codex-rs/core/src/session/inject_tests.rs",
+      "line": 43,
+      "text": "let recorded = session.clone_history().await.into_annotated_items();",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/mod.rs",
+      "line": 1496,
+      "text": "let history = self.clone_history().await;",
+      "classification": "non_request",
+      "reason": "Returns only the token-count estimate, not response items."
+    },
+    {
+      "file": "codex-rs/core/src/session/mod.rs",
+      "line": 1704,
+      "text": "let history = self.clone_history().await;",
+      "classification": "non_request",
+      "reason": "Checks for injected external context to mark memory mode polluted; does not construct model input from history."
+    },
+    {
+      "file": "codex-rs/core/src/session/mod.rs",
+      "line": 4265,
+      "text": "state.clone_history()",
+      "classification": "helper",
+      "reason": "Delegates to the state history copy; production consumers are the six non-request entries in this inventory."
+    },
+    {
+      "file": "codex-rs/core/src/session/notification_tests.rs",
+      "line": 61,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/retained_context_tests.rs",
+      "line": 55,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/retained_context_tests.rs",
+      "line": 109,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 89,
+      "text": "let original_sources = sources(session.clone_history().await.annotated_items());",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 92,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 107,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 320,
+      "text": "raw_history_items(&session.state.lock().await.clone_history()),",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 350,
+      "text": "&session.state.lock().await.clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/rollout_reconstruction_tests.rs",
+      "line": 428,
+      "text": "raw_history_items(&session.clone_history().await),",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2473,
+      "text": "let history = session.state.lock().await.clone_history();",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2494,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2683,
+      "text": "let live = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2739,
+      "text": "let recorded_history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2795,
+      "text": "strip_response_item_ids(&raw_history_items(&resumed_session.clone_history().await)),",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2823,
+      "text": "let live_history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2864,
+      "text": "let resumed_history = resumed_session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 2968,
+      "text": "assert_eq!(session.clone_history().await.annotated_items(), &expected);",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3015,
+      "text": "let history = session.state.lock().await.clone_history();",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3094,
+      "text": "let history = session.state.lock().await.clone_history();",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3206,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3242,
+      "text": "let history_before_seed = session.state.lock().await.clone_history();",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3252,
+      "text": "let history_after_seed = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3264,
+      "text": "let history_after_second_seed = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3892,
+      "text": "let history = session.state.lock().await.clone_history();",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 3936,
+      "text": "let live_history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 4190,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 9911,
+      "text": "let previous_len = session.clone_history().await.raw_items().len();",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 9918,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 10236,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 10538,
+      "text": "let history = session.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 10591,
+      "text": "raw_history_items(&session.clone_history().await),",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 11599,
+      "text": "let history = sess.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/session/tests.rs",
+      "line": 12210,
+      "text": "let history = sess.clone_history().await;",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/thread_manager_tests.rs",
+      "line": 1508,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/tools/context.rs",
+      "line": 105,
+      "text": ".clone_history()",
+      "classification": "non_request",
+      "reason": "Finds the originating call ID for provenance/window metadata; does not return history as prompt input."
+    },
+    {
+      "file": "codex-rs/core/src/tools/handlers/extension_tools.rs",
+      "line": 460,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    },
+    {
+      "file": "codex-rs/core/src/tools/router_tests.rs",
+      "line": 553,
+      "text": ".clone_history()",
+      "classification": "test",
+      "reason": "Test assertion/setup in a test file or cfg(test) module; no production model request path."
+    }
+  ],
+  "clone_class_counts": {
+    "test": 65,
+    "non_request": 6,
+    "helper": 1
+  },
+  "vrs_OnceLock_get_or_init_lines": 0,
+  "vrs_input_flush_rollout_lines": 0
+}

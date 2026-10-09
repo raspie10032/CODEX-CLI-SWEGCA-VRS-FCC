@@ -1,0 +1,24 @@
+{
+  "binary": "$WORK/codexbase/target/debug/deps/all-5f228dd23cf2f360",
+  "command": [
+    "taskset",
+    "-c",
+    "0-11",
+    "$WORK/codexbase/target/debug/deps/all-5f228dd23cf2f360",
+    "--exact",
+    "<test>",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "jobs": 10,
+  "rust_min_stack": "33554432",
+  "timeout_seconds": 120,
+  "elapsed_minutes": 2.401,
+  "counts": {
+    "passed": 1987,
+    "failed": 359,
+    "ignored": 7,
+    "timeout": 0
+  },
+  "complete": true
+}

@@ -1,0 +1,3 @@
+command: nm $WORK/vrsint/libvrs.a | grep vrs_written
+0000000000017880 T vrs_written
+result: symbol present at final read-only audit; not relinked after design stop

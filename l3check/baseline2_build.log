@@ -1,0 +1,23 @@
+   Compiling codex-core v0.162.0-alpha.2 ($WORK/codexbase/codex-rs/core)
+   Compiling codex-guardian-v2 v0.162.0-alpha.2 ($WORK/codexbase/codex-rs/ext/guardian-v2)
+   Compiling codex-mcp-extension v0.162.0-alpha.2 ($WORK/codexbase/codex-rs/ext/mcp)
+   Compiling codex-web-search-extension v0.162.0-alpha.2 ($WORK/codexbase/codex-rs/ext/web-search)
+   Compiling codex-image-generation-extension v0.162.0-alpha.2 ($WORK/codexbase/codex-rs/ext/image-generation)
+   Compiling core_test_support v0.162.0-alpha.2 ($WORK/codexbase/codex-rs/core/tests/common)
+warning: unused import: `wiremock::matchers::body_json`
+  --> core/tests/suite/openai_file_mcp.rs:47:5
+   |
+47 | use wiremock::matchers::body_json;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `codex_protocol::openai_models::ReasoningEffort`
+  --> core/tests/suite/scenarios.rs:42:5
+   |
+42 | use codex_protocol::openai_models::ReasoningEffort;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `codex-core` (test "all") generated 2 warnings (run `cargo fix --test "all" -p codex-core` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 02s
+  Executable tests/all.rs ($WORK/codexbase/target/debug/deps/all-5f228dd23cf2f360)
