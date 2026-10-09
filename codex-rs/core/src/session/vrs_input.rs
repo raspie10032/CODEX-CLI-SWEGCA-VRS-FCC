@@ -75,14 +75,23 @@ pub(crate) async fn vrs_input(sess: &Session) -> Result<Vec<ResponseItem>, VrsEr
             receipt(&thread_id, &format!("failed: {err}"), 0, 0, elapsed_us);
         }
     }
-    result.map(|(items, _)| items)
+    let (items, _) = result?;
+    // Every consumer refreshes the bounded live cache, including snapshots and prewarm.
+    // The model receives this assembly directly, never a readback of the cache.
+    sess.install_assembled_history(items.clone()).await;
+    Ok(items)
 }
 
 async fn assemble_for(
     sess: &Session,
     thread_id: &str,
 ) -> Result<(Vec<ResponseItem>, u64), VrsError> {
-    // P-3': recording callers publish their reserved lines before queuing disk writes.
+    if let Some(error) = sess.state.lock().await.vrs_recording_error.as_ref() {
+        return Err(VrsError::Unavailable(format!(
+            "rollout recording failed: {error}; reopen the session before sending another request"
+        )));
+    }
+    // P-3'': recording callers publish their reserved lines before queuing disk writes.
     // Assembly reads VRS immediately and never waits for the rollout writer.
     let path: PathBuf = match sess.current_rollout_path().await {
         Ok(Some(path)) => path,
@@ -90,21 +99,29 @@ async fn assemble_for(
         Err(err) => return Err(VrsError::Unavailable(format!("no rollout path: {err}"))),
     };
     let assembled = codex_vrs::assemble(&path)?;
-    let had_items = !assembled.items.is_empty();
-    let mut items = Vec::with_capacity(assembled.items.len());
-    for value in assembled.items {
-        // An item kind this build does not know is dropped rather than failing the request.
-        match serde_json::from_value::<ResponseItem>(value) {
-            Ok(item) => items.push(item),
-            Err(err) => warn!(error = %err, "vrs assembled item skipped"),
-        }
-    }
-    if items.is_empty() && had_items {
-        return Err(VrsError::Unavailable(
-            "assembler returned no usable items".to_string(),
-        ));
-    }
+    let items = decode_assembled_items(assembled.items)?;
     Ok((items, assembled.tokens))
+}
+
+fn decode_assembled_items(values: Vec<serde_json::Value>) -> Result<Vec<ResponseItem>, VrsError> {
+    values
+        .into_iter()
+        .enumerate()
+        .map(|(index, value)| {
+            let item = serde_json::from_value::<ResponseItem>(value).map_err(|err| {
+                VrsError::Unavailable(format!("invalid assembled item {index}: {err}"))
+            })?;
+            match item {
+                ResponseItem::Other
+                | ResponseItem::Compaction { .. }
+                | ResponseItem::ContextCompaction { .. }
+                | ResponseItem::CompactionTrigger { .. } => Err(VrsError::Unavailable(format!(
+                    "unsupported assembled item {index}; the request was not sent"
+                ))),
+                item => Ok(item),
+            }
+        })
+        .collect()
 }
 
 /// The prompt input for one model step (design D3 A1/A2, D4, D5).
@@ -116,11 +133,10 @@ pub(crate) async fn vrs_prompt_input(
     input_modalities: &[InputModality],
 ) -> CodexResult<Vec<ResponseItem>> {
     let items = vrs_prompt_items(sess).await?;
-    sess.install_assembled_history(items.clone()).await;
     Ok(normalize_for_prompt(items, input_modalities))
 }
 
-/// The prompt input of a request that does not own the live history (prewarm, design D3 A4).
+/// The prompt input for prewarm (design D3 A4); assembly also refreshes the D4 cache.
 pub(crate) async fn vrs_prompt_snapshot(
     sess: &Session,
     input_modalities: &[InputModality],
@@ -160,9 +176,8 @@ impl Session {
     /// When the store cannot assemble yet the history stays empty. Model input never reads it:
     /// the next step assembles again and reports the failure if it persists.
     pub(crate) async fn restore_history_from_vrs(&self) {
-        match vrs_input(self).await {
-            Ok(items) => self.install_assembled_history(items).await,
-            Err(err) => warn!("VRS history not installed on resume: {err}"),
+        if let Err(err) = vrs_input(self).await {
+            warn!("VRS history not installed on resume: {err}");
         }
     }
 
@@ -194,5 +209,51 @@ impl Session {
             codex_vrs::insert(&path, offset, line.as_bytes())?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decode_assembled_items;
+    use serde_json::json;
+
+    #[test]
+    fn malformed_assembly_does_not_keep_the_valid_prefix() {
+        let valid = json!({"type": "message", "role": "user", "content": [
+            {"type": "input_text", "text": "keep my complete request"}
+        ]});
+        assert!(decode_assembled_items(vec![valid.clone()]).is_ok());
+        assert!(decode_assembled_items(vec![valid, json!({"type": "message"})]).is_err());
+    }
+
+    #[test]
+    fn unsupported_assembly_is_an_error_instead_of_an_omission() {
+        for kind in [
+            "future_item",
+            "compaction",
+            "context_compaction",
+            "compaction_trigger",
+        ] {
+            assert!(
+                decode_assembled_items(vec![json!({
+                    "type": kind, "encrypted_content": "obsolete summary"
+                })])
+                .is_err()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn recording_failure_prevents_assembly_before_any_model_request() {
+        let (session, _turn) = crate::session::tests::make_session_and_context().await;
+        session.state.lock().await.vrs_recording_error = Some("injected insert failure".into());
+        let error = super::vrs_prompt_input(
+            &session,
+            &[codex_protocol::openai_models::InputModality::Text],
+        )
+        .await
+        .expect_err("incomplete store must not produce a prompt");
+        assert!(error.to_string().contains("injected insert failure"));
+        assert!(error.to_string().contains("reopen the session"));
     }
 }

@@ -70,6 +70,8 @@ pub(crate) struct SessionState {
     /// Persisted origin of the session base instructions, when known.
     pub(crate) base_instructions_provenance: Option<BaseInstructionsProvenance>,
     pub(crate) history: ContextManager,
+    /// A missing VRS insertion invalidates subsequent input until the session is reopened.
+    pub(crate) vrs_recording_error: Option<String>,
     /// Cancels work bound to discarded history or a superseded Guardian evidence policy.
     pub(crate) history_reset: CancellationToken,
     pub(crate) latest_rate_limits: Option<RateLimitSnapshot>,
@@ -121,6 +123,7 @@ impl SessionState {
             session_configuration,
             base_instructions_provenance: None,
             history,
+            vrs_recording_error: None,
             history_reset: CancellationToken::new(),
             latest_rate_limits: None,
             latest_token_usage_record: None,

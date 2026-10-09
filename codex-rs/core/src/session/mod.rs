@@ -1633,7 +1633,6 @@ impl Session {
                 // Defer seeding the session's initial context until the first turn starts so
                 // turn/start overrides can be merged before we write model-visible context.
                 if !is_subagent {
-                    let _ = self.flush_rollout().await;
                     self.restore_history_from_vrs().await;
                 }
                 None
@@ -1690,9 +1689,8 @@ impl Session {
                 };
                 self.ensure_rollout_materialized(persist_context).await;
 
-                // Flush after seeding history and any persisted rollout copy.
+                // Caller insertion already made the seeded history visible to VRS.
                 if !is_subagent {
-                    let _ = self.flush_rollout().await;
                     self.restore_history_from_vrs().await;
                 }
                 Some(turn_context)
@@ -4248,12 +4246,22 @@ impl Session {
         if let Some(live_thread) = self.live_thread() {
             if let Err(e) = live_thread.append_items(items).await {
                 error!("failed to record rollout items: {e:#}");
+                self.state
+                    .lock()
+                    .await
+                    .vrs_recording_error
+                    .get_or_insert_with(|| format!("{e:#}"));
                 return false;
             }
         } else {
             // A thread without a rollout file still lives in the VRS store (design D1).
             if let Err(err) = self.insert_ephemeral_vrs_lines(items).await {
                 error!("failed to record ephemeral rollout items: {err}");
+                self.state
+                    .lock()
+                    .await
+                    .vrs_recording_error
+                    .get_or_insert_with(|| err.to_string());
                 return false;
             }
         }
