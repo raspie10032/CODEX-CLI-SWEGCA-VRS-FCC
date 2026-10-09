@@ -1,0 +1,21 @@
+{
+  "command": [
+    "taskset",
+    "-c",
+    "0-11",
+    "g++",
+    "-O2",
+    "-std=c++20",
+    "-pthread",
+    "-fPIC",
+    "-I$WORK/vrsint/swegca_cpp",
+    "-c",
+    "$WORK/codexint/l3check/library4_candidate/vrs_lib.cpp",
+    "-o",
+    "$WORK/codexint/l3check/library4_candidate/vrs_lib.o"
+  ],
+  "exit_code": 0,
+  "elapsed_minutes": 0.23704943288321373,
+  "process_exit_destructor_imports": [],
+  "library_sha256": "66bdc739d08e5ec071851c6834a8dc7cb8926f6be304dc8c714291f413c06417"
+}

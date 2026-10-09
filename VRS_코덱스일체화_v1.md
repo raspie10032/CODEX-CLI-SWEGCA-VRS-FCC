@@ -505,11 +505,107 @@ G_int 진척: 정의(L1)는 그대로이고 L2 넣기 자리가 바뀌었다(P-3
   - 바꾸지 않는 것: G_int 와 통과 조건, 절대 규칙(우회 금지·직렬 금지·결과 보고 문턱 바꾸기 금지).
   - 고친 설계는 이 문서 사본에 결함·층·G 영향·고침으로 적는다.
 
+### 5.5b libvrs 결정 (20:3x, libvrs 3차 — 소넷이 설계 틈을 스스로 고친 것)
+
+근거 위치는 home `$WORK/vrsint/vrs_lib.cpp`(libsrc 틀에서 만든 단일 파일)의 행이다.
+
+**결함 VI-20 (L2, 막음 — I5·I3). 색인 조각이 파일보다 앞선다.**
+- P-3′ 은 `vrs_insert` 를 줄이 디스크에 닿기 전에 부른다. 배치 끝(`wflush`)이 그 줄의 항목·턴·셈 기여 레코드를 조각에 붙인다.
+- 줄이 끝내 안 쓰이고 프로세스가 죽으면, 조각은 파일에 없는 줄을 가진다. 재기동의 `validate_shard` 는 항목 셋(처음·가운데·끝)만 파일과 대조한다. 구멍 속 항목은 안 걸려 유령 항목이 된다. 재현은 test (g) 조건에서 설계상 확실하다(구현 전 소스 판독).
+- 고침(L2): 조각에 레코드 하나 `R_WM`(= 이 오프셋 앞의 모든 줄은 디스크에 있다)을 둔다.
+  - 값 = min(적용한 줄의 끝, 아직 `vrs_written` 안 온 줄 중 가장 작은 오프셋). 배치마다 `wflush` 가 붙이고(2168행), `vrs_written` 이 값이 커질 때 O_APPEND 한 번 쓰기로 붙인다(3121행). 읽는 쪽은 가장 큰 값을 쓴다 — 순서 무관.
+  - 조각을 처음 열 때 `R_WM(0)` 을 맨 앞에 붙인다. 그래서 이 판의 조각은 늘 표지를 가진다.
+  - 복원 때 표지보다 같거나 큰 키의 레코드(항목·TS·메타, 턴은 닫는 줄 o1)가 하나라도 있으면 조각을 통째로 버리고 파일을 다시 파싱한다(`shard_ahead`, 2657행). 표지가 아예 없는 조각(이 판 이전)은 전부 믿는다.
+- 조각을 일부만 자르지 않는 까닭: 남은 오래된 레코드(같은 o0, 다른 o1 의 턴)가 뒤에 올 표지에 가려져 믿어지게 되기 때문이다. 통째로 버리면 그 가능성이 없다.
+- 비용: 정상 종료한 프로세스는 마지막 `vrs_written` 이 표지를 붙이므로 버려지지 않는다(test (f) 재기동: shards_loaded=470, shards_rebuilt=0). 죽은 경우만 그 파일 하나의 재파싱.
+
+**결함 VI-21 (L2, 막음 — I5). `vrs_insert` 가 돌아올 때 줄이 S 에 없을 수 있다.**
+- 원인: 파일의 주인(busy)이 다른 스레드이면 호출자가 줄을 inbox 에 두고 바로 돌아왔다(기존 설계). 그러면 「돌아오면 S 에 있고 셈이 끝났다」가 깨진다.
+- 고침(L2): `ready` 이후의 호출은 inbox 노드에 완료 표지를 달고, 그 줄을 가져간 배치가(턴 셈까지) 끝나면 주인이 표지를 올린다. 호출자는 그것을 본 뒤 돌아온다(`run_batch`, `vrs_insert` 3095행).
+  - 호출자가 주인이 되는 보통의 경우 셈은 그 스레드가 한다. 다른 스레드가 주인인 경우 그 스레드가 센다(`sync_waits` 로 센다).
+  - 기다림은 같은 파일의 주인 배치 하나에 한정된다. 단계 대기·전역 대기가 아니다. 계보 보류(VI-11)인 세션은 셈 없이 돌아온다.
+  - `ready` 전의 호출은 기다리지 않는다(어차피 조립은 rc 1, 복원 중 파일에 주인이 오래 걸린다).
+- 남는 한계: 같은 파일에 동시에 넣는 둘은 한 배치를 공유한다. 파일 안 적용 순서는 정의 D1 의 자리 순서 그 자체다.
+
+**결함 VI-22 (L3, 늦춤). 조각을 처음 연 파일이 아직 없는 세션.**
+- `make_sess` 는 첫 `vrs_insert` 때 파일이 없으면 그 세션을 「덧없는 스레드」(P-4 memmode)로 보고 𝔅·조각에서 뺀다. 기록기가 파일을 늦게 만들면 영구 오분류가 된다.
+- 고침: 지금은 기록 호출 쪽 약속으로 둔다 — 첫 `vrs_insert` 전에 파일이 있어야 한다(빈 파일이면 된다). 틀에서 바꾸지 않았다. Rust 쪽이 파일을 먼저 만드는지는 L3 에서 확인할 일이다.
+
+**읽기 규칙(5.4 에 맞춤).** 살아 있는 읽기(감시·`ingest_file_tail`)는 줄 자리의 NUL 이나 줄 안 NUL 에서 멈추고 다음 변경 알림에 다시 읽는다(2376행, `nul_stops`). 복원 때(`restore=true`)만 NUL 로만 된 구간을 뒤에 `{` 로 시작하는 완결 줄이 있을 때 건너뛰고 `holes_skipped` 로 센다.
+
+### 5.6 libvrs 3차 검토 (20:5x)와 다음 결정
+
+**3차 결과 (소넷 보고, §5.5b 에 그쪽 결정):**
+- (a) 1,627,644줄 불일치 0.
+- (b) 통과.
+- (c) 재기동 0.39–0.45 s, 차가운 빌드 13–16 s.
+- (d) 462/0.
+- (d3) 네 모드 모두 466/0, 관찰자·칸 0.
+- VI-11 보류 시험: 469/0.
+- (f) 기록 시점 넣기(디스크 0바이트에서 조립 = 마지막 파일 위의 새 42f), 섞어 쓰기, NUL 구멍. 쓰기 확인 뒤 메모리 사본 599/599 놓음.
+- (g) 죽어서 남은 구멍 건너뛰기 464/0.
+- `vrs_insert` 줄당 7.5–57 µs.
+- 금지어 0.
+
+**받아들이는 것:**
+- VI-20 확인된 접두 표지(R_WM)와 조각 폐기 규칙.
+- VI-22 첫 `vrs_insert` 전에 파일이 있어야 한다. Rust 기록기가 먼저 빈 파일을 만든다. 이 약속은 Rust 쪽 일이다.
+- `vrs_written` 의 rc −3(모르는 키)은 Rust 가 오류로 보지 않는다.
+
+**결함 VI-23 (L1, 막음 — I6). 내가 찾음.**
+- 42f 의 턴 경계와 턴 내용(`turn_feed` 1005–1060)은 파일 줄을 차례로 반영하는 상태 기계다. 상태는 `open`·`worked`·`user`·`first/last_assistant`·`req`·`ocalls`·`ordl`·`lastth` 이다. 차례 반영(fold) 정의라 절대 규칙에 걸린다.
+- 3차의 VI-21(「같은 파일 주인 배치가 끝날 때까지 `vrs_insert` 가 기다린다」)은 이 fold 를 지키려다 생긴 단계 대기다. VI-23 이 원인이다.
+
+**고침 D8 (턴 = 집합 함수).** 한 파일의 줄 집합 F 에서 o 는 바이트 위치(P-3″ 아래에서 ordinal 순서와 같다)다.
+- 시작 집합 St = {task_started 줄}, 끝 후보 Cp = {task_complete 줄}.
+- 줄 x 의 턴: s(x) = max{s ∈ St : o_s ≤ o_x}. 없으면 턴 밖이다.
+- 턴 s 의 끝: e(s) = min{y ∈ St ∪ Cp : o_y > o_s}.
+  - e(s) ∈ Cp 이면 닫힘이다.
+  - e(s) ∈ St 이면 잘림이다. θₑ = θ\*(e(s)) 다.
+  - e(s) 가 없으면 열림이다.
+- 턴 s 의 줄 집합: T(s) = {x : s(x) = s, o_x < o_{e(s)}}.
+- 필드(42f 이름 그대로):
+  - `worked(x)` ⇔ o_W < o_x 이다. W = min_o {y ∈ T(s) 의 response_item : y 가 assistant message, 또는 payload type 이 message 도 agent_message 도 아님}.
+    - agent_message 는 W 보다 앞이면 입력이라 worked 를 켜지 않는다. 뒤면 이미 켜져 있다. 그래서 재귀 없이 최솟값 하나로 정해진다.
+  - 입력 줄 = user message, 또는 ¬worked(x) 인 agent_message.
+  - `user` = 입력 줄 텍스트를 o 순으로 이은 것.
+  - `req` = 입력 줄 가운데 K_USER 항목, o 순.
+  - `q1`·`tq1` = 첫 req r₁ 에 대해 {입력 줄 : o ≤ o_{r₁}} 로 만든 req_text 의 cue 집합과 θ\*(r₁).
+  - `first_assistant`/`last_assistant`/`fin` = 비입력 assistant 쪽 줄의 min/max o.
+  - `ocalls` = T(s) 의 호출 가운데 같은 call_id 출력이 T(s) 에 없는 것.
+  - `loose`·`ntext` = T(s) 의 이벤트 항목, o 순.
+  - `ordl` = max o(T(s) ∪ {e(s)} 의 표지).
+  - `lastth` = max θ\*(T(s) 의 response_item).
+  - `final_msg` = e(s) ∈ Cp 일 때 그 줄의 `last_agent_message`.
+- 이 정의는 모두 최솟값·최댓값·존재·o 로 정렬해 잇기다. 넣는 순서가 들어가지 않는다.
+
+**T-int-7 (D8 = 42f fold).**
+- 42f fold 는 o 순으로 줄을 하나씩 먹는다. 귀납 가정: o_x 앞까지의 상태는 D8 필드를 {y : o_y < o_x} 로 제한한 값과 같다.
+- 줄 x 를 먹을 때 세 경우가 있다.
+  - x ∈ St: 앞 턴을 닫는다. 그 끝 = x 이고, D8 의 e(s) = min{…} = x 다. 새 턴을 연다(s(x) = x).
+  - x ∈ Cp 이고 열림: 닫는다. e(s) = x 다.
+  - 그 밖: `worked`·`user`·`req`… 를 갱신한다. 각 갱신은 x 를 집합에 더할 때 min/max/존재/정렬 잇기가 바뀌는 값과 같다.
+  - `worked` 는 「앞에 해당 줄이 있었는가」의 누적 OR 이다. `user` 의 이어 붙이기는 o 순 잇기다.
+- 닫힌 턴 하나에서 fold 의 마지막 상태 = D8 필드다. ∎
+- `NTURN` 턴 번호(닫히는 차례)는 출력에 쓰이지 않는다(𝔅 정렬은 (θₑ, 경로, ord0)). 3차 대조 결과와 맞는다. L3 에서 grep 으로 확인한다.
+
+**L2 고침 P-7.**
+- 줄을 넣으면 그 줄의 턴 집계에만 원자 갱신을 한다(min/max CAS, 존재 OR, o 로 정렬된 잠금 없는 목록에 끼우기).
+- 턴의 「닫힘 확정」 조건: e(s) 가 있고, [o_s, o_{e(s)}+len) 가 빈틈없이 덮였다. 덮인 바이트 수를 원자로 더해 범위 길이와 같아지는지 본다.
+- 그 덧셈으로 조건을 처음 맞춘 호출이 턴 레코드·기여를 짓는다. 파일 주인, 배치, 기다림이 없다(VI-21 해소).
+- 늦게 온 시작 줄이 기존 턴을 가르면, 영향받는 턴(그 시작 앞뒤 두 개)만 다시 짓는다. 셈 칸은 더하기라 옛 기여를 빼고 새 기여를 더한다.
+
+**VI-07 고침 P-8 (L2, 무관 → 이번에 같이).**
+- θₑ 가 이미 관찰된 턴보다 작은 턴이 들어오면, θₑ 가 그보다 큰 턴의 관찰자와 기여만 다시 짓는다(옛 기여 빼기, 새 기여 더하기).
+- 그 수는 「늦게 온 시간 폭 안에 닫힌 턴」뿐이라 N 과 무관하다.
+- 이로써 (f) 에서 시각을 2028년으로 옮겨 피한 경우도 정의대로 맞아야 한다. 시험은 옮기지 않은 원래 시각으로 다시 돈다.
+
+
+<!-- 아래 §5.5 는 아스트라 3차가 home 사본에 적은 것이다. 21:3x 에 내가 사본을 덮어써서 지워졌고, 그 스레드 rollout(11:39:19Z 도구 호출)에서 되살렸다. -->
+
 ### 5.5 아스트라 결정
 
 3차에서는 G_int와 I1–I8을 바꾸지 않는다. 아래 결정은 실패를 숨기는 폴백·오류 무시·입력 축소를 허용하지 않는다. 소스 수정과 실제 시험 결과는 `l3check/REPORT3.md`에서 구별한다.
-
-- **VI-32 동시 기록과 조립의 live cache 덮어쓰기 (L1/L2/L3, G 막음: I5/I7).** D4의 정확한 `A(S_t0) ∪ t0 뒤 기록`을 코드로 옮길 때, H에 먼저 들어오고 아직 S에 발행되지 않은 기록과 조립 완료 뒤 캐시 설치 사이에 들어온 기록이 무조건 교체로 사라졌다. 또 옛 조립의 늦은 완료가 새 캐시를 덮었다. C API는 S의 snapshot watermark를 반환하지 않으므로 Rust의 시작·완료 시각을 그 정확한 t0라고 주장할 수 없다. D4의 **비모델 캐시**를 다음처럼 보수적으로 구체화한다: 채택한 조립의 A에, 그 호출 경계 이후 수락한 기록 및 그 경계에서 발행 중이던 기록을 합친다. 같은 ID는 A의 표현이 우선하며 원래 host provenance를 보존한다. ID가 없는 같은 내용은 서로 다른 원본일 수 있으므로 겹친 항목을 임시로 모두 보존하고, 발행을 포함한 다음 갱신에서 정리한다. 내용만으로 중복이라고 가정해 새 기록을 버리지 않는다. 모델은 계속 A 자체만 사용한다. 기존 SessionState Mutex 안에서 짧게 수락 순번·발행 상태·조립 세대를 관리하며, FFI·발행·writer 완료를 기다리는 동안 잠금을 잡지 않는다. 더 새로 시작한 조립이 설치되면 옛 완료는 캐시를 바꾸지 않는다. 이는 캐시 교체 충돌 처리이며 S 삽입이나 A 계산 순서를 강제하지 않는다. 성공한 갱신마다 경계 전에 발행을 마친 journal 항목을 버리고, 겹친 기록만 다음 갱신까지 남긴다. 따라서 계속 기록이 겹쳐도 조용한 시점을 기다리지 않고 A와 겹친 진행 중 기록 크기로 캐시를 줄인다. 실패·취소된 발행은 D5 오류를 보존한다. 단순히 충돌 시 교체를 생략하는 방식은 I7 무한 성장 가능성 때문에 쓰지 않는다. 근거: `codex-rs/core/src/state/vrs_live_cache.rs:21–157`, `codex-rs/core/src/state/session.rs:175–212`, `codex-rs/core/src/context_manager/history.rs:688–763`, `codex-rs/core/src/session/vrs_input.rs:72–113,230–243`, `l3check/live_cache_concurrency3.md`. 동시 post-snapshot 기록, pre-snapshot 미발행 기록, 역순 완료, 256회 연속 겹침의 journal 정리, ID/provenance, 취소·실패, 파괴적 reset의 결정적 시험을 추가했다. 실행 결과는 REPORT3에 별도로 적는다. `record_user_goal_update`도 공통 발행 함수를 거쳐 파일 없는 세션의 목표 변경이 S에 들어가게 하고, 기존처럼 발행 성공 뒤에만 live authorization을 바꾼다(`codex-rs/core/src/session/retained_context.rs:104–127`). G_int와 I1–I8 및 모델 입력의 D3 정의는 바꾸지 않는다.
 
 - **VI-19 구현 (L2/L3, G 막음: I5).** P-3″ 그대로 `(next ordinal:24, next offset:40)` 한 원자값을 읽고, 그 ordinal로 직렬화한 뒤 CAS한다. 충돌하면 새 값으로 다시 직렬화한다. 넘침은 예약값 변경 전 기록 오류다. 근거: `codex-rs/rollout/src/recorder.rs:2101–2166`. 다음 ordinal 저장 범위 때문에 마지막 발행 ordinal은 16,777,214다. 이것은 저장 폭의 명시이며 허용 범위를 넘겨 쓰는 예외가 아니다.
 - **VI-20 사고 구멍과 새 예약 구멍의 구별 (L2, G 막음: I5).** 재개에서만 구멍을 건너뛴 뒤 일반 독자가 같은 구멍에서 영원히 멈추는 문제가 있다. 기존 writer 소유권 아래 재개하는 비활성 파일의 선행 NUL 예약 구간만 개행 바이트로 봉한다. 파일 크기·유효 JSON 바이트·모든 유효 `(path,offset)`은 보존한다. JSON 내부의 NUL 오염은 복구 대상으로 삼지 않는다. 빠진 ordinal은 기존 `SkippedOrdinalRange`로 나타난다. 살아 있는 순방향·역방향·물질화 독자는 첫 새 NUL 앞 접두에서 멈춘다. 근거: `codex-rs/rollout/src/recorder.rs:2016–2056`, `codex-rs/rollout/src/compression.rs:355–418`, `codex-rs/rollout/src/reverse_jsonl_scanner.rs:50–80`, `codex-rs/thread-store/src/local/thread_history_materialization.rs:160–164`, `codex-rs/thread-store/src/local/live_writer.rs:89–99`. 재개 봉인과 역방향 접두 탐색은 파일 길이에 비례하는 디스크 읽기이며 모델 조립 경로에는 없다. I8 5초의 실측 증거를 대신하지 않는다.
@@ -522,8 +618,10 @@ G_int 진척: 정의(L1)는 그대로이고 L2 넣기 자리가 바뀌었다(P-3
 - **VI-27 지연 생성 파일의 VRS 영속 확인 거절 (L3 라이브러리, G 막음: I3/I5).** 읽은 실 라이브러리는 `access(path,F_OK)` 실패를 영구 memmode로 취급한다. P-3″에서는 파일 생성 전 삽입이 정상이라 이것으로 ephemeral 여부를 정할 수 없다. 고침의 계약은 파일 존재 여부와 관계없이 미기록 `(path,offset)` 바이트를 보관하고, 실제 파일에 쓴 뒤의 `vrs_written`으로만 그 사본을 해제하는 것이다. ephemeral은 확인 호출이 없으므로 사본을 유지한다. Rust에서 파일을 미리 만들거나 `-3` 오류를 무시하는 우회는 하지 않는다. 근거: `$WORK/vrsint/vrs_lib.cpp`의 `memmode` 초기화·`vrs_written`, 독립 C API 재현 `l3check/library_deferred3.cpp`, `l3check/library_deferred3.json`. 라이브러리 작업장은 읽기·링크만 허용되어 있으므로 그 구현은 별도 담당자 영역이다.
 - **VI-28 삽입의 타 처리자 완료 대기 (L3 라이브러리, G 늦춤: I6).** 읽은 라이브러리의 `vrs_insert`에는 다른 처리자의 batch 완료까지 반복하는 길이 있다. 새 조립 경로의 단계 대기 금지는 FFI 아래에도 적용된다. 동기 삽입의 집합 갱신 계약을 유지하면서 타 처리자의 완료를 기다리지 않도록 라이브러리에서 고쳐야 한다. 근거: `$WORK/vrsint/vrs_lib.cpp:3113` 부근의 완료 표지 반복문. Rust의 CAS 예약과 기존 codex writer를 이것의 통과 증거로 삼지 않는다.
 
-- **VI-30 파일 없는 스레드의 같은 프로세스 재개 (L2, G 막음: I2/I5).** 파일 없는 Session을 재개할 때 제공받은 원본 이력을 S에 넣지 않고 가상 offset만 0으로 되돌리면 옛 입력이 빠지거나 같은 `(path,offset)`에 다른 줄이 겹친다. 각 Session은 생성 때 UUID generation 하나를 갖고 `sessions/ephemeral/<generation>/<thread_id>.jsonl`을 삽입과 조립에 함께 쓴다. thread ID basename과 원본 session_meta ID는 유지한다. 파일 없는 재개의 제공 원본 RolloutItems를 새 generation의 S에 먼저 넣고, 그 뒤 새 설정·기록과 A를 처리한다. backend에 옛 줄을 중복 append하지 않으며 원본 이력을 모델에 직접 넘기는 폴백도 없다. 경로 확인·직렬화·offset 범위·삽입 오류는 첫 기록 오류로 보존하여 D5로 전파한다. 가상 offset은 checked CAS로 범위 넘침 전에 거절한다. 새 전역 registry·잠금·writer 대기는 없다. 근거: `codex-rs/core/src/session/session.rs:100,1832`, `codex-rs/core/src/session/mod.rs:1585`, `codex-rs/core/src/session/vrs_input.rs:190–238`, `codex-rs/vrs/src/lib.rs:109`. 회귀 시험 `same_thread_non_local_resume_seeds_a_distinct_vrs_generation`은 같은 thread의 옛 Session을 살려 둔 채 재개하여 옛 직접 발화와 새 기록을 모두 확인하고 옛 generation 불변을 검사한다. `non_local_resume_seed_failure_prevents_model_input`은 seed 오류가 모델 입력 전에 D5로 막히는지 검사한다. 실행 여부는 REPORT3의 실제 결과를 따른다.
+### 5.7 아스트라 4차 실행 수정
 
-- **VI-31 요청별 물리 창과 고정 입력 비용 누락 (L2/L3, G 막음: I3/I4).** 프로세스 기본 예산 258,400만 쓰던 조립은 현재 요청의 작은 모델·모델 교체·고정 지시/도구/출력 스키마 비용을 반영하지 못한다. `vrs_assemble_b`의 요청별 예산을 묶고 전역 옵션은 바꾸지 않는다. 같은 `vrs_input` 입구에 선택 예산을 전달하며 실제 A1/A2/A4는 캡처한 StepContext의 모델과 기존 `effective_input_token_limit`을 쓴다. 실제 요청 형식으로 만든 빈 프롬프트의 지시·도구·출력 스키마 추정 비용을 먼저 빼고 A를 조립한다. 잔여가 없거나 필수 입력이 넘으면 D5 오류다. 정규화한 최종 프롬프트도 같은 창으로 전송 전에 검사한다. A1와 A2는 같은 루프에서 같은 base instructions 사본을 사용하고 A4도 같은 검사를 한다. 누적 이력 폴백·필수 항목 삭제·전역 예산 변경·새 잠금·writer 대기는 없다. 근거: `codex-rs/vrs/src/lib.rs:273`, `codex-rs/core/src/session/vrs_input.rs:137,168,179`, `codex-rs/core/src/session/turn.rs:1196,1224`, `codex-rs/core/src/session/startup_prewarm.rs:407,421`. 사용한 Rust/C 비용은 기존 byte 기반 추정이며 정확한 tokenizer 상한이 아니다(`core/src/context_manager/history.rs:633`, `$WORK/vrsint/vrs_lib.cpp`의 `codex_tokens`). 모델별 예산 누락을 고친 소스 증거를 I4의 실제 창 초과 0 증거로 올리지 않는다. 상세 경계와 추가 시험은 `l3check/window_admission3.md`; 실행 결과는 REPORT3을 따른다.
+- **R4-01 정상 영속 확인 응답의 오류 승격 — L3, G 막음(I3/I5).** §5.6 계약에 따라 `vrs_written`의 `0`과 `-3`만 성공으로 받는다. 이미 감시자가 읽거나 해제된 사본은 다시 해제할 필요가 없다. 나머지 오류는 그대로 전달한다. 근거: `codex-rs/vrs/src/lib.rs`의 `written`; 원 실패 `$WORK/vrsint_smoke/err.txt`.
+- **R4-02 첫 삽입의 파일 정체성 — L3, G 막음(I5/I8).** §5.6 VI-22 및 4차 과제문에 따라 첫 `vrs_insert` 전에 빈 파일을 `create_new`로 만든다. 지연 persist는 내용 쓰기를 지연하며 원자 위치 예약과 위치 지정 쓰기는 유지한다. 이는 복구된 §5.5 VI-27의 “빈 파일을 만들지 않는다” 문장보다 최신 결정이다. 근거: `codex-rs/rollout/src/recorder.rs`의 새 기록기 생성 분기.
+- **R4-03 종료 중 정적 테이블 소멸 — L3, G 막음(호스트 생존/I8).** 프로세스 수명 VRS의 복원·감시 작업자가 종료 중 파괴되는 세 종류의 함수 정적 unordered_set과 전역 빈 vector에 닿을 수 있다. 정확한 고정본 소스 `vrs_lib.cpp.v4` 사본에서 분류 어휘를 동일한 문자열의 constexpr string_view 배열로, 빈 vector를 조립 호출의 지역값으로 바꾼다. 테이블 의미·C ABI·턴 정의는 유지한다. 근거: `l3check/library4_candidate/shutdown_static_lifetime.patch`, `provenance.json`. 기존 139 원인의 런타임 스택은 없으므로 이 원인 판정은 소스 근거이며, 최종 종료 검증은 S1–S5의 실제 종료 코드로 한다.
 
-- **VI-33 제거된 압축의 외부 광고·안내 잔존 (L3, G 막음: I1).** 모델 요청의 `x-codex-beta-features` 헤더가 제거된 `remote_compaction_v2`를 무조건 광고하고, 기본 토큰 잔량 안내가 곧 자동 창 초기화·이력 삭제가 일어난다고 말한다. 무조건 광고 분기를 없애고 기본 안내는 잔량과 필수 입력 초과 시 오류(D5)만 설명한다. 설정의 제거된 플래그 파싱 호환은 실행 능력 광고와 구별한다. 잔량 계산·알림 임계값·모델 창·필수 입력·테스트의 수치 조건은 바꾸지 않는다. 정확한 안내 문구 기대만 (c)로 고친다. 근거: `codex-rs/core/src/session/mod.rs`의 `build_model_client_beta_features_header`(고치기 전 1211–1219), `codex-rs/core/src/client.rs:2330–2334`, `codex-rs/prompts/src/model_messages.rs:52–55`, `codex-rs/core/tests/suite/token_budget.rs:873`. 소스 대조 및 작은 창 시험의 범위는 `l3check/window_fixture_audit3.md`; 실행 여부는 REPORT3을 따른다.
+실행 결과와 바이너리 식별자는 `l3check/REPORT4.md`에만 기록한다. S1–S5 통과를 장기 실행 I4나 전체 I1–I8 증거로 확대하지 않는다.

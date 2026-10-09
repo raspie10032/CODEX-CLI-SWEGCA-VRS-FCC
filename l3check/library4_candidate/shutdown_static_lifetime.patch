@@ -1,0 +1,80 @@
+--- a/vrs_lib.cpp
++++ b/vrs_lib.cpp
+@@ -454,13 +454,20 @@
+     i = e + 1;
+   }
+ }
++// Fixed classification vocabularies have process lifetime without heap storage or
++// exit destructors: restore workers may still read them during process shutdown.
++template <size_t N>
++bool part_kind_in(const std::string_view (&kinds)[N], std::string_view kind) {
++  return std::find(std::begin(kinds), std::end(kinds), kind) != std::end(kinds);
++}
++
+ void part_of(const std::string& k0, const std::string& text, Item::Part& P) {
+   std::string k = k0;
+   if (k.empty() || k == "user.text") k = wrap_kind(text);
+   P = Item::Part{};
+   if (k.empty()) return;  // ⊥
+   std::string key = k;
+-  static const std::unordered_set<std::string> full = {
++  static constexpr std::string_view full[] = {
+     "goal.internal_context", "host_skills.instructions", "permissions.instructions", "multi_agent.mode_instructions",
+     "multi_agent.role_instructions", "multi_agent.usage_hint", "multi_agent.model_catalog", "plugins.recommendations",
+     "plugins.usage_instructions", "collaboration_mode.instructions", "memories.instructions", "apps.instructions",
+@@ -468,11 +475,11 @@
+     "persistent_mode.instructions", "environments.instructions", "skills.catalog", "token_budget.context_window",
+     "token_budget.context_window_guidance", "token_budget.reminder", "personality.spec_instructions",
+     "client.in_app_browser_context", "client.app_context"};
+-  static const std::unordered_set<std::string> event = {
++  static constexpr std::string_view event[] = {
+     "generic.turn_aborted", "token_budget.remaining_tokens",  // §74/§76: a status notice without a standing directive (format evidence)
+     "rollout_budget.remaining_tokens", "user.image", "user.heartbeat", "client.generated_images", "client.task_notification"};
+   uint8_t mode = MD_UNK;
+-  if (full.count(k) || k.rfind("additional_content.", 0) == 0) mode = MD_FULL;
++  if (part_kind_in(full, k) || k.rfind("additional_content.", 0) == 0) mode = MD_FULL;
+   else if (k == "realtime_conversation.start_instructions" || k == "realtime_conversation.custom_start_instructions" ||
+            k == "realtime_conversation.end_instructions") { mode = MD_FULL; key = "realtime_conversation"; }
+   else if (k == "skills.selected_skill_instructions") {  // key = skill name
+@@ -484,7 +491,7 @@
+     } else mode = MD_FULL;
+   } else if (k == "environments.environment_context") { mode = MD_INC; env_keys(text, P.keys); }
+   else if (k == "permissions.approved_command_prefix_saved") { mode = MD_INC; key = "permissions.instructions"; dash_keys(text, P.keys); }
+-  else if (event.count(k) || k.rfind("images.", 0) == 0) mode = MD_EVENT;
++  else if (part_kind_in(event, k) || k.rfind("images.", 0) == 0) mode = MD_EVENT;
+   // L1 v24 D6¹² / L2 v25 E2-61 (R6-01): a render ends earlier renders of its subject only when it is complete (its renderer
+   // dropped nothing: no loss path, or a marked loss path and no mark) or carries the source's own end notice. Otherwise it is
+   // partial: its units are the items it lists whole (list renderers) or its lines (other text), and an earlier unit ends only
+@@ -513,12 +520,12 @@
+         i = e + 1;
+       }
+     };
+-    static const std::unordered_set<std::string> lossless = {
++    static constexpr std::string_view lossless[] = {
+       "collaboration_mode.instructions", "goal.internal_context", "apps.instructions", "plugins.usage_instructions",
+       "environments.instructions", "generic.developer_instructions", "managed_config.developer_instructions",
+       "persistent_mode.instructions", "token_budget.context_window", "multi_agent.usage_hint", "model_switch.instructions"};
+     const bool recorded = !k0.empty() && k0 != "user.text";
+-    if (lossless.count(k)) {
++    if (part_kind_in(lossless, k)) {
+     } else if (k == "permissions.instructions") {  // H marks the shared path budget (permissions_instructions.rs:40-41); A/B/C have no budget
+       if (has("Additional permission paths/globs are omitted") || has("[Some commands were truncated]")) {
+         items(false, false);
+@@ -2978,7 +2985,6 @@
+ }
+ 
+ // ---------------- D3: the input of a thread ----------------
+-const std::vector<std::array<uint32_t, 4>> EMPTY_SEGS;
+ int assemble_impl(Store& S, const char* path, uint64_t B, char** json, size_t* jlen) {
+   const auto t0 = std::chrono::steady_clock::now();
+   *json = nullptr; *jlen = 0;
+@@ -2995,7 +3001,8 @@
+     const Snap* sn = haz_protect(S, *ss, slot);
+     if (sn->lin_pending) { haz_release(S, slot); return 1; }  // VI-11: the lineage cannot be told yet
+     tl_lemma = false;
+-    Ctx C(S, *ss, *sn, sn->segok ? &ss->segs : &EMPTY_SEGS);
++    const std::vector<std::array<uint32_t, 4>> empty_segs;  // lifetime encloses this assembly only
++    Ctx C(S, *ss, *sn, sn->segok ? &ss->segs : &empty_segs);
+     A = C.assemble(ss->sg, sn->lastth, B);
+     lemma = tl_lemma;
+     haz_release(S, slot);

@@ -1,0 +1,32 @@
+{
+  "status": "built_and_installed_in_frozen_directory",
+  "frozen_source_origin": "$WORK/vrsint/vrs_lib.cpp.v4",
+  "source_sha256": "21ba6146899e8d1b9673e1f78f74d5c9be3d4abd525eb915947d43d5cee485ea",
+  "frozen_library_sha256": "493759a11d4cf341cf13c70ea4548ffa285b182e9ef405fa404f60924845c61a",
+  "header_sha256": "692968b42a8b61bf7641a91043b3c663e4a2d478ae41bd3460d508da32746c45",
+  "candidate_source_sha256": "9973b13127f0742aaed0e62fa903f28d273120b8aa8ebfdcd9d66f0ba63d43a5",
+  "patch_sha256": "05788981854f86012b9b1aacbf826f54842bb2ddf40fbc0a77292933a0cee515",
+  "membership": {
+    "full": {
+      "literal_block_byte_equal": true,
+      "member_count": 25
+    },
+    "event": {
+      "literal_block_byte_equal": true,
+      "member_count": 7
+    },
+    "lossless": {
+      "literal_block_byte_equal": true,
+      "member_count": 11
+    }
+  },
+  "auxiliary_objects": {
+    "evidence_rules.o": "232f77d5b5b1843650840561fb3d7b4e59b2b48db3be08b8d2016b1472d311c9",
+    "sha256.o": "d0a0d676ce1c8ba4ba7d7022c7656bbcd3fac12c451f8235f531cd7ac52f6d63",
+    "strong_types.o": "72acae4138b9f3a3c5f7bddc11e59dea167d3327a1adaf13e209881ef22622a4"
+  },
+  "protected_source_modified": false,
+  "frozen_archive_modified": true,
+  "historical_source_to_archive_evidence": "l3check/vrs_library_candidate3.json previous_observations[0]",
+  "compilation_identity_verified": false
+}
