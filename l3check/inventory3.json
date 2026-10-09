@@ -1,9 +1,9 @@
 {
-  "source_head": "3530ac9a1c3fe78db45abbcf84c23dc4f5ed7059",
-  "captured_utc": "2026-10-09T12:07:52.391937+00:00",
+  "source_head": "cf57711dfccad7da3db6b3dd46b7cef4a7bc53db",
+  "captured_utc": "2026-10-09T12:10:45.034277+00:00",
   "scope": "Tracked Rust files in current worktree; comments/fixtures counted by symbol grep. Call-path annotations manually reviewed; not a formal reachability proof.",
   "tracked_rust_files": 5057,
-  "tracked_rust_combined_sha256": "6212b5c9715f2483fa72bf09d6b9e63dbbeb3583b5c8b955c94b45f93ec2a414",
+  "tracked_rust_combined_sha256": "18fe99b9a61eb8a1551f12a72572cb5a239de4e06e0f771973af9f4e51bf424e",
   "tracked_rust_dirty": [],
   "builds_or_tests_run_by_inventory": false,
   "compression": {

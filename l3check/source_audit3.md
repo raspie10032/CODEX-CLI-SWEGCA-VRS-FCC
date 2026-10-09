@@ -1,8 +1,8 @@
-# Round 3 source audit at 3530ac9a1
+# Round 3 source audit at cf57711df
 
-This audit reads tracked Rust source at `3530ac9a1c3fe78db45abbcf84c23dc4f5ed7059`.
-Production source is unchanged from `8fdfd4f55`; the newer commit repairs four
-unit-test error-kind assertions. No product source, snapshot expectations, build,
+This audit reads tracked Rust source at `cf57711dfccad7da3db6b3dd46b7cef4a7bc53db`.
+Production source is unchanged from `8fdfd4f55`; intervening source commits
+`3530ac9a1` and `8d24b8e53` repair unit-test error-kind/detail assertions. No product source, snapshot expectations, build,
 service, or test was changed or run by this audit. Existing reports remain intact.
 The parent owns the final build/test comparison and REPORT3.
 
