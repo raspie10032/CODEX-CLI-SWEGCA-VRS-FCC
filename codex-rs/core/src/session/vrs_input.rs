@@ -374,7 +374,7 @@ mod tests {
     #[tokio::test]
     async fn request_window_is_per_call_and_preserves_required_input() {
         use codex_history::RolloutItem;
-        use codex_protocol::error::CodexErrKind;
+        use codex_protocol::error::CodexErrorDetails;
         use codex_protocol::models::BaseInstructions;
         use codex_protocol::models::ResponseItem;
         use std::sync::Arc;
@@ -402,7 +402,7 @@ mod tests {
         assert_eq!(original, vec![item]);
         assert!(matches!(
             super::vrs_prompt_input(&session, &small, &base).await,
-            Err(err) if err.kind() == CodexErrKind::ContextWindowExceeded
+            Err(err) if matches!(err.details(), CodexErrorDetails::ContextWindowExceeded)
         ));
         // A rejected smaller model must not truncate the store or mutate another request's budget.
         assert_eq!(
@@ -415,7 +415,7 @@ mod tests {
 
     #[tokio::test]
     async fn request_window_reserves_base_instructions_before_assembly() {
-        use codex_protocol::error::CodexErrKind;
+        use codex_protocol::error::CodexErrorDetails;
         use codex_protocol::models::BaseInstructions;
         use std::sync::Arc;
 
@@ -431,14 +431,14 @@ mod tests {
             // Even an empty S cannot make room for this fixed request overhead.
             assert!(matches!(
                 super::vrs_prompt_input(&session, &step, &base).await,
-                Err(err) if err.kind() == CodexErrKind::ContextWindowExceeded
+                Err(err) if matches!(err.details(), CodexErrorDetails::ContextWindowExceeded)
             ));
         }
     }
 
     #[tokio::test]
     async fn final_admission_counts_tools_and_schema_in_both_wire_formats() {
-        use codex_protocol::error::CodexErrKind;
+        use codex_protocol::error::CodexErrorDetails;
         use std::sync::Arc;
 
         let (session, turn) = crate::session::tests::make_session_and_context().await;
@@ -464,7 +464,7 @@ mod tests {
             .into();
             assert!(matches!(
                 super::check_prompt_window(&session, &step, &prompt).await,
-                Err(err) if err.kind() == CodexErrKind::ContextWindowExceeded
+                Err(err) if matches!(err.details(), CodexErrorDetails::ContextWindowExceeded)
             ));
             prompt.tools = Arc::default();
             prompt.output_schema = Some(
@@ -472,7 +472,7 @@ mod tests {
             );
             assert!(matches!(
                 super::check_prompt_window(&session, &step, &prompt).await,
-                Err(err) if err.kind() == CodexErrKind::ContextWindowExceeded
+                Err(err) if matches!(err.details(), CodexErrorDetails::ContextWindowExceeded)
             ));
         }
     }
