@@ -9,11 +9,11 @@ use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
+use codex_history::RolloutItem;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::InputModality;
-use codex_history::RolloutItem;
 use codex_vrs::VrsError;
 use tracing::info;
 use tracing::warn;
@@ -78,11 +78,12 @@ pub(crate) async fn vrs_input(sess: &Session) -> Result<Vec<ResponseItem>, VrsEr
     result.map(|(items, _)| items)
 }
 
-async fn assemble_for(sess: &Session, thread_id: &str) -> Result<(Vec<ResponseItem>, u64), VrsError> {
-    // Every queued rollout line must be written (and so inserted into the store) first.
-    sess.flush_rollout()
-        .await
-        .map_err(|err| VrsError::Unavailable(format!("rollout flush failed: {err}")))?;
+async fn assemble_for(
+    sess: &Session,
+    thread_id: &str,
+) -> Result<(Vec<ResponseItem>, u64), VrsError> {
+    // P-3': recording callers publish their reserved lines before queuing disk writes.
+    // Assembly reads VRS immediately and never waits for the rollout writer.
     let path: PathBuf = match sess.current_rollout_path().await {
         Ok(Some(path)) => path,
         Ok(None) => codex_vrs::ephemeral_path(thread_id)?,
@@ -174,33 +175,24 @@ impl Session {
     }
 
     /// Records rollout items of a thread that has no rollout file into the store (design D1).
-    pub(crate) async fn insert_ephemeral_vrs_lines(&self, items: &[RolloutItem]) {
+    pub(crate) async fn insert_ephemeral_vrs_lines(
+        &self,
+        items: &[RolloutItem],
+    ) -> Result<(), VrsError> {
         let history_mode = self.state.lock().await.session_configuration.history_mode;
-        let path = match codex_vrs::ephemeral_path(&self.thread_id.to_string()) {
-            Ok(path) => path,
-            Err(err) => {
-                warn!("vrs ephemeral insert skipped: {err}");
-                return;
-            }
-        };
+        let path = codex_vrs::ephemeral_path(&self.thread_id.to_string())?;
         for item in items {
             if !codex_rollout::is_persisted_rollout_item(item, history_mode) {
                 continue;
             }
-            let line = match codex_rollout::encode_rollout_line(item, None) {
-                Ok(line) => line,
-                Err(err) => {
-                    warn!("vrs ephemeral line not encoded: {err}");
-                    continue;
-                }
-            };
-            // The virtual file grows by the length of each line, as a rollout file would.
+            let line = codex_rollout::encode_rollout_line(item, None).map_err(|err| {
+                VrsError::Unavailable(format!("rollout line encoding failed: {err}"))
+            })?;
             let offset = self
                 .ephemeral_vrs_offset
                 .fetch_add(line.len() as u64, Ordering::Relaxed);
-            if let Err(err) = codex_vrs::insert(&path, offset, line.as_bytes()) {
-                warn!("vrs ephemeral insert failed at byte {offset}: {err}");
-            }
+            codex_vrs::insert(&path, offset, line.as_bytes())?;
         }
+        Ok(())
     }
 }

@@ -107,10 +107,11 @@ fn read_history_metadata(
     let reader = BufReader::new(file);
     for line in reader.lines() {
         let line = line?;
+        let line = crate::trim_rollout_hole_prefix(&line);
         if line.trim().is_empty() {
             continue;
         }
-        let record = crate::parse_rollout_line(line.as_str()).map_err(|error| {
+        let record = crate::parse_rollout_line(line).map_err(|error| {
             io::Error::other(format!(
                 "failed to parse first rollout record at {}: {error}",
                 path.display()

@@ -949,27 +949,25 @@ async fn writer_state_retries_write_error_before_reporting_flush_success() -> st
     File::create(&rollout_path)?;
     let read_only_file = std::fs::OpenOptions::new().read(true).open(&rollout_path)?;
     let mut state = RolloutWriterState {
-        writer: Some(JsonlWriter::new(
-            tokio::fs::File::from_std(read_only_file),
-            rollout_path.clone(),
-        )),
+        writer: Some(JsonlWriter::new(read_only_file, rollout_path.clone())),
         deferred_creation: false,
         pending_items: Vec::new(),
         meta: None,
-        cwd: home.path().to_path_buf(),
         rollout_path: rollout_path.clone(),
-        ordinal_state: RolloutOrdinalState::Legacy,
         last_logged_error: None,
     };
-    state.add_items(vec![RolloutItem::EventMsg(EventMsg::AgentMessage(
-        AgentMessageEvent {
+    let reservations = RolloutReservations::new(RolloutOrdinalState::Legacy, 0);
+    let line = reservations.insert(
+        &rollout_path,
+        &RolloutItem::EventMsg(EventMsg::AgentMessage(AgentMessageEvent {
             message: "queued-after-writer-error".to_string(),
             phase: None,
             memory_citation: None,
             delivery: None,
             questions: None,
-        },
-    ))]);
+        })),
+    )?;
+    state.add_items(vec![line]);
 
     state.flush().await?;
     let text_after_retry = std::fs::read_to_string(&rollout_path)?;
@@ -1125,13 +1123,10 @@ async fn paginated_ordinal_overflow_fails_without_appending() -> std::io::Result
 
     let recorder =
         RolloutRecorder::new(&config, RolloutRecorderParams::resume(rollout_path.clone())).await?;
-    recorder
-        .record_canonical_items(&[agent_message_item("overflow")])
-        .await?;
     let err = recorder
-        .flush()
+        .record_canonical_items(&[agent_message_item("overflow")])
         .await
-        .expect_err("ordinal overflow should fail the append");
+        .expect_err("ordinal overflow should fail on the recording caller");
     assert!(err.to_string().contains("overflow"));
     assert_eq!(fs::read(&rollout_path)?, before);
     Ok(())
@@ -1884,4 +1879,68 @@ async fn resume_candidate_matches_cwd_reads_latest_turn_context() -> std::io::Re
         .await
     );
     Ok(())
+}
+
+#[tokio::test]
+async fn reserved_lines_can_persist_out_of_order_without_overwriting() -> std::io::Result<()> {
+    let home = TempDir::new().expect("temp dir");
+    let path = home.path().join("rollout.jsonl");
+    let reservations = RolloutReservations::new(RolloutOrdinalState::Legacy, 0);
+    let first = reservations.insert(&path, &agent_message_item("first reserved line"))?;
+    let second = reservations.insert(&path, &agent_message_item("second reserved line"))?;
+    assert!(!path.exists(), "publication must not materialize the file");
+    let file = File::options()
+        .write(true)
+        .read(true)
+        .create_new(true)
+        .open(&path)?;
+    let mut writer = JsonlWriter::new(file, path.clone());
+    writer.write_reserved_line(&second).await?;
+    let partial = fs::read(&path)?;
+    assert!(
+        partial[..second.offset as usize]
+            .iter()
+            .all(|byte| *byte == 0)
+    );
+    assert_eq!(&partial[second.offset as usize..], second.bytes.as_ref());
+    writer.write_reserved_line(&first).await?;
+    let expected = [first.bytes.as_ref(), second.bytes.as_ref()].concat();
+    assert_eq!(fs::read(path)?, expected);
+    Ok(())
+}
+
+#[tokio::test]
+async fn resumed_reservations_start_at_existing_file_size() -> std::io::Result<()> {
+    let home = TempDir::new().expect("temp dir");
+    let config = test_config(home.path());
+    let path = home.path().join("rollout.jsonl");
+    let original = encode_rollout_line(&agent_message_item("existing"), None)?;
+    fs::write(&path, &original)?;
+    let recorder =
+        RolloutRecorder::new(&config, RolloutRecorderParams::resume(path.clone())).await?;
+    recorder
+        .record_canonical_items(&[agent_message_item("new")])
+        .await?;
+    recorder.shutdown().await?;
+    let bytes = fs::read(path)?;
+    assert_eq!(&bytes[..original.len()], original.as_bytes());
+    let appended = crate::parse_rollout_line_bytes(&bytes[original.len()..])?;
+    assert!(matches!(
+        appended.item,
+        RolloutItem::ResponseItem(_) | RolloutItem::EventMsg(_)
+    ));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn insertion_errors_are_returned_before_queueing_disk_writes() {
+    use std::os::unix::ffi::OsStrExt;
+    let reservations = RolloutReservations::new(RolloutOrdinalState::Legacy, 0);
+    let path = Path::new(std::ffi::OsStr::from_bytes(b"invalid\0rollout"));
+    assert!(
+        reservations
+            .insert(path, &agent_message_item("must fail"))
+            .is_err()
+    );
 }

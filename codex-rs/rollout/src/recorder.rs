@@ -12,6 +12,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 use chrono::SecondsFormat;
 use codex_protocol::RolloutId;
@@ -25,7 +27,6 @@ use time::OffsetDateTime;
 use time::format_description::FormatItem;
 use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
-use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
@@ -87,6 +88,7 @@ pub struct RolloutRecorder {
     tx: Sender<RolloutCmd>,
     writer_task: Arc<RolloutWriterTask>,
     pub(crate) rollout_path: PathBuf,
+    reservations: Arc<RolloutReservations>,
 }
 
 #[derive(Clone)]
@@ -126,7 +128,7 @@ pub enum RolloutRecorderParams {
 }
 
 enum RolloutCmd {
-    AddItems(Vec<RolloutItem>),
+    AddItems(Vec<ReservedLine>),
     Persist {
         ack: oneshot::Sender<std::io::Result<()>>,
     },
@@ -896,7 +898,7 @@ impl RolloutRecorder {
     ) -> std::io::Result<Self> {
         // Clone the cwd for the spawned task to collect git info asynchronously.
         let cwd = config.cwd().to_path_buf();
-        let state = match params {
+        let (state, reservations) = match params {
             RolloutRecorderParams::Create {
                 session_id,
                 conversation_id,
@@ -967,30 +969,39 @@ impl RolloutRecorder {
                     context_window: initial_window_id.map(SessionContextWindow::new),
                 };
 
-                RolloutWriterState {
-                    writer: None,
-                    deferred_creation: true,
-                    pending_items: Vec::new(),
-                    meta: Some(session_meta),
-                    cwd: cwd.clone(),
-                    rollout_path: path,
-                    ordinal_state,
-                    last_logged_error: None,
-                }
+                let reservations = Arc::new(RolloutReservations::new(ordinal_state, 0));
+                let metadata = session_meta_item(session_meta, &cwd).await;
+                let line = reservations.insert(&path, &metadata)?;
+                (
+                    RolloutWriterState {
+                        writer: None,
+                        deferred_creation: true,
+                        pending_items: Vec::new(),
+                        meta: Some(line),
+                        rollout_path: path,
+                        last_logged_error: None,
+                    },
+                    reservations,
+                )
             }
             RolloutRecorderParams::Resume { path } => {
                 let (path, file, ordinal_state) =
                     open_rollout_for_append(path.as_path(), writer_lock.clone()).await?;
-                RolloutWriterState {
-                    writer: Some(JsonlWriter::new(file, path.clone())),
-                    deferred_creation: false,
-                    pending_items: Vec::new(),
-                    meta: None,
-                    cwd: cwd.clone(),
-                    rollout_path: path,
+                let reservations = Arc::new(RolloutReservations::new(
                     ordinal_state,
-                    last_logged_error: None,
-                }
+                    file.metadata()?.len(),
+                ));
+                (
+                    RolloutWriterState {
+                        writer: Some(JsonlWriter::new(file, path.clone())),
+                        deferred_creation: false,
+                        pending_items: Vec::new(),
+                        meta: None,
+                        rollout_path: path,
+                        last_logged_error: None,
+                    },
+                    reservations,
+                )
             }
         };
         let rollout_path = state.rollout_path.clone();
@@ -999,9 +1010,8 @@ impl RolloutRecorder {
         // future will yield, which is fine – we only need to ensure we do not
         // perform *blocking* I/O on the caller's thread.
         let (tx, rx) = mpsc::channel::<RolloutCmd>(256);
-        // Spawn a Tokio task that owns the file handle and performs async
-        // writes. Using `tokio::fs::File` keeps everything on the async I/O
-        // driver instead of blocking the runtime.
+        // Keep Codex's existing writer task. Positional file IO runs on the blocking pool;
+        // model assembly sees the already-published VRS lines without waiting for this task.
         let writer_task = Arc::new(RolloutWriterTask::new(writer_lock));
         let writer_task_for_spawn = Arc::clone(&writer_task);
         let rollout_path_for_spawn = rollout_path.clone();
@@ -1025,6 +1035,7 @@ impl RolloutRecorder {
             tx,
             writer_task,
             rollout_path,
+            reservations,
         })
     }
 
@@ -1036,8 +1047,14 @@ impl RolloutRecorder {
         if items.is_empty() {
             return Ok(());
         }
+        // Publish to VRS on the recording caller, before yielding to the existing writer.
+        // Clones share only atomic reservations; disk completion is not an assembly barrier.
+        let lines = items
+            .iter()
+            .map(|item| self.reservations.insert(&self.rollout_path, item))
+            .collect::<std::io::Result<Vec<_>>>()?;
         self.tx
-            .send(RolloutCmd::AddItems(items.to_vec()))
+            .send(RolloutCmd::AddItems(lines))
             .await
             .map_err(|e| {
                 self.writer_task.terminal_failure().unwrap_or_else(|| {
@@ -1754,15 +1771,14 @@ fn open_log_file(path: &Path) -> std::io::Result<File> {
         )));
     };
     fs::create_dir_all(parent)?;
-    let mut file = std::fs::OpenOptions::new()
+    let file = std::fs::OpenOptions::new()
         .read(true)
-        .append(true)
+        .write(true)
         .create(true)
         .open(path)?;
     if refresh_modified_time {
         file.set_times(std::fs::FileTimes::new().set_modified(std::time::SystemTime::now()))?;
     }
-    ensure_rollout_is_newline_terminated(&mut file)?;
     Ok(file)
 }
 
@@ -1775,16 +1791,14 @@ struct RolloutWriterState {
     writer: Option<JsonlWriter>,
     /// True until a newly created rollout is first materialized.
     deferred_creation: bool,
-    pending_items: Vec<RolloutItem>,
-    meta: Option<SessionMeta>,
-    cwd: PathBuf,
+    pending_items: Vec<ReservedLine>,
+    meta: Option<ReservedLine>,
     rollout_path: PathBuf,
-    ordinal_state: RolloutOrdinalState,
     last_logged_error: Option<String>,
 }
 
 impl RolloutWriterState {
-    fn add_items(&mut self, items: Vec<RolloutItem>) {
+    fn add_items(&mut self, items: Vec<ReservedLine>) {
         self.pending_items.extend(items);
     }
 
@@ -1868,38 +1882,24 @@ impl RolloutWriterState {
 
         let file = open_log_file(self.rollout_path.as_path())?;
         self.writer = Some(JsonlWriter::new(
-            tokio::fs::File::from_std(file),
+            file,
             compression::plain_rollout_path(self.rollout_path.as_path()),
         ));
         self.deferred_creation = false;
         Ok(())
     }
 
-    async fn write_session_meta_if_needed(&mut self) -> std::io::Result<()> {
-        let Some(session_meta) = self.meta.as_ref().cloned() else {
-            return Ok(());
-        };
-        write_session_meta(
-            self.writer.as_mut(),
-            &mut self.ordinal_state,
-            session_meta,
-            &self.cwd,
-        )
-        .await?;
-        self.meta = None;
-        Ok(())
-    }
-
     async fn write_pending_once(&mut self) -> std::io::Result<()> {
         self.ensure_writer_open().await?;
-        self.write_session_meta_if_needed().await?;
-
-        self.write_pending_items_once().await?;
-
-        if let Some(writer) = self.writer.as_mut() {
-            writer.file.flush().await?;
+        if let Some(meta) = &self.meta {
+            self.writer
+                .as_mut()
+                .ok_or_else(|| IoError::other("rollout writer is not open"))?
+                .write_reserved_line(meta)
+                .await?;
+            self.meta = None;
         }
-        Ok(())
+        self.write_pending_items_once().await
     }
 
     async fn write_pending_items_once(&mut self) -> std::io::Result<()> {
@@ -1909,19 +1909,10 @@ impl RolloutWriterState {
 
         let mut written_count = 0usize;
         let mut write_result = Ok(());
-        for item in &self.pending_items {
-            match self.ordinal_state.current() {
-                Ok(ordinal) => match writer.write_rollout_item(item, ordinal).await {
-                    Ok(()) => self.ordinal_state.advance(),
-                    Err(err) => {
-                        write_result = Err(err);
-                        break;
-                    }
-                },
-                Err(err) => {
-                    write_result = Err(err);
-                    break;
-                }
+        for line in &self.pending_items {
+            if let Err(err) = writer.write_reserved_line(line).await {
+                write_result = Err(err);
+                break;
             }
             written_count += 1;
         }
@@ -1970,12 +1961,7 @@ async fn rollout_writer(
     Ok(())
 }
 
-async fn write_session_meta(
-    mut writer: Option<&mut JsonlWriter>,
-    ordinal_state: &mut RolloutOrdinalState,
-    session_meta: SessionMeta,
-    cwd: &Path,
-) -> std::io::Result<()> {
+async fn session_meta_item(session_meta: SessionMeta, cwd: &Path) -> RolloutItem {
     let git_info = if get_git_repo_root(cwd).is_some() {
         collect_git_info(cwd).await.map(|info| ProtocolGitInfo {
             commit_hash: info.commit_hash,
@@ -1990,13 +1976,7 @@ async fn write_session_meta(
         git: git_info,
     };
 
-    let rollout_item = RolloutItem::SessionMeta(session_meta_line);
-    if let Some(writer) = writer.as_mut() {
-        let ordinal = ordinal_state.current()?;
-        writer.write_rollout_item(&rollout_item, ordinal).await?;
-        ordinal_state.advance();
-    }
-    Ok(())
+    RolloutItem::SessionMeta(session_meta_line)
 }
 
 /// Append one already-filtered rollout item to an existing rollout JSONL file.
@@ -2010,15 +1990,16 @@ pub async fn append_rollout_item_to_path(
 ) -> std::io::Result<()> {
     let (rollout_path, file, ordinal_state) =
         open_rollout_for_append(rollout_path, /*writer_lock*/ None).await?;
-    let ordinal = ordinal_state.current()?;
+    let reservations = RolloutReservations::new(ordinal_state, file.metadata()?.len());
+    let line = reservations.insert(&rollout_path, item)?;
     let mut writer = JsonlWriter::new(file, rollout_path);
-    writer.write_rollout_item(item, ordinal).await
+    writer.write_reserved_line(&line).await
 }
 
 async fn open_rollout_for_append(
     path: &Path,
     writer_lock: Option<Arc<crate::WriterLockGuard>>,
-) -> std::io::Result<(PathBuf, tokio::fs::File, RolloutOrdinalState)> {
+) -> std::io::Result<(PathBuf, File, RolloutOrdinalState)> {
     let refresh_modified_time =
         !tokio::fs::try_exists(compression::plain_rollout_path(path)).await?;
     let path = compression::materialize_rollout_for_append(path, writer_lock.clone()).await?;
@@ -2027,7 +2008,7 @@ async fn open_rollout_for_append(
         let _writer_lock = writer_lock;
         let mut file = File::options()
             .read(true)
-            .append(true)
+            .write(true)
             .open(path_for_open.as_path())?;
         if refresh_modified_time {
             file.set_times(std::fs::FileTimes::new().set_modified(std::time::SystemTime::now()))?;
@@ -2038,7 +2019,7 @@ async fn open_rollout_for_append(
     })
     .await
     .map_err(IoError::other)??;
-    Ok((path, tokio::fs::File::from_std(file), ordinal_state))
+    Ok((path, file, ordinal_state))
 }
 
 fn ensure_rollout_is_newline_terminated(file: &mut File) -> std::io::Result<()> {
@@ -2056,8 +2037,54 @@ fn ensure_rollout_is_newline_terminated(file: &mut File) -> std::io::Result<()> 
     Ok(())
 }
 
+/// An immutable line published to VRS before it is queued for disk persistence.
+struct ReservedLine {
+    offset: u64,
+    bytes: Arc<[u8]>,
+}
+
+struct RolloutReservations {
+    end: AtomicU64,
+    next_ordinal: Option<AtomicU64>,
+    ordinal_exhausted: std::sync::atomic::AtomicBool,
+}
+
+impl RolloutReservations {
+    fn new(state: RolloutOrdinalState, end: u64) -> Self {
+        let (next_ordinal, exhausted) = match state {
+            RolloutOrdinalState::Legacy => (None, false),
+            RolloutOrdinalState::Paginated { next } => (
+                Some(AtomicU64::new(next.unwrap_or(u64::MAX))),
+                next.is_none(),
+            ),
+        };
+        Self {
+            end: AtomicU64::new(end),
+            next_ordinal,
+            ordinal_exhausted: std::sync::atomic::AtomicBool::new(exhausted),
+        }
+    }
+
+    fn insert(&self, path: &Path, item: &RolloutItem) -> std::io::Result<ReservedLine> {
+        if self.ordinal_exhausted.load(Ordering::Relaxed) {
+            return Err(IoError::other("paginated rollout record ordinal overflow"));
+        }
+        let ordinal = self
+            .next_ordinal
+            .as_ref()
+            .map(|next| next.fetch_add(1, Ordering::Relaxed));
+        if ordinal == Some(u64::MAX) {
+            self.ordinal_exhausted.store(true, Ordering::Relaxed);
+        }
+        let bytes: Arc<[u8]> = encode_rollout_line(item, ordinal)?.into_bytes().into();
+        let offset = self.end.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+        codex_vrs::insert(path, offset, &bytes).map_err(IoError::other)?;
+        Ok(ReservedLine { offset, bytes })
+    }
+}
+
 struct JsonlWriter {
-    file: tokio::fs::File,
+    file: Arc<File>,
     /// Plain `.jsonl` path of `file`; the key under which written lines are inserted into VRS.
     path: PathBuf,
 }
@@ -2076,9 +2103,8 @@ pub fn encode_rollout_line(
     rollout_item: &RolloutItem,
     ordinal: Option<u64>,
 ) -> std::io::Result<String> {
-    let timestamp_format: &[FormatItem] = format_description!(
-        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z"
-    );
+    let timestamp_format: &[FormatItem] =
+        format_description!("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z");
     let timestamp = OffsetDateTime::now_utc()
         .format(timestamp_format)
         .map_err(|e| IoError::other(format!("failed to format timestamp: {e}")))?;
@@ -2094,32 +2120,41 @@ pub fn encode_rollout_line(
 }
 
 impl JsonlWriter {
-    fn new(file: tokio::fs::File, path: PathBuf) -> Self {
-        Self { file, path }
-    }
-
-    async fn write_rollout_item(
-        &mut self,
-        rollout_item: &RolloutItem,
-        ordinal: Option<u64>,
-    ) -> std::io::Result<()> {
-        let json = encode_rollout_line(rollout_item, ordinal)?;
-        self.write_line(json.as_bytes()).await
-    }
-
-    async fn write_line(&mut self, line: &[u8]) -> std::io::Result<()> {
-        // The file is opened for append, so the line lands at the current end of file.
-        let offset = self.file.metadata().await?.len();
-        self.file.write_all(line).await?;
-        self.file.flush().await?;
-        // Insert into the in-process VRS store where the line is written (union on (path, offset)).
-        if let Err(err) = codex_vrs::insert(self.path.as_path(), offset, line) {
-            warn!(
-                "vrs insert failed for {} at byte {offset}: {err}",
-                self.path.display()
-            );
+    fn new(file: File, path: PathBuf) -> Self {
+        Self {
+            file: Arc::new(file),
+            path,
         }
-        Ok(())
+    }
+
+    async fn write_reserved_line(&mut self, line: &ReservedLine) -> std::io::Result<()> {
+        let file = Arc::clone(&self.file);
+        let bytes = Arc::clone(&line.bytes);
+        let offset = line.offset;
+        tokio::task::spawn_blocking(move || {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::FileExt;
+                file.write_all_at(&bytes, offset)?;
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::FileExt;
+                let mut written = 0;
+                while written < bytes.len() {
+                    let n = file.seek_write(&bytes[written..], offset + written as u64)?;
+                    if n == 0 {
+                        return Err(IoError::from(std::io::ErrorKind::WriteZero));
+                    }
+                    written += n;
+                }
+            }
+            // Positional writes have no userspace buffer. Flush before releasing the VRS line.
+            (&*file).flush()
+        })
+        .await
+        .map_err(IoError::other)??;
+        codex_vrs::written(&self.path, offset).map_err(IoError::other)
     }
 }
 
