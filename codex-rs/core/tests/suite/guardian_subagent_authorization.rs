@@ -1291,6 +1291,7 @@ async fn run_guardian_subagent_review(
     let snapshot = worker_thread
         .guardian_root_snapshot()
         .await
+        .unwrap()
         .expect("worker root snapshot");
     if matches!(
         messaging_outcome,
@@ -1456,6 +1457,7 @@ async fn run_guardian_subagent_review(
             let resumed = worker_thread
                 .guardian_root_snapshot()
                 .await
+                .unwrap()
                 .expect("worker root snapshot after Code Mode resume");
             assert_eq!(exchange(&resumed.messages), exchange(&expected_messages));
         }
@@ -1704,6 +1706,7 @@ async fn run_guardian_subagent_review(
             let snapshot = worker_thread
                 .guardian_root_snapshot()
                 .await
+                .unwrap()
                 .expect("worker root snapshot after checkpoint resume");
             assert!(!snapshot.messages.iter().any(|message| {
                 matches!(message, GuardianRootMessage::Assistant(text)
@@ -1782,6 +1785,7 @@ async fn run_guardian_subagent_review(
             let snapshot = worker_thread
                 .guardian_root_snapshot()
                 .await
+                .unwrap()
                 .expect("worker root snapshot after revocation");
             assert_eq!(
                 (
@@ -1815,6 +1819,7 @@ async fn run_guardian_subagent_review(
                 worker_thread
                     .guardian_root_snapshot()
                     .await
+                    .unwrap()
                     .expect("before compaction")
                     .messages,
             );
@@ -1847,6 +1852,7 @@ async fn run_guardian_subagent_review(
                     worker_thread
                         .guardian_root_snapshot()
                         .await
+                        .unwrap()
                         .expect("after compacted resume")
                         .messages
                 ),
@@ -1888,6 +1894,7 @@ async fn run_guardian_subagent_review(
             worker_thread
                 .guardian_root_snapshot()
                 .await
+                .unwrap()
                 .expect("root snapshot after progress")
                 .messages,
             expected,

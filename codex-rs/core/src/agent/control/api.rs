@@ -302,7 +302,10 @@ impl AgentControl for LocalAgentControl {
         }
     }
 
-    fn get_guardian_package(&self, agent: ThreadId) -> BoxFuture<'_, Option<GuardianRootSnapshot>> {
+    fn get_guardian_package(
+        &self,
+        agent: ThreadId,
+    ) -> BoxFuture<'_, Result<Option<GuardianRootSnapshot>>> {
         Box::pin(self.root_user_authorization(agent))
     }
 

@@ -107,7 +107,7 @@ pub(crate) async fn build_guardian_prompt_items_with_parent_turn(
         .services
         .agent_control
         .get_guardian_package(session.thread_id)
-        .await
+        .await?
         .map(|snapshot| snapshot.messages);
     let trusted_user_inputs = session
         .services

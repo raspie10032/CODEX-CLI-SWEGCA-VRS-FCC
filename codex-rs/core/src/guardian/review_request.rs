@@ -120,12 +120,22 @@ impl ReviewHost for super::super::runtime::ReviewRuntime {
                 review_reason,
                 model_context,
             });
-        let root_history = session
+        let root_history = match session
             .services
             .agent_control
             .get_guardian_package(session.thread_id)
             .await
-            .map(|snapshot| (snapshot.root_thread_id, snapshot.history_reset_version));
+        {
+            Ok(snapshot) => {
+                snapshot.map(|snapshot| (snapshot.root_thread_id, snapshot.history_reset_version))
+            }
+            Err(error) => {
+                session
+                    .send_event(&turn, EventMsg::Error(error.to_error_event(None)))
+                    .await;
+                return Err(ReviewDecision::Abort);
+            }
+        };
         Ok((
             PreparedApproval {
                 formatted_action: format_guardian_action_pretty(&request).ok(),
@@ -156,11 +166,21 @@ impl ReviewHost for super::super::runtime::ReviewRuntime {
         // Every attempt rebuilds the prompt from live history. Capture its revision and
         // cache attribution anew too; a retried verdict must not use the first snapshot.
         let session = &self.session;
-        let root_snapshot = session
+        let root_snapshot = match session
             .services
             .agent_control
             .get_guardian_package(session.thread_id)
-            .await;
+            .await
+        {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                return (
+                    GuardianReviewOutcome::Error(GuardianReviewError::session(error.into())),
+                    GuardianReviewAnalyticsResult::without_session(),
+                    None,
+                );
+            }
+        };
         if prepared.root_history
             != root_snapshot
                 .as_ref()
@@ -214,11 +234,21 @@ impl ReviewHost for super::super::runtime::ReviewRuntime {
         .await;
         if matches!(&outcome, GuardianReviewOutcome::Completed(assessment) if assessment.outcome == GuardianAssessmentOutcome::Allow)
         {
-            let root_snapshot = session
+            let root_snapshot = match session
                 .services
                 .agent_control
                 .get_guardian_package(session.thread_id)
-                .await;
+                .await
+            {
+                Ok(snapshot) => snapshot,
+                Err(error) => {
+                    return (
+                        GuardianReviewOutcome::Error(GuardianReviewError::session(error.into())),
+                        analytics,
+                        None,
+                    );
+                }
+            };
             let root_history_changed = prepared.root_history
                 != root_snapshot
                     .as_ref()

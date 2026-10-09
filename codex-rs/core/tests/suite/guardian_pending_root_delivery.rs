@@ -147,6 +147,7 @@ async fn confirmed_root_delivery_invalidates_pending_worker_allow() -> Result<()
     let before = worker
         .guardian_root_snapshot()
         .await
+        .unwrap()
         .expect("root review context")
         .review_context_revision;
     test.codex
@@ -167,6 +168,7 @@ async fn confirmed_root_delivery_invalidates_pending_worker_allow() -> Result<()
             let current = worker
                 .guardian_root_snapshot()
                 .await
+                .unwrap()
                 .expect("root review context")
                 .review_context_revision;
             if current != before {

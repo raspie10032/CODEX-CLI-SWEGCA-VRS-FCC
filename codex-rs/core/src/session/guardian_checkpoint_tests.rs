@@ -1,8 +1,8 @@
-use crate::context::GuardianContextMode;
 use crate::context::world_state::WorldStateSnapshot;
 use crate::context_manager::ContextManager;
 use crate::session::tests::make_session_and_context;
 use codex_history::InitialHistory;
+use codex_history::RolloutItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::ThreadHistoryMode;
@@ -11,17 +11,14 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 use test_case::test_case;
 
-#[test_case(GuardianContextMode::Legacy, ThreadHistoryMode::Legacy; "legacy_context_legacy_storage")]
-#[test_case(GuardianContextMode::ThreadOwned, ThreadHistoryMode::Legacy; "thread_owned_context_legacy_storage")]
-#[test_case(GuardianContextMode::Legacy, ThreadHistoryMode::Paginated; "legacy_context_paginated_storage")]
-#[test_case(GuardianContextMode::ThreadOwned, ThreadHistoryMode::Paginated; "thread_owned_context_paginated_storage")]
+#[test_case(ThreadHistoryMode::Legacy; "legacy storage")]
+#[test_case(ThreadHistoryMode::Paginated; "paginated storage")]
 #[tokio::test]
-async fn guardian_checkpoint_preserves_live_context_without_storage(
-    mode: GuardianContextMode,
+async fn guardian_checkpoint_preserves_assembled_originals_without_compaction(
     history_mode: ThreadHistoryMode,
 ) {
     let (session, turn) = make_session_and_context().await;
-    // This session has no live store. A checkpoint must still capture the complete context.
+    // Fileless sessions still insert originals into VRS (D1).
     assert!(session.live_thread().is_none());
     let instruction: ResponseItem = serde_json::from_value(json!({
         "type": "message", "id": "user-restriction", "role": "user", "content": [
@@ -33,42 +30,18 @@ async fn guardian_checkpoint_preserves_live_context_without_storage(
     let context = turn.to_turn_context_item();
     let baseline = json!({"test": "baseline"});
     let world_state = WorldStateSnapshot::from(baseline.as_object().unwrap());
+    let followup: ResponseItem = serde_json::from_value(json!({
+        "type": "message", "id": "user-followup", "role": "user", "content": [
+            {"type": "input_text", "text": "Review the next action."}
+        ],
+        "internal_chat_message_metadata_passthrough": {"content_item_kinds": ["unknown"]}
+    }))
+    .unwrap();
+    session
+        .record_conversation_items(&turn, turn.model_info(), &[instruction, followup])
+        .await;
     {
         let mut state = session.state.lock().await;
-        state.history = ContextManager::for_session(
-            &SessionSource::default(),
-            &crate::config::ManagedFeatures::from(codex_features::Features::with_defaults()),
-        );
-        state
-            .history
-            .record_items([&instruction], turn.model_info().truncation_policy.into());
-        // The model window no longer contains the old restriction. Legacy review must
-        // preserve it in its retained transcript when this checkpoint is forked.
-        if mode == GuardianContextMode::Legacy {
-            let compacted: ResponseItem = serde_json::from_value(json!({
-                "type": "compaction", "id": "compaction-1", "encrypted_content": "summary",
-            }))
-            .unwrap();
-            let retained = state.history.retained_context().clone();
-            state.history.replace_annotated(vec![compacted.into()]);
-            state.history.restore_review_context(
-                Some(&retained),
-                Some(&codex_history::GuardianHistoryCheckpoint(vec![
-                    instruction.clone().into(),
-                ])),
-                /*reviewer_compaction_hash*/ None,
-            );
-        }
-        let followup: ResponseItem = serde_json::from_value(json!({
-            "type": "message", "id": "user-followup", "role": "user", "content": [
-                {"type": "input_text", "text": "Review the next action."}
-            ],
-            "internal_chat_message_metadata_passthrough": {"content_item_kinds": ["unknown"]}
-        }))
-        .unwrap();
-        state
-            .history
-            .record_items([&followup], turn.model_info().truncation_policy.into());
         state.history.set_reference_context_item(Some(context));
         state.history.set_world_state_baseline(world_state.clone());
         state.history.update_token_info(
@@ -80,18 +53,23 @@ async fn guardian_checkpoint_preserves_live_context_without_storage(
             Some(32_000),
         );
     }
-    let expected = session.clone_history().await;
-    if mode == GuardianContextMode::Legacy {
-        assert!(
-            expected
-                .guardian_history_checkpoint()
-                .unwrap()
-                .0
-                .iter()
-                .any(|entry| entry.item == instruction)
-        );
-    }
-    let items = session.guardian_fork_history().await;
+    let expected = session.vrs_history().await.unwrap();
+    let items = session.guardian_fork_history().await.unwrap();
+    assert!(
+        !items
+            .iter()
+            .any(|item| matches!(item, RolloutItem::Compacted(_)))
+    );
+    assert_eq!(
+        items
+            .iter()
+            .filter_map(|item| match item {
+                RolloutItem::ResponseItem(item) => Some(item.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        expected.annotated_items(),
+    );
     assert!(
         crate::thread_rollout_truncation::initial_history_has_prior_user_turns(
             &InitialHistory::Forked(items.clone()),
@@ -110,13 +88,8 @@ async fn guardian_checkpoint_preserves_live_context_without_storage(
     );
     fork.record_initial_history(InitialHistory::Forked(items))
         .await;
-    let restored = fork.clone_history().await;
+    let restored = fork.vrs_history().await.unwrap();
     assert_eq!(restored.annotated_items(), expected.annotated_items());
-    assert_eq!(restored.retained_context(), expected.retained_context());
-    assert_eq!(
-        restored.guardian_history_checkpoint(),
-        expected.guardian_history_checkpoint()
-    );
     assert_eq!(
         restored.world_state_checkpoint(),
         expected.world_state_checkpoint()

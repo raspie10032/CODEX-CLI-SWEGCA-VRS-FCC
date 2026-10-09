@@ -303,7 +303,25 @@ impl GuardianV2Extension {
         // Capture root evidence before background metadata resolution or model I/O.
         // Later root authorization or review-context changes invalidate this sample.
         let root_snapshot = if context_mode != GuardianContextMode::Legacy {
-            thread.guardian_root_snapshot().await
+            match thread.guardian_root_snapshot().await {
+                Ok(snapshot) => snapshot,
+                Err(error) => {
+                    score_progress.fail_closed(sampled_at);
+                    record_classification(
+                        metrics.as_deref(),
+                        context_mode,
+                        classification_started_at.elapsed(),
+                        "failure",
+                        Some("context_assembly_error"),
+                    );
+                    event_sink.emit_warning(ExtensionWarning {
+                        thread_id,
+                        turn_id: Some(turn_id),
+                        message: format!("Guardian V2 root context assembly failed: {error}"),
+                    });
+                    return;
+                }
+            }
         } else {
             None
         };

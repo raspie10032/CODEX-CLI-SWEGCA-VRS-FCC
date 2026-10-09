@@ -141,7 +141,10 @@ pub trait AgentControl: Send + Sync {
 
     /// Read the existing bounded root evidence for a worker. The local backend returns
     /// `None` for the root, a non-V2 tree, or an unavailable root runtime.
-    fn get_guardian_package(&self, agent: ThreadId) -> BoxFuture<'_, Option<GuardianRootSnapshot>>;
+    fn get_guardian_package(
+        &self,
+        agent: ThreadId,
+    ) -> BoxFuture<'_, Result<Option<GuardianRootSnapshot>>>;
 
     fn pending_budget_reminder<'a>(
         &'a self,

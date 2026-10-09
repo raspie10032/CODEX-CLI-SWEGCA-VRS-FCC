@@ -19,7 +19,6 @@ use std::hash::Hasher;
 use super::LocalAgentControl;
 use crate::codex_thread::GuardianRootMessage;
 use crate::codex_thread::GuardianRootSnapshot;
-use crate::message_text::is_summary_message;
 use crate::context::ContextualUserFragment;
 use crate::context::GuardianReviewEvidence;
 use crate::context::UserGoalUpdate;
@@ -28,12 +27,14 @@ use crate::context::render_retained_assistant_context;
 use crate::event_mapping::parse_turn_item;
 use crate::guardian::GUARDIAN_MAX_ROOT_MESSAGE_TOKENS;
 use crate::guardian::guardian_truncate_text;
+use crate::message_text::is_summary_message;
 use codex_history::ReconciledRetainedContext;
 use codex_history::RetainedContextEntry;
 use codex_history::RetainedContextOrder;
 use codex_history::RetainedUserMessage;
 use codex_protocol::AgentPath;
 use codex_protocol::ThreadId;
+use codex_protocol::error::Result as CodexResult;
 use codex_protocol::items::AgentMessageContent;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::ContentItem;
@@ -48,18 +49,22 @@ impl LocalAgentControl {
     pub(crate) async fn root_user_authorization(
         &self,
         thread_id: ThreadId,
-    ) -> Option<GuardianRootSnapshot> {
-        let root_thread_id = self
-            .runtime
-            .registry
-            .agent_id_for_path(&AgentPath::root())?;
+    ) -> CodexResult<Option<GuardianRootSnapshot>> {
+        let Some(root_thread_id) = self.runtime.registry.agent_id_for_path(&AgentPath::root())
+        else {
+            return Ok(None);
+        };
         if root_thread_id == thread_id {
-            return None;
+            return Ok(None);
         }
-        let manager = self.runtime.upgrade().ok()?;
-        let root_thread = manager.get_thread(root_thread_id).await.ok()?;
+        let Ok(manager) = self.runtime.upgrade() else {
+            return Ok(None);
+        };
+        let Ok(root_thread) = manager.get_thread(root_thread_id).await else {
+            return Ok(None);
+        };
         if root_thread.multi_agent_version() != Some(MultiAgentVersion::V2) {
-            return None;
+            return Ok(None);
         }
 
         let worker_path = root_thread
@@ -71,13 +76,11 @@ impl LocalAgentControl {
                     .agent_path
             })
             .flatten();
-        let root_history = match root_thread.session.vrs_history().await {
-            Ok(history) => history,
-            Err(err) => {
-                tracing::warn!("root history unavailable for guardian handoff: {err}");
-                return None;
-            }
-        };
+        let root_history = root_thread
+            .session
+            .vrs_history()
+            .await
+            .map_err(crate::session::vrs_input::vrs_error_to_codex)?;
         let history = root_history.conversation_history_snapshot();
         // Join calls to host-confirmed outputs in this snapshot. Older outputs without
         // captured text cannot establish what was sent, including after a hook rewrite.
@@ -393,14 +396,14 @@ impl LocalAgentControl {
             .as_deref()
             .map(|turn_id| root_evidence.trusted_skill_paths(turn_id))
             .unwrap_or_default();
-        Some(GuardianRootSnapshot {
+        Ok(Some(GuardianRootSnapshot {
             root_thread_id,
             history_reset_version: root_history.reset_version,
             authorization_version,
             review_context_revision,
             messages,
             trusted_skill_paths,
-        })
+        }))
     }
 }
 

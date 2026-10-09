@@ -336,55 +336,6 @@ async fn guardian_review_session_config_change_invalidates_cached_session() {
     );
 }
 
-#[test_case::test_case(GuardianContextMode::ThreadOwned; "thread owned")]
-#[test_case::test_case(GuardianContextMode::Legacy; "legacy checkpoint")]
-#[tokio::test]
-async fn encrypted_parent_compaction_requires_original_item_id(mode: GuardianContextMode) {
-    let (session, _) = crate::session::tests::make_session_and_context().await;
-    let features = session.get_config().await.features.clone();
-
-    let policy = ReviewContextPolicy::for_context(mode, &features);
-    let item = ResponseItem::Compaction {
-        id: Some(codex_protocol::ResponseItemId::from_server(
-            "cmp_guardian_parent_summary".to_string(),
-        )),
-        encrypted_content: "encrypted guardian parent summary".to_string(),
-        internal_chat_message_metadata_passthrough: None,
-    };
-
-    let mut history = ContextManager::new();
-    history.replace_annotated(vec![ResponseItemEnvelope {
-        item: item.clone(),
-        metadata: Some(CodexHarnessMetadata {
-            compaction_model_hash: Some("compatible".to_owned()),
-            ..Default::default()
-        }),
-    }]);
-    assert_eq!(
-        policy
-            .parent_compaction(&history)
-            .expect("valid checkpoint"),
-        Some(item)
-    );
-    // The latest unusable checkpoint must not fall back to the older valid one.
-    let mut items = history.annotated_items().to_vec();
-    items.push(
-        ResponseItem::Compaction {
-            id: None,
-            encrypted_content: "encrypted guardian parent summary".to_string(),
-            internal_chat_message_metadata_passthrough: None,
-        }
-        .into(),
-    );
-    history.replace_annotated(items);
-    let result = policy.parent_compaction(&history);
-    if mode == GuardianContextMode::ThreadOwned {
-        assert!(result.is_err());
-    } else {
-        assert_eq!(result.expect("legacy omission"), None);
-    }
-}
-
 #[tokio::test]
 async fn guardian_prompt_cache_key_is_scoped_to_parent_thread() {
     let session_source =

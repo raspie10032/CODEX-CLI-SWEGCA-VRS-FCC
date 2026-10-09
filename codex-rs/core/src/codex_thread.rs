@@ -1043,7 +1043,7 @@ impl CodexThread {
     }
 
     /// Returns bounded root conversation evidence and its authorization version atomically.
-    pub async fn guardian_root_snapshot(&self) -> Option<GuardianRootSnapshot> {
+    pub async fn guardian_root_snapshot(&self) -> CodexResult<Option<GuardianRootSnapshot>> {
         self.session
             .services
             .agent_control

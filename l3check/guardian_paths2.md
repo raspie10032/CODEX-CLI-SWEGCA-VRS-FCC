@@ -92,3 +92,57 @@ Reason: its only behavior is restoring a simulated compacted reviewer window;
 D7 deletes guardian compaction. This unit test is outside the `--test all`
 integration baseline. Its removal is source-classified, not a claim about the
 baseline/current failed-test difference.
+
+## Root authorization and Guardian fork checkpoint
+
+`AgentControl::get_guardian_package`, `root_user_authorization`, and
+`CodexThread::guardian_root_snapshot` now return `Result<Option<...>>`. A tree
+with no live root still yields `Ok(None)`; a live root whose VRS assembly fails
+yields an error. Sync review preparation emits the turn error and aborts; prompt
+building, cache authorization, and async classification propagate or report the
+failure before starting a model request.
+
+`Session::guardian_fork_history` now assembles with VRS and writes original
+`RolloutItem::ResponseItem` entries into its fork snapshot. It carries current
+turn-context, world-state, and token-usage metadata as their ordinary rollout
+variants. It no longer creates a synthetic `RolloutItem::Compacted`, copies an
+old retained transcript, or copies compaction-window metadata. Reviewer snapshot
+commit now returns an error; the existing reviewer pool reports `SessionFailed`
+and discards the reviewer when that assembly fails. Parent-compaction seeding of
+new synchronous reviewers was removed.
+
+Classification (a), additional removed test:
+`guardian::review_session::tests::encrypted_parent_compaction_requires_original_item_id`
+(two parameter cases). It only tests parent-compaction reuse, which D7 removes.
+Classification (c), revised test:
+`session::guardian_checkpoint::tests::guardian_checkpoint_preserves_live_context_without_storage`
+was replaced with two storage-mode cases of
+`guardian_checkpoint_preserves_assembled_originals_without_compaction`. It records
+original items into VRS, checks the fork contains ordinary response items and no
+compaction record, and checks world/turn/token metadata. The former legacy
+compaction-transcript fixture and expectation were removed under D3/D7.
+These unit tests were not run by this agent.
+
+## D3 / P-6 source audit table
+
+Paths below are relative to `codex-rs`. This table is source evidence only, and
+line numbers may shift while the root agent completes its owned files.
+
+| Place | Entry and propagation | Source assessment |
+| --- | --- | --- |
+| A1 | `core/src/session/turn.rs:427` calls `vrs_prompt_input`; the sampling block propagates `?`. | Uses A; no accumulated-history fallback. |
+| A2 | `core/src/session/turn.rs:1211` calls `vrs_prompt_input` again after the first input is consumed. | Every sampling retry assembles again. |
+| A4 | `core/src/session/startup_prewarm.rs:403` History calls `vrs_prompt_snapshot`; Base remains empty. | Error propagates before prewarm request. |
+| A8 | `core/src/guardian/input_budget.rs:48,95` measures and selects from `vrs_history`. | Compatibility transcript fallback removed in `replace_assembled`. |
+| A9 | `core/src/guardian/request_budget.rs:54` checks the prompt already assembled by A1/A2. | Old compaction restoration and direct append removed. |
+| A10 | `core/src/guardian/review.rs:220` captures parent `vrs_history`; preparation reports its error. | Parent share uses A. |
+| A13 | `core/src/guardian/review_session_setup.rs:255` prewarm uses A; `core/src/session/guardian_checkpoint.rs:13` commits reviewer fork items from A; root authorization uses `vrs_history`. | Raw VRS originals, no synthetic compact checkpoint; errors propagate. |
+| A14 | `core/src/session/mod.rs:4281` fallible snapshot uses A; `core/src/tools/lifecycle.rs:37` returns fatal error before extensions run; async authorization is fallible. | Empty-snapshot fallback removed. |
+| A15 | `core/src/realtime_context.rs:66` uses A; `core/src/realtime_conversation.rs:1513` maps assembly error to Codex error. | No history fallback. Explicit external startup text is a separate caller option. |
+| A20 | `core/src/agent/control/spawn.rs:1008` uses `vrs_history`. | Parent stored-history read and writer wait removed. Explicit last-N fork policy still filters assembled items. |
+| D4 | `core/src/session/mod.rs:1637,1696` installs assembly after resume/fork; `session/vrs_input.rs:119` installs each normal request assembly. | Root notified that prewarm and other `vrs_history` reads had not installed the result in live history at audit time. |
+| D5 | `session/vrs_input.rs:51` maps status failures; guardian snapshots/fork commits/root packages preserve errors. | Root notified that malformed individual assembled items were still skipped at audit time. |
+| D7 | `session/handlers.rs:245,654` reports manual compact as unsupported; guardian compact restore and compact fork creation removed. | Existing inactive guardian-v2 `parent_compaction` fields/logic remain; live observation supplies None. Global grep and full cleanup are root-owned. |
+
+No impossibility requiring a design change was found in these paths. Unverified
+builds/tests and remaining root-owned D4/D5 points are not marked as passed.

@@ -35,7 +35,7 @@ pub trait ReviewerSession: Send + Sync + 'static {
 
     fn context(&self) -> &Self::Context;
     fn snapshot(&self) -> impl Future<Output = Option<Self::Snapshot>> + Send;
-    fn commit_snapshot(&self) -> impl Future<Output = ()> + Send;
+    fn commit_snapshot(&self) -> impl Future<Output = anyhow::Result<()>> + Send;
 }
 
 /// Executes one approval on a selected session. The host must drain the submitted
@@ -261,14 +261,21 @@ impl<S: ReviewerSession> ReviewerPool<S> {
         // Dropping a review before it drains its turn must not leave a reusable agent.
         let review_lifetime = trunk.cancellation.clone().drop_guard();
         let ReviewSessionResult {
-            outcome,
-            disposition,
+            mut outcome,
+            mut disposition,
             analytics,
         } = request.run(&trunk.session, kind).await;
         if disposition == SessionDisposition::Reusable
             && matches!(outcome, GuardianReviewSessionOutcome::Completed(_))
         {
-            trunk.session.commit_snapshot().await;
+            if let Err(error) = trunk.session.commit_snapshot().await {
+                outcome = GuardianReviewSessionOutcome::SessionFailed {
+                    error,
+                    error_info: None,
+                    retry_at: None,
+                };
+                disposition = SessionDisposition::Discard;
+            }
         }
         if disposition == SessionDisposition::Reusable {
             review_lifetime.disarm();

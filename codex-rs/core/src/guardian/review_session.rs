@@ -855,10 +855,10 @@ impl codex_guardian_reviewer::ReviewerSession for GuardianReviewSession {
         self.state.lock().await.conversation.snapshot().cloned()
     }
 
-    async fn commit_snapshot(&self) {
+    async fn commit_snapshot(&self) -> anyhow::Result<()> {
         // The pool holds the review lock until this checkpoint is published. Capture the
         // completed model context directly; saving and reloading the transcript adds no state.
-        let items = self.session.guardian_fork_history().await;
+        let items = self.session.guardian_fork_history().await?;
         let mut state = self.state.lock().await;
         let last_admitted_node_repl_response_sequence =
             state.last_admitted_node_repl_response_sequence;
@@ -866,6 +866,7 @@ impl codex_guardian_reviewer::ReviewerSession for GuardianReviewSession {
             initial_history: InitialHistory::Forked(items),
             last_admitted_node_repl_response_sequence,
         });
+        Ok(())
     }
 }
 

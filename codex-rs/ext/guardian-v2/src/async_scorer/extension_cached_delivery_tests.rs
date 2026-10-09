@@ -298,6 +298,7 @@ async fn confirmed_root_delivery_invalidates_root_and_worker_cached_approvals() 
     let snapshot = worker
         .guardian_root_snapshot()
         .await
+        .unwrap()
         .expect("root snapshot");
     assert!(!snapshot.authorization_version.retained_context_complete);
     assert!(

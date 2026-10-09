@@ -11,7 +11,6 @@ pub struct PreparedGuardianContext {
     config: Config,
     context_policy: ReviewContextPolicy,
     key: GuardianReviewSessionReuseKey,
-    parent_compaction: Option<ResponseItem>,
     pub history_reset: CancellationToken,
 }
 
@@ -31,8 +30,7 @@ impl PreparedGuardianContext {
         let context_mode =
             GuardianContextMode::from_history(history.conversation_history_snapshot().as_ref());
         let context_policy = ReviewContextPolicy::for_context(context_mode, &config.features);
-        let root_review_version = context_policy.root_review_version(&parent).await;
-        let parent_compaction = context_policy.parent_compaction(history)?;
+        let root_review_version = context_policy.root_review_version(&parent).await?;
         let mut key = GuardianReviewSessionReuseKey::from_spawn_config(
             &config,
             parent.inherited_instructions().await,
@@ -50,7 +48,6 @@ impl PreparedGuardianContext {
             config,
             context_policy,
             key,
-            parent_compaction,
             history_reset,
         })
     }
@@ -63,11 +60,9 @@ impl PreparedGuardianContext {
     ) -> GuardianReviewSessionReuseKey {
         let mut key = self.key.clone();
         if self.context_policy != ReviewContextPolicy::ThreadOwned
-            && self.parent_compaction.is_none()
             && let Some(previous) = previous
         {
-            // Without a decryptable summary, the existing reviewer may hold the
-            // only remaining authorization or restriction from parent history.
+            // Reuse the reviewer's completed original context when policy permits it.
             key.parent_history_version = previous.reuse_key.parent_history_version;
         }
         key
@@ -87,11 +82,7 @@ impl PreparedGuardianContext {
             }),
             pending_node_repl_evidence_admission: None,
         };
-        let initial_history = history.map(|history| history.initial_history).or_else(|| {
-            self.parent_compaction
-                .clone()
-                .map(|item| InitialHistory::Forked(vec![RolloutItem::ResponseItem(item.into())]))
-        });
+        let initial_history = history.map(|history| history.initial_history);
         let mut config = self.config.clone();
         config.model_provider.supports_websockets &= self
             .parent

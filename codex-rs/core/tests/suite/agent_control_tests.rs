@@ -190,8 +190,8 @@ impl AgentControl for TestAgentControl {
     fn get_guardian_package(
         &self,
         _agent: ThreadId,
-    ) -> BoxFuture<'_, Option<GuardianRootSnapshot>> {
-        Box::pin(async { None })
+    ) -> BoxFuture<'_, CodexResult<Option<GuardianRootSnapshot>>> {
+        Box::pin(async { Ok(None) })
     }
 
     fn pending_budget_reminder<'a>(

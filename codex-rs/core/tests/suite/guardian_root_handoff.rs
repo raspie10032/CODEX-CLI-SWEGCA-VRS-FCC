@@ -8,6 +8,7 @@ async fn root_messages(thread: &CodexThread) -> Vec<GuardianRootMessage> {
     thread
         .guardian_root_snapshot()
         .await
+        .unwrap()
         .expect("worker root snapshot")
         .messages
         .into_iter()

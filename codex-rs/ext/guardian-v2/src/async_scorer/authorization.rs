@@ -26,7 +26,7 @@ impl ScoreAuthorization {
         thread: &CodexThread,
         permissions: &codex_guardian_context::PermissionContext,
     ) -> CodexResult<Self> {
-        let root = thread.guardian_root_snapshot().await;
+        let root = thread.guardian_root_snapshot().await?;
         let history = thread.conversation_history_snapshot().await?;
         let local = thread
             .thread_extension_data()
