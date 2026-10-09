@@ -872,7 +872,8 @@ impl RolloutRecorder {
     /// Attempt to create a new [`RolloutRecorder`].
     ///
     /// For newly created sessions, this precomputes path/metadata and defers
-    /// file creation/open until an explicit `persist()` call.
+    /// writing the contents until an explicit `persist()` call. An empty file exists before
+    /// the first VRS insertion so the library identifies the session as persistent (VI-22).
     ///
     /// For resumed sessions, this immediately opens the existing rollout file.
     pub async fn new(
@@ -972,6 +973,11 @@ impl RolloutRecorder {
 
                 let reservations = Arc::new(RolloutReservations::new(ordinal_state, 0));
                 let metadata = session_meta_item(session_meta, &cwd).await;
+                // VI-22: libvrs classifies a path at its first insertion. Publish its file
+                // identity before inserting metadata, while retaining deferred content writes.
+                let parent = path.parent().ok_or_else(|| IoError::other("rollout has no parent"))?;
+                fs::create_dir_all(parent)?;
+                File::options().write(true).create_new(true).open(&path)?;
                 let line = reservations.insert(&path, &metadata)?;
                 (
                     RolloutWriterState {

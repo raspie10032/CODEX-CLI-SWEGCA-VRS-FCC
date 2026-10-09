@@ -251,7 +251,9 @@ pub fn written(path: &Path, off: u64) -> Result<(), VrsError> {
     // SAFETY: the handle lives for the process lifetime and the path outlives this call.
     let rc = unsafe { ffi::vrs_written(handle.raw, path.as_ptr(), off) };
     match rc {
-        0 => Ok(()),
+        // The watcher may have read the persisted line first, or a retry may acknowledge
+        // an already released copy. Both mean there is nothing left to release (§5.6).
+        0 | -3 => Ok(()),
         1 => Err(VrsError::NotReady),
         other => Err(VrsError::Failed(other)),
     }
