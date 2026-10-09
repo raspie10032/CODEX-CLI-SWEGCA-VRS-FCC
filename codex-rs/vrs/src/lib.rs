@@ -201,13 +201,15 @@ fn c_path(path: &Path) -> Result<CString, VrsError> {
         .map_err(|_| VrsError::Unavailable("path contains a NUL byte".to_string()))
 }
 
-/// Inserts one rollout line (including its trailing newline) written at byte `off` of `path`.
+/// Inserts one rollout line written at byte `off` of `path`.
 ///
 /// The insert is a union on the key `(path, off)`, so inserting the same line twice is harmless.
+/// An optional trailing newline is removed to match the C API's line contract.
 #[cfg(target_os = "linux")]
 pub fn insert(path: &Path, off: u64, line: &[u8]) -> Result<(), VrsError> {
     let handle = handle()?;
     let path = c_path(path)?;
+    let line = line.strip_suffix(b"\n").unwrap_or(line);
     // SAFETY: the handle is live for the process lifetime; `line` is valid for `line.len()` bytes.
     let rc = unsafe {
         ffi::vrs_insert(
