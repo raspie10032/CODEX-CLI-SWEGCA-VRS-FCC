@@ -1,3 +1,15 @@
+# 컨텍스트 압축 완전 제거 — codex-vrs9-lib5
+
+이 포크는 OpenAI Codex CLI 에서 **컨텍스트 압축을 완전히 제거**했다. 요약·잘라 내기·원격 압축 경로가 없다. 모든 모델 요청은 무손실 원본에서 VRS(libvrs 5차)가 다시 조립한다.
+
+- 설계·결함·시험 기록: [VRS_코덱스일체화_v1.md](VRS_코덱스일체화_v1.md)
+- 라이브러리 소스·시험·보고: [vrs-lib5/](vrs-lib5/) (빌드 `vrs-lib5/build5.sh`, 코덱스 빌드 `VRS_LIB_DIR=<libvrs.a 가 있는 곳> cargo build --release -p codex-cli`)
+- 앱 시험 관문 기록: [l3check/](l3check/)
+- upstream: [openai/codex](https://github.com/openai/codex) `rust-v0.162.0-alpha.2`(74e804dee, 태그 `vrs-base`) 위의 브랜치 `vrs-int`
+- 알려진 결함: V5-04(경로 문자열=세션 정체), V5-05(복원 중 요청 실패) — 문서 §7.7
+
+---
+
 <p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
 <p align="center">
   <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
