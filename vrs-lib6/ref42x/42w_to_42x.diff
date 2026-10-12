@@ -1,0 +1,20 @@
+82a83,84
+> std::string ROOT;  // 42x: the scanned root
+> uint64_t ident_hash(const std::string& path);
+88a91,99
+> uint64_t ident_hash(const std::string& path) {  // 42x D12: the uuid in the file name, else the path relative to the root
+>   const size_t sl = path.rfind('/');
+>   std::string f = sl == std::string::npos ? path : path.substr(sl + 1);
+>   if (f.size() > 6 && f.compare(f.size() - 6, 6, ".jsonl") == 0) f.resize(f.size() - 6);
+>   if (f.size() >= 36) { const std::string id = f.substr(f.size() - 36); return fnv(id.data(), id.size()); }
+>   const std::string pre = ROOT + "/";
+>   const std::string rel = path.compare(0, pre.size(), pre) == 0 ? path.substr(pre.size()) : path;
+>   return fnv(rel.data(), rel.size());
+> }
+986,987c997
+<   const std::string& path = S.files[sg - 1];
+<   t->seed = fnv(path.data(), path.size()) ^ (uint64_t(p.ord0) * 0x9E3779B97F4A7C15ull);
+---
+>   t->seed = ident_hash(S.files[sg - 1]) ^ (uint64_t(p.ord0) * 0x9E3779B97F4A7C15ull);  // 42x: D12 (VRS_코덱스일체화_v1.md §8)
+1442a1453
+>   ROOT = dir; while (ROOT.size() > 1 && ROOT.back() == '/') ROOT.pop_back();

@@ -109,7 +109,19 @@ async fn assemble_for(
         Ok(None) => sess.ephemeral_vrs_path()?,
         Err(err) => return Err(VrsError::Unavailable(format!("no rollout path: {err}"))),
     };
-    let assembled = codex_vrs::assemble_with_budget(&path, budget)?;
+    // D13 (round 6): a store that is still restoring is waited for, then asked again. The wait
+    // returns every second so a cancelled turn drops it; a failed store is an error.
+    let assembled = loop {
+        match codex_vrs::assemble_with_budget(&path, budget) {
+            Err(VrsError::NotReady) => {
+                let wait_path = path.clone();
+                tokio::task::spawn_blocking(move || codex_vrs::wait(&wait_path, 1000))
+                    .await
+                    .map_err(|err| VrsError::Unavailable(format!("vrs wait task: {err}")))??;
+            }
+            other => break other?,
+        }
+    };
     let items = decode_assembled_items(assembled.items)?;
     Ok((items, assembled.tokens, cut))
 }

@@ -2,8 +2,9 @@
 //!
 //! One process-wide handle is opened at process startup. Rollout lines are inserted by their
 //! recording caller (`insert`), then released after persistence (`written`). Model input is
-//! assembled from that store (`assemble`). Requests never initialize the handle or wait for it;
-//! every failure is returned to the caller without a history fallback.
+//! assembled from that store (`assemble`). Requests never initialize the handle. A request that
+//! finds the store still restoring waits for it (`wait`) and assembles then; that is the same
+//! answer later, not another input, so there is still no history fallback.
 
 use std::ffi::CString;
 use std::ffi::c_char;
@@ -93,6 +94,7 @@ mod ffi {
             json: *mut *mut c_char,
             len: *mut usize,
         ) -> c_int;
+        pub fn vrs_wait(h: *mut VrsH, path: *const c_char, timeout_ms: u64) -> c_int;
         pub fn vrs_free(p: *mut c_char);
     }
 }
@@ -262,6 +264,29 @@ pub fn written(path: &Path, off: u64) -> Result<(), VrsError> {
 #[cfg(not(target_os = "linux"))]
 pub fn written(_path: &Path, _off: u64) -> Result<(), VrsError> {
     handle().map(|_| ())
+}
+
+/// Waits until the store can answer `path` exactly (restored, and the file's lineage set up).
+///
+/// Returns `Ok(true)` when it can, `Ok(false)` when `timeout_ms` passed first (call again),
+/// and an error when the store failed. The caller sleeps on the library's progress word; no
+/// other call is held.
+#[cfg(target_os = "linux")]
+pub fn wait(path: &Path, timeout_ms: u64) -> Result<bool, VrsError> {
+    let handle = handle()?;
+    let path = c_path(path)?;
+    // SAFETY: the handle lives for the process lifetime and the path outlives this call.
+    let rc = unsafe { ffi::vrs_wait(handle.raw, path.as_ptr(), timeout_ms) };
+    match rc {
+        0 => Ok(true),
+        1 => Ok(false),
+        other => Err(VrsError::Failed(other)),
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn wait(_path: &Path, _timeout_ms: u64) -> Result<bool, VrsError> {
+    handle().map(|_| true)
 }
 
 /// Assembles a diagnostic snapshot using the store's default input budget.
