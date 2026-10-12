@@ -1116,3 +1116,17 @@ G_int 와 I1–I8 은 그대로다(§0, 결과를 보고 바꾸지 않음).
   - 기준 42w/42x 도 같은 정의라 대조 시험은 이 결함을 못 잡는다.
   - 코덱스는 포크가 사람 손으로 몇 초 뒤에 나므로 드물다. 하지만 정의가 시각 우연에 기대므로 결함이다.
 - 다음: L1 에서 θ* 를 계보 보기의 순서와 맞게 다시 정의한다(포크 줄의 무리 순위는 물려받은 보기의 같은 ms 줄을 이어 센다, 또는 보기를 θ* 대신 계보 순서로 자른다). 그다음 증명 → L2 → 42x 기준에도 같은 정의 → 시험(T-a3 재현기 고정 입력 + 경쟁 주입).
+
+### 8.7 T6-5 와 교체 (2026-10-12 20:5x)
+- 빌드: `VRS_LIB_DIR=$WORK/codexint/vrslib6_frozen`(lib sha 203f062f…, `vrs_lib.o` 는 시험 lib 와 같음), 12.8분. 바이너리 sha e469d71a…, 기록은 `l3check/release6.json`.
+- T6-5:
+  - 앱을 끄고 `~/.codex/vrs/idx` 를 `$WORK/backup/codex-vrs-idx-before-lib6-20261012-2048` 로 옮겼다. 그래서 차가운 시작이고, 미리 짓기는 하지 않았다.
+  - 스모크 `l3check/smoke6/gates.json` 은 all_passed 다.
+    - S1 은 첫 조립이 7.2 s 기다린 뒤(색인 VX06 재구축) 답 「hello」, 실패 영수증 0 이다.
+    - S2–S5 통과, 압축 0, S4 겹침 53 s 다.
+- 교체:
+  - `$WORK/codexint_deploy/codex-lib6-2051`, `chatgpt.desktop` 의 `CODEX_CLI_PATH` 를 바꿨다(백업 `$WORK/backup/chatgpt.desktop.before-lib6-*`).
+  - 실행은 `launch_lib6.sh` 다.
+  - 되돌리기는 `launch_lib5.sh`(codex-lib5-1946) + 옮겨 둔 VX05 색인이다.
+- 저장소: codex-vrs9-lib5 vrs-int e7f1c2b89(`vrs-lib6/`: 소스·패치·시험 스크립트·V6-03 재현기·smoke6 결과).
+- G 진척: V5-04·V5-05 가 닫혔다. 경로 철자와 무관하게 정체가 같고, 준비 전 요청은 실패 대신 기다린다. 남은 막음 결함은 V6-03 이다.
