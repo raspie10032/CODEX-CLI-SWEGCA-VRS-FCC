@@ -1,12 +1,53 @@
-# 컨텍스트 압축 완전 제거 — codex-vrs9-lib5
+# No More Context Compaction — codex-vrs9-lib5
 
-이 포크는 OpenAI Codex CLI 에서 **컨텍스트 압축을 완전히 제거**했다. 요약·잘라 내기·원격 압축 경로가 없다. 모든 모델 요청은 무손실 원본에서 VRS(libvrs 5차)가 다시 조립한다.
+Welcome! This is a fork of [OpenAI Codex CLI](https://github.com/openai/codex) with **context compaction removed entirely**. Nothing summarizes, trims or remotely compacts your conversation. That covers automatic compaction, the manual compact task, remote compaction, and the token-limit trigger. The original session records (rollout files) are kept losslessly. Every model request is rebuilt from those originals by **libvrs**, a C++ assembly library linked right into the process.
 
-- 설계·결함·시험 기록: [VRS_코덱스일체화_v1.md](VRS_코덱스일체화_v1.md)
-- 라이브러리 소스·시험·보고: [vrs-lib5/](vrs-lib5/) (빌드 `vrs-lib5/build5.sh`, 코덱스 빌드 `VRS_LIB_DIR=<libvrs.a 가 있는 곳> cargo build --release -p codex-cli`)
-- 앱 시험 관문 기록: [l3check/](l3check/)
-- upstream: [openai/codex](https://github.com/openai/codex) `rust-v0.162.0-alpha.2`(74e804dee, 태그 `vrs-base`) 위의 브랜치 `vrs-int`
-- 알려진 결함: V5-04(경로 문자열=세션 정체), V5-05(복원 중 요청 실패) — 문서 §7.7
+Every place that builds model input calls that same assembly. That includes the first attempt, retries, guardian reviews and forks. There is no outside assembler process or socket, and there is deliberately no fallback. If assembly fails, you get an error rather than a request built from the accumulated history.
+
+## Where things stand
+
+- **Base:** `rust-v0.162.0-alpha.2` (`74e804dee`, tagged `vrs-base`). This is the same Codex version bundled with the ChatGPT desktop app.
+- **Branch:** `vrs-int`, with libvrs round 7 (`vrs-lib7/`).
+- **In daily use:** since 2026-10-13 this build has been the Codex binary of the maintainer's ChatGPT desktop app on Linux.
+- **Gates:** the application smoke gates (S1–S5) pass, with no failed receipts and no compaction events.
+- **A long autonomous run (Anima, on an earlier build of this branch):** 129 requests over 45 minutes, with zero compaction, zero window overflows and every request assembled. The planned long-run bar (2 hours or 300 requests) has not been fully met yet, because the task finished first.
+- **Open defects:** no blocking defects are open. Smaller items are listed in the design document.
+
+## Build
+
+This is Linux only (on other systems the store refuses to open).
+
+**1. Build `libvrs.a`.** The library source is `vrs-lib7/vrs_lib.cpp`. It also needs three small files from the SWEGCA C++ core (`evidence_rules`, `sha256`, `strong_types`), and **those are not included in this repository**. `vrs-lib6/build6.sh` shows the compiler flags (`g++ -O2 -std=c++20 -mcx16 -pthread -fPIC`).
+
+**2. Build Codex.** Point the Rust build at the directory that holds `libvrs.a`:
+
+```bash
+cd codex-rs
+VRS_LIB_DIR=/path/to/dir/with/libvrs.a cargo build --release -p codex-cli
+```
+
+**3. Use it with the desktop app (optional).** The ChatGPT desktop app picks its Codex binary from `CODEX_CLI_PATH`. Point that variable at your build.
+
+## How it runs
+
+- The store lives next to your sessions: rollouts in `$CODEX_HOME/sessions`, the index in `$CODEX_HOME/vrs/idx`. It is opened once at startup and restored in the background, usually in about half a second. A request that arrives while the store is still restoring waits for it instead of failing.
+- The input budget follows the model's context window. For the desktop app's model that is 258,400 tokens. In everyday use the assembled requests usually stay under about 150k, so there is plenty of headroom. (That 150k figure is the maintainer's observation, not a benchmark.)
+- Every past user message is **required input**. If those alone no longer fit the window, assembly reports that the required input is over budget, and the turn stops with an error instead of quietly dropping your words.
+
+## Known limitations
+
+- **Very long sessions:** as above, a session whose user messages alone exceed the context window can no longer be continued.
+- **Memory per process:** each Codex process loads its own copy of the store. The desktop app's app-server process was observed at about 3.6 GB resident.
+- **Instruction text:** the model's base instructions still mention that compaction may happen. That text is unchanged from upstream; no compaction actually occurs.
+- **Upstream README:** everything below the divider is the unmodified upstream README, so some of its descriptions do not match this fork.
+
+## Documentation
+
+The design documents are written in Korean.
+
+- [VRS_코덱스일체화_v1.md](VRS_코덱스일체화_v1.md): goals, definitions, proofs, tests and deployment records for every round.
+- [vrs-lib5/](vrs-lib5/), [vrs-lib6/](vrs-lib6/), [vrs-lib7/](vrs-lib7/): library sources, patches, tests and reports for rounds 5–7.
+- [l3check/](l3check/): integration audits, test classification and the application smoke gates.
 
 ---
 
