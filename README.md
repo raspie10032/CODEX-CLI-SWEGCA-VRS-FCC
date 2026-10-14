@@ -17,16 +17,18 @@ Every place that builds model input calls that same assembly. That includes the 
 
 This is Linux only (on other systems the store refuses to open).
 
-**1. Build `libvrs.a`.** The library source is `vrs-lib7/vrs_lib.cpp`. It also needs three small files from the SWEGCA C++ core (`evidence_rules`, `sha256`, `strong_types`), and **those are not included in this repository**. `vrs-lib6/build6.sh` shows the compiler flags (`g++ -O2 -std=c++20 -mcx16 -pthread -fPIC`).
-
-**2. Build Codex.** Point the Rust build at the directory that holds `libvrs.a`:
+The library is already here: [`vrs-lib7/prebuilt/x86_64-linux-gnu/libvrs.a`](vrs-lib7/prebuilt/x86_64-linux-gnu/) is the exact libvrs round 7 used by the deployed build, with the SWEGCA C++ core compiled in. The Rust build links it by default, so this is all you need:
 
 ```bash
 cd codex-rs
-VRS_LIB_DIR=/path/to/dir/with/libvrs.a cargo build --release -p codex-cli
+cargo build --release -p codex-cli
 ```
 
-**3. Use it with the desktop app (optional).** The ChatGPT desktop app picks its Codex binary from `CODEX_CLI_PATH`. Point that variable at your build.
+A few notes:
+
+- The prebuilt archive is for x86_64 and was built with GCC 16.2.1 on glibc 2.43. On an older distribution, linking may fail with missing `GLIBCXX_*` symbols. The [prebuilt README](vrs-lib7/prebuilt/x86_64-linux-gnu/README.md) has the details.
+- To link a different `libvrs.a`, set `VRS_LIB_DIR` to the directory that holds it. The library source is `vrs-lib7/vrs_lib.cpp`. The SWEGCA core sources it also needs are not included, only their compiled objects inside the prebuilt archive.
+- To use it with the ChatGPT desktop app, point `CODEX_CLI_PATH` at your build. The app picks its Codex binary from that variable.
 
 ## How it runs
 
