@@ -11,7 +11,8 @@ Every place that builds model input calls that same assembly. That includes the 
 
 ## Where things stand
 
-- **Base:** `rust-v0.162.0-alpha.2` (`74e804dee`, tagged `vrs-base`). This is the same Codex version bundled with the ChatGPT desktop app.
+- **Base:** `rust-v0.162.0-alpha.17.2` (`740e5af`), the Codex version bundled with ChatGPT desktop app 26.1007. The first VRS build was on `rust-v0.162.0-alpha.2` (`74e804dee`, tagged `vrs-base`) and was merged forward.
+- **Incremental tools:** upstream's experimental `incremental_tools` feature records instructions and tool definitions into the history. This fork rebuilds that prefix on every request instead, so the feature is accepted but ignored.
 - **Branch:** `vrs-int`, with libvrs round 7 (`vrs-lib7/`).
 - **In daily use:** since 2026-10-13 this build has been the Codex binary of the maintainer's ChatGPT desktop app on Linux.
 - **Gates:** the application smoke gates (S1–S5) pass, with no failed receipts and no compaction events.
@@ -48,6 +49,7 @@ A few notes:
 ## Known limitations
 
 - **Very long sessions:** as above, a session whose user messages alone exceed the context window can no longer be continued.
+- **Very long single turns:** every step of the turn in progress is required input too. A single autonomous turn whose own tool calls and outputs outgrow the window stops with a context-window error. Everyday turns stay far below that; long unattended agent runs can hit it.
 - **Memory per process:** each Codex process loads its own copy of the store. The desktop app's app-server process was observed at about 3.6 GB resident.
 - **Upstream README:** everything below the divider is the unmodified upstream README, so some of its descriptions do not match this fork.
 
