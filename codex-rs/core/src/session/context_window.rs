@@ -33,7 +33,8 @@ async fn context_window_token_status_for_model(
     let full_context_window_limit = model_info.resolved_context_window().map(|context_window| {
         context_window.saturating_mul(model_info.effective_context_window_percent) / 100
     });
-    let base_window_tokens_remaining = tokens_remaining(full_context_window_limit, active_context_tokens);
+    let base_window_tokens_remaining =
+        tokens_remaining(full_context_window_limit, active_context_tokens);
     let full_context_window_limit_reached =
         full_context_window_limit.is_some_and(|limit| active_context_tokens >= limit);
 

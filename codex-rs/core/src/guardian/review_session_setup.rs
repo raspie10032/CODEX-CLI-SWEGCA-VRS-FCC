@@ -1,10 +1,12 @@
 //! Captures the context used by Guardian before and after it starts a reviewer agent.
-//! Context selection and assembly stay on the existing path pending its replacement.
+//! Model-visible parent and reviewer history is assembled by VRS; summaries are not reused.
 
 use super::*;
 use codex_guardian_reviewer::ReviewerPool;
 use codex_guardian_reviewer::ReviewerRequest;
+use codex_protocol::protocol::TurnEnvironmentSelection;
 
+#[derive(Clone)]
 pub struct PreparedGuardianContext {
     parent: Arc<Session>,
     context: GuardianReviewContext,
@@ -77,6 +79,10 @@ impl PreparedGuardianContext {
         let (conversation, history) = snapshot.map(ConversationState::fork).unzip();
         let state = GuardianReviewState {
             conversation: conversation.unwrap_or_default(),
+            transcript_history_version: 0,
+            transcript_source: history
+                .as_ref()
+                .and_then(|history| history.transcript_source),
             last_admitted_node_repl_response_sequence: history.as_ref().map_or(0, |history| {
                 history.last_admitted_node_repl_response_sequence
             }),
@@ -108,7 +114,14 @@ impl PreparedGuardianContext {
                 }),
             }),
             initial_history: initial_history.unwrap_or(InitialHistory::New),
-            environments: Some(self.context.environments().to_selections()),
+            environments: Some(
+                self.context
+                    .environments()
+                    .to_selections()
+                    .into_iter()
+                    .map(TurnEnvironmentSelection::into_request)
+                    .collect(),
+            ),
             inherited_environments: Some(self.context.environments().clone()),
             client_mcp_extensions: self.parent.services.client_mcp_extensions.clone(),
             ..crate::StartThreadOptions::new(config)
@@ -121,7 +134,7 @@ impl PreparedGuardianContext {
         &self,
         thread: &crate::CodexThread,
         context: GuardianReviewSessionReuseKey,
-        state: GuardianReviewState,
+        mut state: GuardianReviewState,
         cancellation: CancellationToken,
     ) -> GuardianReviewSession {
         let session = Arc::clone(&thread.session);
@@ -132,6 +145,10 @@ impl PreparedGuardianContext {
             session_loop_termination: thread.io.session_loop_termination.clone(),
         };
         let inherited = session.inherited_instructions().await;
+        {
+            let history = session.clone_history().await;
+            state.transcript_history_version = history.history_version();
+        }
         let context = GuardianReviewSessionReuseKey {
             user_instructions: inherited.user,
             thread_instructions: inherited.thread,
@@ -145,6 +162,7 @@ impl PreparedGuardianContext {
             Some(self.parent.thread_id()),
             session.thread_config_snapshot().await,
             SubAgentSource::Other(GUARDIAN_REVIEWER_NAME.to_owned()),
+            /*resumed_created_at*/ None,
         );
         GuardianReviewSession {
             session,
@@ -156,9 +174,10 @@ impl PreparedGuardianContext {
     }
 }
 
+#[derive(Clone)]
 pub(super) struct PreparedReview {
     context: Arc<PreparedGuardianContext>,
-    params: GuardianReviewSessionParams,
+    params: Arc<GuardianReviewSessionParams>,
 }
 
 impl ReviewerRequest for PreparedReview {
@@ -229,7 +248,7 @@ pub(super) async fn prepare_review(
     .await?;
     Ok(PreparedReview {
         context: Arc::new(context),
-        params,
+        params: Arc::new(params),
     })
 }
 

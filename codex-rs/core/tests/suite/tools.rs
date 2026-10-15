@@ -70,12 +70,10 @@ fn tool_names(body: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-#[test_case(false, false; "normal sampling")]
-#[test_case(true, false; "pre sampling compaction")]
-#[test_case(false, true; "namespace collision")]
+#[test_case(false; "function collision")]
+#[test_case(true; "namespace collision")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn strict_tool_collisions_fail_the_turn_before_sampling(
-    pre_compact: bool,
     namespace_collision: bool,
 ) -> Result<()> {
     skip_if_no_network!(Ok(()));
@@ -84,8 +82,6 @@ async fn strict_tool_collisions_fail_the_turn_before_sampling(
     let mut builder = test_codex().with_config(move |config| {
         config.tool_registry.error_on_tool_collisions = true;
         config.update_plan_enabled = true;
-        if pre_compact {
-        }
     });
     let test = builder.build_with_auto_env(&server).await?;
     let dynamic_tools = if namespace_collision {
@@ -197,8 +193,12 @@ async fn strict_tool_collisions_fail_the_turn_before_sampling(
     Ok(())
 }
 
+#[test_case::test_case(false; "default_off")]
+#[test_case::test_case(true; "opted_in")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn empty_turn_environments_omits_environment_backed_tools() -> Result<()> {
+async fn empty_turn_environments_gate_environment_backed_tools(
+    stable_environment_tools: bool,
+) -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -212,7 +212,17 @@ async fn empty_turn_environments_omits_environment_backed_tools() -> Result<()> 
     )
     .await;
 
-    let mut builder = test_codex().with_config(|config| {
+    let mut builder = test_codex().with_config(move |config| {
+        if stable_environment_tools {
+            config
+                .features
+                .enable(Feature::StableEnvironmentTools)
+                .expect("enable stable environment tools");
+        }
+        config
+            .features
+            .enable(Feature::RequestPermissionsTool)
+            .expect("enable permissions tool");
         config.update_plan_enabled = true;
         config
             .features
@@ -229,10 +239,17 @@ async fn empty_turn_environments_omits_environment_backed_tools() -> Result<()> 
         tools.contains(&"update_plan".to_string()),
         "non-environment tool should remain available; got {tools:?}"
     );
-    for environment_tool in ["exec_command", "write_stdin", "apply_patch", "view_image"] {
-        assert!(
-            !tools.contains(&environment_tool.to_string()),
-            "{environment_tool} should be omitted for explicit empty turn environments; got {tools:?}"
+    for environment_tool in [
+        "exec_command",
+        "write_stdin",
+        "apply_patch",
+        "view_image",
+        "request_permissions",
+    ] {
+        assert_eq!(
+            tools.contains(&environment_tool.to_string()),
+            stable_environment_tools,
+            "unexpected {environment_tool} availability for empty environments; got {tools:?}"
         );
     }
 

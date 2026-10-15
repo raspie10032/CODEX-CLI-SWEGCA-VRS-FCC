@@ -5,7 +5,6 @@ use crate::responses_metadata::AUTO_REVIEW_ENABLED_KEY;
 use crate::responses_metadata::CONTEXT_WINDOW_ID_KEY;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::responses_metadata::CodexResponsesRequestKind;
-use crate::responses_metadata::CompactionTurnMetadata;
 use crate::responses_metadata::FORKED_FROM_ORDINAL_EXCLUSIVE_KEY;
 use crate::responses_metadata::INSTALLATION_ID_KEY;
 use crate::responses_metadata::LEGACY_CODE_MODE_TOOL_NAMES_KEY;
@@ -23,10 +22,6 @@ use crate::responses_metadata::validate_extra_metadata;
 use crate::session::step_context::StepContext;
 use crate::session::tests::make_session_and_context;
 use crate::session::tests::update_turn_settings_for_test;
-use codex_analytics::CompactionImplementation;
-use codex_analytics::CompactionPhase;
-use codex_analytics::CompactionReason;
-use codex_analytics::CompactionTrigger;
 use codex_analytics::TurnAnalyticsMetadata;
 use codex_models_manager::model_info::model_info_from_slug;
 use codex_protocol::AgentPath;
@@ -72,21 +67,6 @@ fn test_turn_responses_metadata(
 
 fn test_turn_responses_metadata_json(state: &TurnMetadataState, window_id: &str) -> String {
     test_turn_responses_metadata(state, window_id)
-        .turn_metadata_json()
-        .expect("turn metadata json")
-}
-
-fn test_compaction_responses_metadata_json(
-    state: &TurnMetadataState,
-    window_id: &str,
-    compaction: CompactionTurnMetadata,
-) -> String {
-    state
-        .to_responses_metadata(
-            "installation-a".to_string(),
-            window_id.to_string(),
-            CodexResponsesRequestKind::Compaction(compaction),
-        )
         .turn_metadata_json()
         .expect("turn metadata json")
 }
@@ -1029,69 +1009,6 @@ fn turn_metadata_state_bounds_trigger_only_for_analytics() {
             (included.then(|| trigger.clone()), Some(trigger.as_str()))
         );
     }
-}
-
-#[test]
-fn turn_metadata_state_overlays_compaction_only_on_compaction_requests() {
-    let temp_dir = TempDir::new().expect("temp dir");
-    let cwd = temp_dir.path().abs();
-    let permission_profile = PermissionProfile::read_only();
-    let state = TurnMetadataState::new(
-        "session-a".to_string(),
-        "thread-a".to_string(),
-        /*forked_from_thread_id*/ None,
-        /*parent_thread_id*/ None,
-        &SessionSource::Exec,
-        /*thread_source*/ None,
-        "turn-a".to_string(),
-        cwd,
-        &permission_profile,
-        WindowsSandboxLevel::Disabled,
-        /*enforce_managed_network*/ false,
-        /*auto_review_enabled*/ false,
-        &model_info_from_slug("gpt-5.4"),
-    );
-    state.set_responses_api_metadata(BTreeMap::from([(
-        "codex_security_surface".to_string(),
-        "sdk".to_string(),
-    )]));
-    state.set_responsesapi_client_metadata(HashMap::from([(
-        "compaction".to_string(),
-        "client-supplied".to_string(),
-    )]));
-
-    let compact_header = test_compaction_responses_metadata_json(
-        &state,
-        "thread-a:2",
-        CompactionTurnMetadata::new(
-            CompactionTrigger::Auto,
-            CompactionReason::ContextLimit,
-            CompactionImplementation::ResponsesCompactionV2,
-            CompactionPhase::MidTurn,
-        ),
-    );
-    let compact_json: Value = serde_json::from_str(&compact_header).expect("json");
-    assert_eq!(compact_json["request_kind"].as_str(), Some("compaction"));
-    assert_eq!(compact_json["turn_id"].as_str(), Some("turn-a"));
-    assert_eq!(compact_json[WINDOW_ID_KEY].as_str(), Some("thread-a:2"));
-    assert_eq!(compact_json["codex_security_surface"].as_str(), Some("sdk"));
-    assert_eq!(
-        compact_json["compaction"],
-        serde_json::json!({
-            "trigger": "auto",
-            "reason": "context_limit",
-            "implementation": "responses_compaction_v2",
-            "phase": "mid_turn",
-            "strategy": "memento",
-        })
-    );
-
-    let regular_header = test_turn_responses_metadata_json(&state, "thread-a:3");
-    let regular_json: Value = serde_json::from_str(&regular_header).expect("json");
-    assert_eq!(regular_json["request_kind"].as_str(), Some("turn"));
-    assert_eq!(regular_json[WINDOW_ID_KEY].as_str(), Some("thread-a:3"));
-    assert_eq!(regular_json["codex_security_surface"].as_str(), Some("sdk"));
-    assert!(regular_json.get("compaction").is_none());
 }
 
 #[test]

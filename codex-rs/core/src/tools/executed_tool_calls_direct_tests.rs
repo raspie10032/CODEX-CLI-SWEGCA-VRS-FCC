@@ -58,7 +58,7 @@ fn direct_request_uses_live_window_after_persisted_budget_is_exhausted() {
         );
     }
     let mut pruned = vec![old];
-    recorder.attach_to_compaction_prompt(&mut pruned);
+    recorder.attach_to_prompt(&mut pruned, &mut HashMap::new());
     assert!(pruned[0].executed_tool_call_metadata().is_none());
 
     // Capture toggles must not revive a previous recorder's live-only metadata.

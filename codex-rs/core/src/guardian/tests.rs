@@ -1,3 +1,4 @@
+use super::prompt::GuardianTranscriptHistory;
 use super::*;
 use crate::config::Config;
 use crate::config::ConfigOverrides;
@@ -397,11 +398,13 @@ async fn build_guardian_prompt_prefers_retry_reason_over_approval_reason() -> an
 
     let prompt = build_guardian_prompt_items_with_parent_turn(
         session.as_ref(),
-        session
-            .conversation_history_snapshot()
-            .await
-            .unwrap()
-            .as_ref(),
+        GuardianTranscriptHistory::Retained(
+            session
+                .conversation_history_snapshot()
+                .await
+                .unwrap()
+                .as_ref(),
+        ),
         Some(&context),
         ApprovalRequestReasons {
             approval: Some("A policy rule requires approval.".to_string()),
@@ -443,11 +446,13 @@ async fn build_guardian_prompt_truncates_oversized_approval_reason() -> anyhow::
 
     let prompt = build_guardian_prompt_items_with_parent_turn(
         session.as_ref(),
-        session
-            .conversation_history_snapshot()
-            .await
-            .unwrap()
-            .as_ref(),
+        GuardianTranscriptHistory::Retained(
+            session
+                .conversation_history_snapshot()
+                .await
+                .unwrap()
+                .as_ref(),
+        ),
         Some(&context),
         ApprovalRequestReasons {
             approval: Some(approval_reason),
@@ -542,11 +547,13 @@ async fn build_guardian_prompt_includes_parent_turn_denied_reads() -> anyhow::Re
 
     let prompt = build_guardian_prompt_items_with_parent_turn(
         session.as_ref(),
-        session
-            .conversation_history_snapshot()
-            .await
-            .unwrap()
-            .as_ref(),
+        GuardianTranscriptHistory::Retained(
+            session
+                .conversation_history_snapshot()
+                .await
+                .unwrap()
+                .as_ref(),
+        ),
         Some(&context),
         ApprovalRequestReasons {
             approval: None,
@@ -683,11 +690,13 @@ async fn approval_permissions_use_the_owning_environment() -> anyhow::Result<()>
         let is_windows = request.target_environment_id() == Some("windows");
         let prompt = build_guardian_prompt_items_with_parent_turn(
             &session,
-            session
-                .conversation_history_snapshot()
-                .await
-                .unwrap()
-                .as_ref(),
+            GuardianTranscriptHistory::Retained(
+                session
+                    .conversation_history_snapshot()
+                    .await
+                    .unwrap()
+                    .as_ref(),
+            ),
             Some(&context),
             ApprovalRequestReasons::default(),
             request,
@@ -760,6 +769,7 @@ async fn guardian_mcp_uses_thread_permissions_for_an_unavailable_captured_enviro
     selection.config = codex_protocol::protocol::EnvironmentConfigState::Failed("offline".into());
     let captured = crate::environment_selection::TurnEnvironmentSnapshot {
         environments: vec![TurnEnvironmentState::Failed {
+            required_skills: Vec::new(),
             selection,
             error: "offline".into(),
         }],
@@ -772,11 +782,13 @@ async fn guardian_mcp_uses_thread_permissions_for_an_unavailable_captured_enviro
     );
     let prompt = build_guardian_prompt_items_with_parent_turn(
         &session,
-        session
-            .conversation_history_snapshot()
-            .await
-            .unwrap()
-            .as_ref(),
+        GuardianTranscriptHistory::Retained(
+            session
+                .conversation_history_snapshot()
+                .await
+                .unwrap()
+                .as_ref(),
+        ),
         Some(&context),
         ApprovalRequestReasons::default(),
         guardian_mcp_request("server", "tool"),
@@ -1309,11 +1321,13 @@ async fn build_guardian_prompt_items_keeps_required_node_repl_reviews_generic() 
 
     let prompt = build_guardian_prompt_items_with_parent_turn(
         session.as_ref(),
-        session
-            .conversation_history_snapshot()
-            .await
-            .unwrap()
-            .as_ref(),
+        GuardianTranscriptHistory::Retained(
+            session
+                .conversation_history_snapshot()
+                .await
+                .unwrap()
+                .as_ref(),
+        ),
         Some(&context),
         ApprovalRequestReasons {
             approval: None,
@@ -1352,11 +1366,13 @@ async fn build_guardian_prompt_items_keeps_other_requests_generic() -> anyhow::R
     ] {
         let prompt = build_guardian_prompt_items_with_parent_turn(
             session.as_ref(),
-            session
-                .conversation_history_snapshot()
-                .await
-                .unwrap()
-                .as_ref(),
+            GuardianTranscriptHistory::Retained(
+                session
+                    .conversation_history_snapshot()
+                    .await
+                    .unwrap()
+                    .as_ref(),
+            ),
             Some(&context),
             ApprovalRequestReasons::default(),
             request,
@@ -1908,7 +1924,7 @@ enum GuardianTestCatalog {
 #[test_case::test_case(None; "captured_policy")]
 #[test_case::test_case(Some("configured policy wins"); "configured_policy")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn guardian_reuse_respects_effective_policy_and_personality(
+async fn guardian_reuse_respects_effective_policy_and_personality_opt_out(
     configured_policy: Option<&str>,
 ) -> anyhow::Result<()> {
     skip_if_no_network!(Ok(()));
@@ -1916,7 +1932,7 @@ async fn guardian_reuse_respects_effective_policy_and_personality(
     let server = start_mock_server().await;
     let responses = mount_sse_sequence(
         &server,
-        (0..3)
+        (0..4)
             .map(|index| {
                 sse(vec![
                     ev_response_created(&format!("review-{index}")),
@@ -1962,9 +1978,16 @@ async fn guardian_reuse_respects_effective_policy_and_personality(
         .policy = Some("changed action policy".to_string());
     let mut different_personality = changed_policy.clone();
     different_personality.personality = Some(codex_protocol::config_types::Personality::Pragmatic);
-    for (index, context) in [captured, changed_policy, different_personality]
-        .into_iter()
-        .enumerate()
+    let mut omit_personality = different_personality.clone();
+    omit_personality.personality = Some(codex_protocol::config_types::Personality::None);
+    for (index, context) in [
+        captured,
+        changed_policy,
+        different_personality,
+        omit_personality,
+    ]
+    .into_iter()
+    .enumerate()
     {
         let (outcome, _) = run_guardian_review_session_for_test(
             Arc::clone(&session),
@@ -1978,7 +2001,7 @@ async fn guardian_reuse_respects_effective_policy_and_personality(
         assert!(matches!(outcome, GuardianReviewOutcome::Completed(_)));
     }
     let requests = responses.requests();
-    assert_eq!(requests.len(), 3);
+    assert_eq!(requests.len(), 4);
     let contract = guardian_output_contract_prompt();
     for (request, policy) in requests
         .iter()
@@ -1995,7 +2018,8 @@ async fn guardian_reuse_respects_effective_policy_and_personality(
         .map(|request| request.body_json()["client_metadata"]["thread_id"].clone())
         .collect::<Vec<_>>();
     assert_eq!(thread_ids[0] == thread_ids[1], configured_policy.is_some());
-    assert_ne!(thread_ids[1], thread_ids[2]);
+    assert_eq!(thread_ids[1], thread_ids[2]);
+    assert_ne!(thread_ids[2], thread_ids[3]);
     Ok(())
 }
 
@@ -2475,6 +2499,288 @@ async fn guardian_review_request_layout_matches_model_visible_request_snapshot()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn guardian_reuses_prompt_cache_key_and_appends_prior_reviews() -> anyhow::Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let first_rationale = "first guardian rationale from the prior review";
+    let request_log = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("resp-guardian-1"),
+                ev_assistant_message(
+                    "msg-guardian-1",
+                    &format!(
+                        "{{\"risk_level\":\"low\",\"user_authorization\":\"high\",\"outcome\":\"allow\",\"rationale\":\"{first_rationale}\"}}"
+                    ),
+                ),
+                ev_completed("resp-guardian-1"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-guardian-2"),
+                ev_assistant_message(
+                    "msg-guardian-2",
+                    "{\"risk_level\":\"low\",\"user_authorization\":\"high\",\"outcome\":\"allow\",\"rationale\":\"second guardian rationale\"}",
+                ),
+                ev_completed("resp-guardian-2"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-guardian-3"),
+                ev_assistant_message(
+                    "msg-guardian-3",
+                    "{\"risk_level\":\"low\",\"user_authorization\":\"high\",\"outcome\":\"allow\",\"rationale\":\"third guardian rationale\"}",
+                ),
+                ev_completed("resp-guardian-3"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-guardian-4"),
+                ev_assistant_message(
+                    "msg-guardian-4",
+                    "{\"risk_level\":\"low\",\"user_authorization\":\"high\",\"outcome\":\"allow\",\"rationale\":\"fourth guardian rationale\"}",
+                ),
+                ev_completed("resp-guardian-4"),
+            ]),
+        ],
+    )
+    .await;
+
+    let (mut session, mut turn) = guardian_test_session_and_turn(&server).await;
+    let mut reviewer_model = session
+        .services
+        .models_manager
+        .get_model_info("codex-auto-review", &turn.config.to_models_manager_config())
+        .await;
+    reviewer_model.comp_hash = Some("test-checkpoint".to_owned());
+    let auth_manager = Arc::clone(&session.services.auth_manager);
+    Arc::get_mut(&mut session)
+        .expect("unshared session")
+        .services
+        .models_manager = Arc::new(StaticModelsManager::new(
+        Some(auth_manager),
+        ModelsResponse {
+            models: vec![reviewer_model],
+        },
+    ));
+    let turn_mut = Arc::get_mut(&mut turn).expect("turn should be unique");
+    update_turn_settings_for_test(turn_mut, |settings| {
+        Arc::make_mut(&mut settings.model_info).auto_review_model_override =
+            Some("codex-auto-review".to_string());
+    });
+    seed_guardian_parent_history(&session, &turn).await;
+
+    let first_request = GuardianApprovalRequest::ExecCommand {
+        id: "shell-1".to_string(),
+        environment_id: codex_exec_server::LOCAL_ENVIRONMENT_ID.to_string(),
+        command: vec!["git".to_string(), "push".to_string()],
+        cwd: test_path_buf("/repo/codex-rs/core").abs().into(),
+        guardian_cwd: native_guardian_cwd("/repo/codex-rs/core"),
+        sandbox_permissions: crate::sandboxing::SandboxPermissions::UseDefault,
+        additional_permissions: None,
+        justification: Some("Need to push the first docs fix.".to_string()),
+        tty: false,
+    };
+    let first_outcome = run_guardian_review_session_for_test(
+        Arc::clone(&session),
+        Arc::clone(&turn),
+        first_request,
+        ApprovalRequestReasons {
+            approval: None,
+            retry: Some("First retry reason".to_string()),
+        },
+        /*external_cancel*/ None,
+        /*max_attempts*/ 1,
+    )
+    .await;
+    session
+        .record_conversation_items(
+            turn.as_ref(),
+            turn.model_info(),
+            &[
+                ResponseItem::Message {
+                    id: None,
+                    role: "user".to_string(),
+                    content: vec![ContentItem::InputText {
+                        text: "Please push the second docs fix too.".to_string(),
+                    }],
+                    phase: None,
+                    internal_chat_message_metadata_passthrough: None,
+                },
+                ResponseItem::Message {
+                    id: None,
+                    role: "assistant".to_string(),
+                    content: vec![ContentItem::OutputText {
+                        text: "I need approval for the second docs fix.".to_string(),
+                    }],
+                    phase: None,
+                    internal_chat_message_metadata_passthrough: None,
+                },
+            ],
+        )
+        .await;
+    let second_request = GuardianApprovalRequest::ExecCommand {
+        id: "shell-2".to_string(),
+        environment_id: codex_exec_server::LOCAL_ENVIRONMENT_ID.to_string(),
+        command: vec![
+            "git".to_string(),
+            "push".to_string(),
+            "--force-with-lease".to_string(),
+        ],
+        cwd: test_path_buf("/repo/codex-rs/core").abs().into(),
+        guardian_cwd: native_guardian_cwd("/repo/codex-rs/core"),
+        sandbox_permissions: crate::sandboxing::SandboxPermissions::UseDefault,
+        additional_permissions: None,
+        justification: Some("Need to push the second docs fix.".to_string()),
+        tty: false,
+    };
+    let second_outcome = run_guardian_review_session_for_test(
+        Arc::clone(&session),
+        Arc::clone(&turn),
+        second_request,
+        ApprovalRequestReasons {
+            approval: None,
+            retry: Some("Second retry reason".to_string()),
+        },
+        /*external_cancel*/ None,
+        /*max_attempts*/ 1,
+    )
+    .await;
+    let committed_rollout_items = session
+        .guardian_review_session()
+        .expect("Guardian pool installed")
+        .trunk()
+        .await
+        .expect("reviewer")
+        .committed_fork_rollout_items_for_test()
+        .await
+        .expect("committed guardian fork snapshot");
+    assert_eq!(
+        committed_rollout_items
+            .iter()
+            .flat_map(|item| match item {
+                RolloutItem::ResponseItem(item) => std::slice::from_ref(item),
+                RolloutItem::Compacted(checkpoint) => checkpoint
+                    .replacement_history
+                    .as_deref()
+                    .unwrap_or_default(),
+                _ => &[],
+            })
+            .filter(|item| response_item_contains_message_text(
+                item,
+                "Use prior reviews as context, not binding precedent."
+            ))
+            .count(),
+        1,
+        "follow-up reminder should be persisted for guardian forks"
+    );
+    let (GuardianReviewOutcome::Completed(first_assessment), first_metadata) = first_outcome else {
+        panic!("expected first guardian assessment");
+    };
+    let (GuardianReviewOutcome::Completed(second_assessment), second_metadata) = second_outcome
+    else {
+        panic!("expected second guardian assessment");
+    };
+    assert_eq!(first_assessment.outcome, GuardianAssessmentOutcome::Allow);
+    assert_eq!(second_assessment.outcome, GuardianAssessmentOutcome::Allow);
+    assert!(matches!(
+        first_metadata.guardian_session_kind,
+        Some(codex_analytics::GuardianReviewSessionKind::TrunkNew)
+    ));
+    assert!(matches!(
+        second_metadata.guardian_session_kind,
+        Some(codex_analytics::GuardianReviewSessionKind::TrunkReused)
+    ));
+    ThreadId::from_string(
+        first_metadata
+            .guardian_thread_id
+            .as_deref()
+            .expect("first guardian thread id"),
+    )
+    .expect("first guardian thread id should be a valid UUID");
+    ThreadId::from_string(
+        second_metadata
+            .guardian_thread_id
+            .as_deref()
+            .expect("second guardian thread id"),
+    )
+    .expect("second guardian thread id should be a valid UUID");
+    assert_eq!(first_metadata.had_prior_review_context, Some(false));
+    assert_eq!(second_metadata.had_prior_review_context, Some(true));
+    assert_eq!(
+        first_metadata.guardian_thread_id,
+        second_metadata.guardian_thread_id
+    );
+    let requests = request_log.requests();
+    assert_eq!(requests.len(), 2);
+    for request in &requests {
+        assert!(
+            request
+                .message_input_texts("user")
+                .join("\n")
+                .contains(&format!(
+                    "Reviewed Codex session id: {}",
+                    fixed_guardian_parent_session_id()
+                ))
+        );
+    }
+
+    let first_body = requests[0].body_json();
+    let second_body = requests[1].body_json();
+    assert_eq!(
+        first_body["prompt_cache_key"],
+        second_body["prompt_cache_key"]
+    );
+    assert!(
+        second_body.to_string().contains(concat!(
+            "Use prior reviews as context, not binding precedent. ",
+            "Follow the Workspace Policy. ",
+            "If the user explicitly approves a previously rejected action after being ",
+            "informed of the concrete risks, set outcome to \\\"allow\\\" unless the policy ",
+            "explicitly disallows user overwrites in such cases."
+        )),
+        "follow-up guardian request should include the follow-up reminder"
+    );
+    assert!(
+        second_body.to_string().contains(first_rationale),
+        "guardian session should append earlier reviews into the follow-up request"
+    );
+    let second_user_message = requests[1]
+        .message_input_text_groups("user")
+        .last()
+        .expect("follow-up guardian user message")
+        .join("");
+    assert!(second_user_message.contains(">>> TRANSCRIPT DELTA START\n"));
+    assert!(second_user_message.contains("[5] user: Please push the second docs fix too."));
+    assert!(
+        second_user_message.contains("[6] assistant: I need approval for the second docs fix.")
+    );
+    assert!(!second_user_message.contains("[1] user: Please check the repo visibility"));
+
+    let mut settings = Settings::clone_current();
+    settings.set_snapshot_path("snapshots");
+    settings.set_prepend_module_to_snapshot(false);
+    settings.bind(|| {
+        assert_snapshot!(
+            "codex_core__guardian__tests__guardian_followup_review_request_layout",
+            format!(
+                "{}\n\nshared_prompt_cache_key: {}\nfollowup_contains_first_rationale: {}",
+                normalize_guardian_snapshot_paths(format_guardian_requests_snapshot(
+                    "Guardian follow-up review request layout",
+                    &[
+                        ("Initial Guardian Review Request", &requests[0]),
+                        ("Follow-up Guardian Review Request", &requests[1]),
+                    ],
+                )),
+                first_body["prompt_cache_key"] == second_body["prompt_cache_key"],
+                second_body.to_string().contains(first_rationale),
+            )
+        );
+    });
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn guardian_reused_trunk_ignores_stale_prior_turn_completion() -> anyhow::Result<()> {
     skip_if_no_network!(Ok(()));
 
@@ -2540,6 +2846,7 @@ async fn guardian_reused_trunk_ignores_stale_prior_turn_completion() -> anyhow::
         .send_trunk_event_raw_for_test(Event {
             id: "stale-turn".to_string(),
             msg: EventMsg::TurnComplete(TurnCompleteEvent {
+                root_turn_id: None,
                 turn_id: "stale-turn".to_string(),
                 started_at: None,
                 last_agent_message: Some(

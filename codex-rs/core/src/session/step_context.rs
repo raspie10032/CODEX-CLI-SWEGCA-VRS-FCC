@@ -49,6 +49,12 @@ pub(crate) struct StepContext {
 }
 
 impl StepContext {
+    pub(crate) fn uses_incremental_tools(&self) -> bool {
+        // VRS fork, design section 11.1 D3′: each request rebuilds its full prefix;
+        // accept the incremental_tools feature key for compatibility, but ignore it here.
+        false
+    }
+
     /// Pairs the step's environments with access using current session and originating-turn grants.
     pub(crate) fn environments(&self) -> Vec<(&TurnEnvironment, impl EnvironmentAccess + '_)> {
         self.environments

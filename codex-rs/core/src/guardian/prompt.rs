@@ -43,6 +43,11 @@ const GUARDIAN_MAX_APPROVAL_REASON_TOKENS: usize = 512;
 const MAX_GUARDIAN_ENVIRONMENT_ID_BYTES: usize = 256;
 pub(super) const GUARDIAN_TRANSCRIPT_START: &str = ">>> TRANSCRIPT START\n";
 
+/// Selects transcript evidence using the checkpoint already loaded by the reviewer.
+pub(crate) enum GuardianTranscriptHistory<'a> {
+    Retained(&'a dyn ConversationHistorySnapshot),
+}
+
 pub(crate) struct GuardianPromptItems {
     pub(crate) context: ComposedContext,
     pub(crate) transcript_cursor: GuardianTranscriptCursor,
@@ -66,7 +71,9 @@ pub(crate) async fn build_guardian_prompt_items(
 ) -> anyhow::Result<GuardianPromptItems> {
     build_guardian_prompt_items_with_parent_turn(
         session,
-        session.conversation_history_snapshot().await?.as_ref(),
+        GuardianTranscriptHistory::Retained(
+            session.conversation_history_snapshot().await?.as_ref(),
+        ),
         /*parent_context*/ None,
         ApprovalRequestReasons {
             approval: None,
@@ -81,13 +88,16 @@ pub(crate) async fn build_guardian_prompt_items(
 
 pub(crate) async fn build_guardian_prompt_items_with_parent_turn(
     session: &Session,
-    history: &dyn ConversationHistorySnapshot,
+    transcript_history: GuardianTranscriptHistory<'_>,
     parent_context: Option<&GuardianReviewContext>,
     reasons: ApprovalRequestReasons,
     request: GuardianApprovalRequest,
     mode: GuardianPromptMode,
     reviewed_node_repl_evidence_sequence: u64,
 ) -> anyhow::Result<GuardianPromptItems> {
+    let history = match transcript_history {
+        GuardianTranscriptHistory::Retained(history) => history,
+    };
     if request
         .target_environment_id()
         .is_some_and(|id| id.len() > MAX_GUARDIAN_ENVIRONMENT_ID_BYTES)
@@ -174,7 +184,7 @@ pub(crate) async fn build_guardian_prompt_items_with_parent_turn(
             snapshot.sequence
         });
     let sections = collect_guardian_context(
-        &GuardianReviewHistory(history),
+        &GuardianReviewHistory { history },
         node_repl_result_token_limit,
         root_authorization.as_deref().unwrap_or_default(),
         &trusted_user_inputs,
@@ -286,11 +296,13 @@ pub(super) fn collect_guardian_context(
     })
 }
 
-struct GuardianReviewHistory<'a>(&'a dyn ConversationHistorySnapshot);
+struct GuardianReviewHistory<'a> {
+    history: &'a dyn ConversationHistorySnapshot,
+}
 
 impl SectionHistory for GuardianReviewHistory<'_> {
     fn retained_context(&self) -> Option<&codex_history::RetainedContext> {
-        self.0.retained_context()
+        self.history.retained_context()
     }
 
     fn items(&self) -> Box<dyn Iterator<Item = &ResponseItem> + Send + '_> {
@@ -301,7 +313,7 @@ impl SectionHistory for GuardianReviewHistory<'_> {
         &self,
     ) -> Box<dyn Iterator<Item = (&ResponseItem, Option<&codex_history::RetainedSource>)> + Send + '_>
     {
-        self.0.review_items_with_sources()
+        self.history.review_items_with_sources()
     }
 
     fn render_retained_assistant(

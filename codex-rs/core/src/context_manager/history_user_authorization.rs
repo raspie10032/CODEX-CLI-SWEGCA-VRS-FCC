@@ -6,12 +6,12 @@
 use std::sync::Arc;
 
 use super::ContextManager;
-use crate::message_text::is_summary_message;
 use crate::context::UserGoalUpdate;
 use crate::context::is_contextual_user_fragment;
 use crate::event_mapping::parse_turn_item;
 use crate::guardian::GUARDIAN_MAX_ROOT_MESSAGE_TOKENS;
 use crate::guardian::guardian_truncate_text;
+use crate::message_text::is_summary_message;
 use codex_history::CodexHarnessMetadata;
 use codex_history::ReconciledRetainedContext;
 use codex_history::RetainedContext;

@@ -20,7 +20,7 @@ impl ExecutedToolCalls {
         let Some(state) = state.as_mut() else {
             return false;
         };
-        Self::attach_pending_to_prompt_with_state(state, items, retry_cache, RequestKind::Sampling)
+        Self::attach_pending_to_prompt_with_state(state, items, retry_cache)
     }
 }
 
@@ -100,47 +100,7 @@ fn tool_calls_complete(item: &ResponseItem) -> Option<bool> {
 }
 
 #[test]
-fn compaction_attaches_pending_and_retained_code_mode_metadata() {
-    for previously_sampled in [false, true] {
-        let recorder = new_recorder(InitialHistory::New);
-        let cell = CellId::new("compacting-cell".to_string());
-        recorder.start_cell(&cell, "exec");
-        let mut call = record_nested_call(&recorder, &cell, "nested");
-        let source = ToolCallSource::CodeMode {
-            cell_id: cell.as_str().to_string(),
-            runtime_tool_call_id: "nested".to_string(),
-        };
-        assert!(recorder.record_tool_result_metadata(&source, "nested", &json!({"id": "initial"})));
-        recorder.finish_cell_recording(&cell);
-        let history = vec![exec_input("exec"), exec_output("exec")];
-        if previously_sampled {
-            let mut sampled = history.clone();
-            recorder.attach_to_prompt(&mut sampled, &mut HashMap::new());
-            assert_eq!(tool_calls_complete(&sampled[1]), Some(true));
-        }
-        let result_metadata = json!({"id": "latest"});
-        assert!(recorder.record_tool_result_metadata(&source, "nested", &result_metadata));
-        call.set_tool_result_metadata(ToolResultMetadata::new(&result_metadata));
-        let mut expected = history.clone();
-        expected[1].append_executed_tool_calls(vec![call]);
-        expected[1].set_tool_call_cell_id("exec");
-        expected[1].mark_tool_calls_complete();
-
-        let mut compact = history.clone();
-        recorder.attach_to_compaction_prompt(&mut compact);
-        assert_eq!(compact, expected);
-        let mut retry = history.clone();
-        recorder.attach_to_compaction_prompt(&mut retry);
-        assert_eq!(retry, expected);
-        // A failed compaction must leave the same observations available to sampling.
-        let mut sampled = history;
-        recorder.attach_to_prompt(&mut sampled, &mut HashMap::new());
-        assert_eq!(sampled, expected);
-    }
-}
-
-#[test]
-fn large_direct_and_code_mode_metadata_survive_sampling_and_compaction() {
+fn large_direct_and_code_mode_metadata_survive_sampling() {
     let recorder = new_recorder(InitialHistory::New);
     recorder
         .retained_direct_metadata_bytes
@@ -174,17 +134,17 @@ fn large_direct_and_code_mode_metadata_survive_sampling_and_compaction() {
     });
     let history = vec![direct, exec_input("exec"), ordinary_code.clone()];
 
-    let mut compact = history.clone();
-    recorder.attach_to_compaction_prompt(&mut compact);
+    let mut sampled = history.clone();
+    recorder.attach_to_prompt(&mut sampled, &mut HashMap::new());
     assert!(
-        compact
+        sampled
             .iter()
             .map(executed_tool_call_metadata_bytes)
             .sum::<usize>()
             > 2 * 1024 * 1024
     );
-    let direct_wire = serde_json::to_value(&compact[0]).unwrap();
-    let code_wire = serde_json::to_value(&compact[2]).unwrap();
+    let direct_wire = serde_json::to_value(&sampled[0]).unwrap();
+    let code_wire = serde_json::to_value(&sampled[2]).unwrap();
     assert_eq!(
         direct_wire["output"],
         serde_json::to_value(&ordinary_direct).unwrap()["output"]
@@ -201,76 +161,16 @@ fn large_direct_and_code_mode_metadata_survive_sampling_and_compaction() {
         code_wire["internal_chat_message_metadata_passthrough"]["executed_tool_calls"][0]["tool_result_metadata"],
         code_metadata
     );
-    assert_eq!(tool_calls_complete(&compact[2]), Some(true));
-
-    let mut sampled = history.clone();
-    recorder.attach_to_prompt(&mut sampled, &mut HashMap::new());
-    assert_eq!(sampled, compact);
+    assert_eq!(tool_calls_complete(&sampled[2]), Some(true));
 
     // A smaller window still has the full Code Mode result and its completion marker.
     let mut next = history[1..].to_vec();
     recorder.attach_to_prompt(&mut next, &mut HashMap::new());
-    assert_eq!(next[1], compact[2]);
+    assert_eq!(next[1], sampled[2]);
 }
 
 #[test]
-fn failed_compaction_preserves_observations_absent_from_trimmed_retries() {
-    let recorder = new_recorder(InitialHistory::New);
-    recorder
-        .retained_direct_metadata_bytes
-        .store(MAX_RETAINED_DIRECT_METADATA_BYTES, Ordering::Relaxed);
-    let mut direct = output("direct");
-    let mut direct_call = ExecutedToolCall::new("direct_tool".to_string(), json!({}));
-    direct_call.set_tool_result_metadata(ToolResultMetadata::new(&json!({"resource": "old"})));
-    recorder.attach_direct_call_to_output(
-        &mut direct,
-        Some((direct_call, recorder.reserve_direct_call().unwrap())),
-    );
-    assert!(direct.executed_tool_call_metadata().is_none());
-    let mut history = vec![direct.clone()];
-    for origin in ["old", "recent"] {
-        let cell = CellId::new(origin.to_string());
-        recorder.start_cell(&cell, origin);
-        record_nested_call(&recorder, &cell, "nested");
-        recorder.finish_cell_recording(&cell);
-        history.extend([exec_input(origin), exec_output(origin)]);
-    }
-    let mut full_attempt = history.clone();
-    recorder.attach_to_compaction_prompt(&mut full_attempt);
-    assert_eq!(tool_calls_complete(&full_attempt[0]), Some(true));
-    assert_eq!(tool_calls_complete(&full_attempt[2]), Some(true));
-
-    let source = ToolCallSource::CodeMode {
-        cell_id: "recent".to_string(),
-        runtime_tool_call_id: "runtime".to_string(),
-    };
-    let large_metadata = json!({"provider": "x".repeat(2100 * 1024)});
-    assert!(recorder.record_tool_result_metadata(&source, "nested", &large_metadata));
-    let mut trimmed_attempt = history[3..].to_vec();
-    recorder.attach_to_compaction_prompt(&mut trimmed_attempt);
-    assert_eq!(tool_calls_complete(&trimmed_attempt[1]), Some(true));
-    let encoded = serde_json::to_value(&trimmed_attempt[1]).unwrap();
-    assert_eq!(
-        encoded["internal_chat_message_metadata_passthrough"]["executed_tool_calls"][0]["tool_result_metadata"],
-        large_metadata
-    );
-
-    // Failed retries do not install the trimmed history or lose older observations.
-    let mut expected = full_attempt;
-    expected[3..].clone_from_slice(&trimmed_attempt);
-    let mut resumed = history.clone();
-    recorder.attach_to_prompt(&mut resumed, &mut HashMap::new());
-    assert_eq!(resumed, expected);
-
-    // Normal sampling in the smaller window can prune the old observation.
-    recorder.attach_to_prompt(&mut history[3..], &mut HashMap::new());
-    let mut old = vec![direct.clone(), exec_input("old"), exec_output("old")];
-    recorder.attach_to_prompt(&mut old, &mut HashMap::new());
-    assert_eq!(old, vec![direct, exec_input("old"), exec_output("old")]);
-}
-
-#[test]
-fn compaction_keeps_direct_outputs_in_code_mode_binding_validation() {
+fn sampling_keeps_direct_outputs_in_code_mode_binding_validation() {
     let recorder = new_recorder(InitialHistory::New);
     let cell = CellId::new("cell".to_string());
     recorder.start_cell(&cell, "exec");
@@ -281,12 +181,12 @@ fn compaction_keeps_direct_outputs_in_code_mode_binding_validation() {
         &mut direct,
         Some((call.clone(), recorder.reserve_direct_call().unwrap())),
     );
-    let mut compact = vec![exec_input("exec"), exec_output("exec"), direct.clone()];
-    recorder.attach_to_compaction_prompt(&mut compact);
+    let mut sampled = vec![exec_input("exec"), exec_output("exec"), direct.clone()];
+    recorder.attach_to_prompt(&mut sampled, &mut HashMap::new());
     let mut expected = exec_output("exec");
     expected.append_executed_tool_calls(vec![call]);
     expected.set_tool_call_cell_id("exec");
-    assert_eq!(compact, vec![exec_input("exec"), expected, direct]);
+    assert_eq!(sampled, vec![exec_input("exec"), expected, direct]);
 }
 
 #[test]
@@ -1295,9 +1195,9 @@ fn late_result_metadata_survives_truncated_arguments() {
         assert_eq!(retry, expected);
         assert_eq!(tool_calls_complete(&retry[1]), None);
     }
-    let mut compact = history;
-    recorder.attach_to_compaction_prompt(&mut compact);
-    assert_eq!(compact, expected);
+    let mut fresh_sample = history;
+    recorder.attach_to_prompt(&mut fresh_sample, &mut HashMap::new());
+    assert_eq!(fresh_sample, expected);
 }
 
 #[test]

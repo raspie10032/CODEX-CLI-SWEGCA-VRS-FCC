@@ -2,7 +2,6 @@
 //!
 //! Only trusted harness items establish overrides. Replay preserves startup prewarm's
 //! baseline while it is retained.
-//! Successful compaction retires the overrides and allows a fresh request baseline.
 //! Fixed-effort workers always use their selected request-level effort.
 //! Unsupported models use selected request effort without rewriting saved updates.
 
@@ -16,13 +15,6 @@ use codex_protocol::models::ConfigurationReasoning;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ReasoningEffort;
 
-/// Sampling can establish a pin; compaction must not change live state before it succeeds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RequestEffortUsage {
-    Sampling,
-    Compaction,
-}
-
 impl Session {
     /// Establishes the selected effort in surviving history, independent of replayed settings.
     pub(crate) async fn record_reasoning_effort_override(&self, step_context: &StepContext) {
@@ -31,14 +23,7 @@ impl Session {
             return;
         };
         let should_skip = {
-            let mut state = self.state.lock().await;
-            if matches!(state.reasoning_effort_pin, ReasoningEffortPin::Compacted) {
-                // Only successful compaction allows the request baseline to establish
-                // the selection without another update.
-                state
-                    .reasoning_effort_pin
-                    .pin(&settings.model_info.slug, effort.clone());
-            }
+            let state = self.state.lock().await;
             let latest_override = state
                 .history
                 .annotated_items()
@@ -90,11 +75,9 @@ impl Session {
         .await;
     }
 
-    /// Sampling and compaction share the original request effort for this context window.
     pub(crate) async fn reasoning_effort_for_request(
         &self,
         settings: &ResolvedStepSettings,
-        usage: RequestEffortUsage,
     ) -> Option<ReasoningEffort> {
         let selected_effort = settings.reasoning_effort().cloned();
         if !self
@@ -102,36 +85,20 @@ impl Session {
             .model_client
             .reasoning_effort_override_enabled(&settings.model_info)
         {
-            if usage == RequestEffortUsage::Sampling {
-                self.state.lock().await.reasoning_effort_pin = ReasoningEffortPin::Unset;
-            }
+            self.state.lock().await.reasoning_effort_pin = ReasoningEffortPin::Unset;
             return selected_effort;
-        }
-        if usage == RequestEffortUsage::Compaction
-            && let Some(pinned) = self
-                .state
-                .lock()
-                .await
-                .reasoning_effort_pin
-                .get(&settings.model_info.slug)
-        {
-            return Some(pinned);
         }
         let effort = self.effort_for_configuration_update(settings);
         let mut state = self.state.lock().await;
         let Some(effort) = effort else {
-            if usage == RequestEffortUsage::Sampling {
-                state.reasoning_effort_pin = ReasoningEffortPin::Unset;
-            }
+            state.reasoning_effort_pin = ReasoningEffortPin::Unset;
             return selected_effort;
         };
-        Some(match usage {
-            RequestEffortUsage::Sampling => state
+        Some(
+            state
                 .reasoning_effort_pin
                 .pin(&settings.model_info.slug, effort),
-            // Failed compaction and fallback-model lookups must not mutate the live pin.
-            RequestEffortUsage::Compaction => effort,
-        })
+        )
     }
 
     fn effort_for_configuration_update(

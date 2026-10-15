@@ -106,6 +106,7 @@ use codex_skills::collect_explicit_skill_mentions;
 use codex_skills::tool_kind_for_path;
 use codex_skills_extension::HostSkillPrompts;
 use codex_skills_extension::InjectedHostSkillPrompts;
+use codex_skills_extension::validate_required_skills;
 use codex_thread_store::PersistContext;
 use codex_tools::DiscoverableTool;
 use codex_tools::ToolName;
@@ -417,6 +418,16 @@ pub(crate) async fn run_turn(
             world_state = sess
                 .record_step_world_state_if_changed(step_context.as_ref())
                 .await?;
+
+            // Isolated Guardian reviewers deliberately have no skill catalog.
+            if !crate::guardian::is_basic_session_source(&turn_context.session_source) {
+                validate_required_skills(
+                    &sess.services.thread_extension_data,
+                    &turn_context.extension_data,
+                    step_context.environments.required_skills(),
+                )
+                .map_err(CodexErr::Fatal)?;
+            }
 
             // Keep the override after accepted input so history truncation removes them together.
             sess.record_reasoning_effort_override(step_context.as_ref())
@@ -1067,6 +1078,7 @@ async fn track_turn_resolved_config_analytics(
                 .get::<codex_extension_api::GuardianV2Enabled>()
                 .is_some(),
             sandbox_network_access: turn_context.network_sandbox_policy().is_enabled(),
+            multi_agent_version: turn_context.multi_agent_version,
             collaboration_mode: turn_context.mode(),
             personality: turn_context.personality(),
             workspace_kind: turn_context.turn_metadata_state.workspace_kind(),
@@ -1134,9 +1146,20 @@ pub(crate) fn build_prompt(
     let turn_context = &step_context.turn;
     Prompt {
         input,
-        tools: step_context.tool_router.model_visible_specs(),
+        tools: if step_context.uses_incremental_tools() {
+            Arc::default()
+        } else {
+            step_context.tool_router.model_visible_specs()
+        },
         parallel_tool_calls: true,
-        base_instructions,
+        base_instructions: if step_context.uses_incremental_tools() {
+            BaseInstructions {
+                text: String::new(),
+                provenance: None,
+            }
+        } else {
+            base_instructions
+        },
         output_schema: turn_context.final_output_json_schema.clone(),
         output_schema_strict: !crate::guardian::is_basic_session_source(
             &turn_context.session_source,
@@ -2094,6 +2117,9 @@ async fn try_run_sampling_request(
         turn_context.provider.info().name.as_str(),
     );
     let sampling_timing_guard = turn_context.turn_timing_state.begin_sampling();
+    if client_session.inference_tools_changed(&step_context.tool_router.model_visible_specs()) {
+        turn_context.turn_timing_state.record_tools_change();
+    }
     // Do not enter this span: overlapping tools must not retain it past sampling.
     let sampling_span = trace_span!(
         "codex.sampling",
@@ -2108,7 +2134,7 @@ async fn try_run_sampling_request(
         && turn_context.provider.info().is_openai();
     let mut preempt = step_context.preempt.clone().unwrap_or_default();
     let effort = sess
-        .reasoning_effort_for_request(&step_context.settings, super::RequestEffortUsage::Sampling)
+        .reasoning_effort_for_request(&step_context.settings)
         .await;
     let mut stream = client_session
         .stream(
@@ -2296,7 +2322,11 @@ async fn try_run_sampling_request(
 
                 let preempt_for_mailbox_mail = match &item {
                     ResponseItem::Message { role, phase, .. } => {
-                        role == "assistant" && matches!(phase, Some(MessagePhase::Commentary))
+                        role == "assistant"
+                            && matches!(
+                                phase,
+                                Some(MessagePhase::Commentary | MessagePhase::PartialAnswer)
+                            )
                     }
                     ResponseItem::Reasoning { .. } => true,
                     ResponseItem::AgentMessage { .. } => false,

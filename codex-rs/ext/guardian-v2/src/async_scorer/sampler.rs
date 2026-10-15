@@ -137,9 +137,7 @@ impl LunaSampler {
     }
 
     pub(super) async fn prewarm(&self) {
-        if let Some(refill) = self.connections.replenish() {
-            let _ = refill.await;
-        }
+        self.connections.prewarm().await;
     }
 
     fn auth_owner_generation(&self) -> Option<u64> {
@@ -205,7 +203,6 @@ impl LunaSampler {
     ) -> execution::SamplingExecution {
         let api_request = ResponsesApiRequest {
             model: MODEL.to_owned(),
-            instructions: String::new(),
             input,
             tools: None,
             tool_choice: "none".to_owned(),

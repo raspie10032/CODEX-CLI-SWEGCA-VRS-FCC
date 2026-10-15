@@ -105,7 +105,11 @@ fn bundled_catalog_loses_exactly_the_listed_sentences() {
             .iter()
             .filter(|sentence| !E.contains(sentence))
             .collect::<Vec<_>>();
-        assert_eq!(unexpected, Vec::<&&str>::new(), "{slug}: unexpected removal");
+        assert_eq!(
+            unexpected,
+            Vec::<&&str>::new(),
+            "{slug}: unexpected removal"
+        );
         for sentence in E {
             assert!(!rendered.contains(sentence), "{slug}: kept {sentence}");
         }
@@ -114,10 +118,17 @@ fn bundled_catalog_loses_exactly_the_listed_sentences() {
                 .iter()
                 .any(|sentence| is_compaction_sentence(sentence))
             {
-                assert!(rendered.contains(paragraph), "{slug}: changed a clean paragraph");
+                assert!(
+                    rendered.contains(paragraph),
+                    "{slug}: changed a clean paragraph"
+                );
             }
         }
-        assert_eq!(without_compaction_guidance(&rendered), rendered, "{slug}: not idempotent");
+        assert_eq!(
+            without_compaction_guidance(&rendered),
+            rendered,
+            "{slug}: not idempotent"
+        );
     }
     assert!(templates_with_compaction > 0);
 }

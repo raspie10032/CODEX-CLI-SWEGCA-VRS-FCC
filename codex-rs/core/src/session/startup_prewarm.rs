@@ -20,7 +20,6 @@ use tracing::warn;
 use crate::client::ModelClientSession;
 use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::session::INITIAL_SUBMIT_ID;
-use crate::session::RequestEffortUsage;
 use crate::session::session::Session;
 use crate::session::turn::build_prompt;
 use codex_features::Feature;
@@ -347,7 +346,7 @@ async fn schedule_startup_prewarm_inner(
     ) {
         crate::session::get_service_tier(
             session.services.agent_control.service_tier(),
-            session.features().enabled(Feature::FastMode),
+            &session.features(),
             &preconnect_model_info,
         )
     } else {
@@ -436,7 +435,7 @@ async fn schedule_startup_prewarm_inner(
             &step_context.settings.model_info,
             &step_context.session_telemetry,
             session
-                .reasoning_effort_for_request(&step_context.settings, RequestEffortUsage::Sampling)
+                .reasoning_effort_for_request(&step_context.settings)
                 .await,
             step_context.settings.reasoning_summary,
             step_context.settings.service_tier.clone(),

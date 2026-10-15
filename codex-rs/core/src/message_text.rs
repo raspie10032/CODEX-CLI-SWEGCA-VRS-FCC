@@ -1,7 +1,7 @@
 //! Text helpers over message content.
 
-use codex_protocol::models::ContentItem;
 use codex_prompts::SUMMARY_PREFIX;
+use codex_protocol::models::ContentItem;
 
 /// Joins the text parts of `content`, or `None` when it has no text.
 pub fn content_items_to_text(content: &[ContentItem]) -> Option<String> {

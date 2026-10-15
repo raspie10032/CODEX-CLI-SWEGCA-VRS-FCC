@@ -398,7 +398,7 @@ impl RolloutRecorder {
         default_provider: &str,
         search_term: Option<&str>,
     ) -> std::io::Result<ThreadsPage> {
-        Self::list_threads_with_db_fallback(
+        let mut page = Self::list_threads_with_db_fallback(
             state_db_ctx,
             config,
             page_size,
@@ -413,7 +413,14 @@ impl RolloutRecorder {
             ThreadListRepairMode::ScanAndRepair,
             search_term,
         )
-        .await
+        .await?;
+        // Continuation may fall back to filesystem pagination, which only honors timestamps.
+        if sort_key == ThreadSortKey::CreatedAt
+            && let Some(cursor) = page.next_cursor.as_mut()
+        {
+            *cursor = Cursor::new(cursor.timestamp());
+        }
+        Ok(page)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -463,7 +470,7 @@ impl RolloutRecorder {
         default_provider: &str,
         search_term: Option<&str>,
     ) -> std::io::Result<ThreadsPage> {
-        Self::list_threads_with_db_fallback(
+        let mut page = Self::list_threads_with_db_fallback(
             state_db_ctx,
             config,
             page_size,
@@ -478,7 +485,14 @@ impl RolloutRecorder {
             ThreadListRepairMode::ScanAndRepair,
             search_term,
         )
-        .await
+        .await?;
+        // Continuation may fall back to filesystem pagination, which only honors timestamps.
+        if sort_key == ThreadSortKey::CreatedAt
+            && let Some(cursor) = page.next_cursor.as_mut()
+        {
+            *cursor = Cursor::new(cursor.timestamp());
+        }
+        Ok(page)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -540,7 +554,7 @@ impl RolloutRecorder {
         }
 
         if matches!(repair_mode, ThreadListRepairMode::StateDbOnly) {
-            return Ok(state_db::list_threads_db(
+            return state_db::list_threads_db(
                 state_db_ctx.as_deref(),
                 sqlite,
                 page_size,
@@ -558,7 +572,7 @@ impl RolloutRecorder {
             )
             .await
             .map(Into::into)
-            .unwrap_or_default());
+            .ok_or_else(|| std::io::Error::other("failed to list threads from state database"));
         }
 
         let listing_has_metadata_filters = !allowed_sources.is_empty()
@@ -975,7 +989,9 @@ impl RolloutRecorder {
                 let metadata = session_meta_item(session_meta, &cwd).await;
                 // VI-22: libvrs classifies a path at its first insertion. Publish its file
                 // identity before inserting metadata, while retaining deferred content writes.
-                let parent = path.parent().ok_or_else(|| IoError::other("rollout has no parent"))?;
+                let parent = path
+                    .parent()
+                    .ok_or_else(|| IoError::other("rollout has no parent"))?;
                 fs::create_dir_all(parent)?;
                 File::options().write(true).create_new(true).open(&path)?;
                 let line = reservations.insert(&path, &metadata)?;

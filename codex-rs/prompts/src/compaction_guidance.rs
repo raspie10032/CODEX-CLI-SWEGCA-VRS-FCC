@@ -66,7 +66,10 @@ fn paragraphs(text: &str) -> Vec<(&str, &str)> {
 fn without_marked_sentences(paragraph: &str) -> Option<String> {
     let body = paragraph.trim();
     let sentences = sentences(body);
-    if !sentences.iter().any(|sentence| is_compaction_sentence(sentence)) {
+    if !sentences
+        .iter()
+        .any(|sentence| is_compaction_sentence(sentence))
+    {
         return Some(paragraph.to_string());
     }
     let unmarked = sentences
@@ -119,8 +122,7 @@ fn is_compaction_sentence(sentence: &str) -> bool {
             .iter()
             .take_while(|byte| byte.is_ascii_alphabetic())
             .count();
-        starts_word
-            && COMPACT_ENDINGS.contains(&&lower[ending_start..ending_start + ending_len])
+        starts_word && COMPACT_ENDINGS.contains(&&lower[ending_start..ending_start + ending_len])
     })
 }
 

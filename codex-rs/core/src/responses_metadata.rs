@@ -2,11 +2,6 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::io::ErrorKind;
 
-use codex_analytics::CompactionImplementation;
-use codex_analytics::CompactionPhase;
-use codex_analytics::CompactionReason;
-use codex_analytics::CompactionStrategy;
-use codex_analytics::CompactionTrigger;
 use codex_git_utils::SanitizedGitUrl;
 use codex_protocol::ThreadId;
 use codex_protocol::mcp::McpAttribution;
@@ -113,68 +108,19 @@ const MAX_EXTRA_METADATA_ENTRIES: usize = 16;
 const MAX_EXTRA_METADATA_KEY_BYTES: usize = 64;
 pub(crate) const MAX_EXTRA_METADATA_VALUE_BYTES: usize = 128;
 
-/// Metadata attached to model requests whose purpose is conversation compaction.
-///
-/// This covers both local and remote compaction requests sent through the `/responses` path. These
-/// fields describe the operation at dispatch time. Post-response outcomes such as status, error,
-/// duration, and token deltas remain in compaction analytics events.
-#[derive(Clone, Copy, Debug, Serialize)]
-pub(crate) struct CompactionTurnMetadata {
-    trigger: CompactionTrigger,
-    reason: CompactionReason,
-    implementation: CompactionImplementation,
-    phase: CompactionPhase,
-    strategy: CompactionStrategy,
-}
-
-impl CompactionTurnMetadata {
-    pub(crate) fn new(
-        trigger: CompactionTrigger,
-        reason: CompactionReason,
-        implementation: CompactionImplementation,
-        phase: CompactionPhase,
-    ) -> Self {
-        Self {
-            trigger,
-            reason,
-            implementation,
-            phase,
-            strategy: CompactionStrategy::Memento,
-        }
-    }
-
-    pub(crate) fn trigger(self) -> CompactionTrigger {
-        self.trigger
-    }
-
-    pub(crate) fn reason(self) -> CompactionReason {
-        self.reason
-    }
-
-    pub(crate) fn implementation(self) -> CompactionImplementation {
-        self.implementation
-    }
-
-    pub(crate) fn phase(self) -> CompactionPhase {
-        self.phase
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum CodexResponsesRequestKind {
     Turn,
     Prewarm,
-    Compaction(CompactionTurnMetadata),
     Memory,
 }
 
 impl CodexResponsesRequestKind {
-    fn metadata(self) -> (&'static str, Option<CompactionTurnMetadata>) {
+    fn metadata(self) -> &'static str {
         match self {
-            CodexResponsesRequestKind::Turn => ("turn", None),
-            CodexResponsesRequestKind::Prewarm => ("prewarm", None),
-            CodexResponsesRequestKind::Compaction(metadata) => ("compaction", Some(metadata)),
-            CodexResponsesRequestKind::Memory => ("memory", None),
+            CodexResponsesRequestKind::Turn => "turn",
+            CodexResponsesRequestKind::Prewarm => "prewarm",
+            CodexResponsesRequestKind::Memory => "memory",
         }
     }
 
@@ -406,10 +352,7 @@ impl CodexResponsesMetadata {
 
     fn turn_metadata_payload(&self) -> CodexTurnMetadataPayload<'_> {
         let request_kind = self.request_kind;
-        let (request_kind_value, compaction) = request_kind.map_or((None, None), |request_kind| {
-            let (request_kind, compaction) = request_kind.metadata();
-            (Some(request_kind), compaction)
-        });
+        let request_kind_value = request_kind.map(CodexResponsesRequestKind::metadata);
         let has_thread_identity =
             request_kind.is_none_or(CodexResponsesRequestKind::has_thread_identity);
         let has_request_identity =
@@ -446,7 +389,6 @@ impl CodexResponsesMetadata {
             turn_started_at_unix_ms: self.turn_started_at_unix_ms,
             history_ingest_requested: self.history_ingest_requested,
             analytics_enabled: self.analytics_enabled,
-            compaction,
             // Extra metadata enriches the Codex turn metadata blob, not literal top-level
             // Responses client_metadata. Product metadata is validated while loading config;
             // app-server metadata has reserved Codex-owned keys filtered when it enters turn state.
@@ -594,8 +536,6 @@ struct CodexTurnMetadataPayload<'a> {
     history_ingest_requested: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     analytics_enabled: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    compaction: Option<CompactionTurnMetadata>,
     #[serde(flatten)]
     extra: &'a BTreeMap<String, String>,
 }

@@ -228,7 +228,6 @@ pub use client_common::Prompt;
 pub use client_common::ResponseEvent;
 pub use client_common::ResponseStream;
 pub use codex_prompts::REVIEW_PROMPT;
-pub use message_text::content_items_to_text;
 pub use current_time::SleepFuture;
 pub use current_time::TimeFuture;
 pub use current_time::TimeProvider;
@@ -238,6 +237,7 @@ pub use exec_policy::check_execpolicy_for_warnings;
 pub use exec_policy::format_exec_policy_error_with_source;
 pub use exec_policy::load_exec_policy;
 pub use installation_id::resolve_installation_id;
+pub use message_text::content_items_to_text;
 mod memory_usage;
 pub mod otel_init;
 
@@ -250,6 +250,8 @@ pub use environment_selection::validate_environment_ids_and_cwds;
 #[cfg(test)]
 #[ctor::ctor]
 fn initialize_vrs_for_core_tests() {
-    let home = tempfile::tempdir().expect("create VRS unit test home").keep();
+    let home = tempfile::tempdir()
+        .expect("create VRS unit test home")
+        .keep();
     codex_vrs::initialize_for_home(&home).expect("initialize VRS for unit tests");
 }

@@ -247,8 +247,9 @@ pub async fn compact_unsupported(sess: &Arc<Session>, sub_id: String) {
         id: sub_id,
         msg: EventMsg::Error(ErrorEvent {
             misalignment: None,
-            message: "Context compaction is not available: model input is assembled from the VRS store."
-                .to_string(),
+            message:
+                "Context compaction is not available: model input is assembled from the VRS store."
+                    .to_string(),
             codex_error_info: Some(CodexErrorInfo::BadRequest),
         }),
     })

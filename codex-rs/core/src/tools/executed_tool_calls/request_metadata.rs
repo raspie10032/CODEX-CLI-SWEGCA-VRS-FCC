@@ -2,30 +2,19 @@
 
 use super::*;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum RequestKind {
-    Sampling,
-    Compaction,
-}
-
 impl ExecutedToolCalls {
-    pub(crate) fn attach_to_compaction_prompt(&self, items: &mut [ResponseItem]) {
-        self.attach_to_request(items, &mut HashMap::new(), RequestKind::Compaction);
-    }
-
     pub(crate) fn attach_to_prompt(
         &self,
         items: &mut [ResponseItem],
         retry_cache: &mut ExecutedToolCallCache,
     ) {
-        self.attach_to_request(items, retry_cache, RequestKind::Sampling);
+        self.attach_to_request(items, retry_cache);
     }
 
     fn attach_to_request(
         &self,
         items: &mut [ResponseItem],
         retry_cache: &mut ExecutedToolCallCache,
-        request_kind: RequestKind,
     ) {
         let recording = {
             let mut state = self.lock_state();
@@ -43,16 +32,14 @@ impl ExecutedToolCalls {
                     }
                 }
             }
-            // A shortened compaction attempt is not an installed history window.
-            // Only ordinary sampling can discard observations absent from the window.
-            if request_kind == RequestKind::Sampling && !state.direct_calls.is_empty() {
+            if !state.direct_calls.is_empty() {
                 let output_ids = items
                     .iter()
                     .filter_map(ResponseItem::id)
                     .collect::<HashSet<_>>();
                 state.direct_calls.retain(|id, _| output_ids.contains(id));
             }
-            Self::attach_pending_to_prompt_with_state(state, items, retry_cache, request_kind);
+            Self::attach_pending_to_prompt_with_state(state, items, retry_cache);
             Arc::downgrade(&state.recording)
         };
 
@@ -76,7 +63,6 @@ impl ExecutedToolCalls {
         state: &mut ExecutedToolCallRecorderState,
         items: &mut [ResponseItem],
         retry_cache: &mut ExecutedToolCallCache,
-        request_kind: RequestKind,
     ) -> bool {
         // Failed wrappers have no callback; only their bounded bitmap observation survives.
         state.pending_wrapper_origins.clear();
@@ -330,9 +316,7 @@ impl ExecutedToolCalls {
             }
             attached = true;
         }
-        // Compaction may retry with a shortened history without installing that history.
-        // Keep absent observations until a normal sampling request confirms the live window.
-        if request_kind == RequestKind::Sampling && !pending_outputs.is_empty() {
+        if !pending_outputs.is_empty() {
             state
                 .retained_calls
                 .retain(|key, _| !pending_outputs.contains(key));

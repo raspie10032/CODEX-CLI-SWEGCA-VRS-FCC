@@ -304,10 +304,10 @@ impl Session {
         let history_mode = self.state.lock().await.session_configuration.history_mode;
         let path = self.ephemeral_vrs_path()?;
         for item in items {
-            if !codex_rollout::is_persisted_rollout_item(item, history_mode) {
+            let Some(item) = codex_rollout::persisted_rollout_item(item, history_mode) else {
                 continue;
-            }
-            let line = codex_rollout::encode_rollout_line(item, None).map_err(|err| {
+            };
+            let line = codex_rollout::encode_rollout_line(item.as_ref(), None).map_err(|err| {
                 VrsError::Unavailable(format!("rollout line encoding failed: {err}"))
             })?;
             let offset = self

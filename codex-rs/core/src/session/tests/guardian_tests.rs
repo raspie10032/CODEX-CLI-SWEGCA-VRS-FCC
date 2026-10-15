@@ -1091,6 +1091,70 @@ async fn guardian_allows_unified_exec_additional_permissions_requests_past_polic
 }
 
 #[tokio::test]
+async fn initial_context_preserves_separate_guardian_developer_message() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    update_turn_settings_for_test(&mut turn_context, |settings| {
+        update_selected_settings_for_test(settings, |selected| {
+            selected.collaboration_mode.settings.reasoning_effort =
+                Some(ReasoningEffortConfig::Persistent);
+        });
+    });
+    let guardian_policy = "guardian policy".to_string();
+    let guardian_source =
+        SessionSource::SubAgent(SubAgentSource::Other(GUARDIAN_REVIEWER_NAME.to_string()));
+
+    {
+        let mut state = session.state.lock().await;
+        state.session_configuration.session_source = guardian_source.clone();
+    }
+    turn_context.session_source = guardian_source;
+    turn_context.developer_instructions = Some(guardian_policy.clone());
+    let turn_context = Arc::new(turn_context);
+    let step_context = StepContext::for_test(Arc::clone(&turn_context));
+    let world_state = Arc::new(
+        session
+            .build_world_state_for_step(&step_context)
+            .await
+            .expect("world state should build"),
+    );
+    let (refreshed, _) = session
+        .build_initial_context_with_world_state(&step_context, &world_state)
+        .await;
+    let refreshed = crate::context_manager::updates::merge_world_state_updates(refreshed);
+
+    let developer_messages = refreshed
+        .iter()
+        .filter_map(|item| match item {
+            ResponseItem::Message { role, content, .. } if role == "developer" => {
+                crate::content_items_to_text(content).map(|text| {
+                    (
+                        text,
+                        item.executed_tool_call_metadata()
+                            .and_then(|metadata| metadata.content_item_kinds.clone()),
+                    )
+                })
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        !developer_messages
+            .iter()
+            .any(|(message, _)| message.contains("<persistent_mode>")),
+        "guardian context must not inherit persistent-mode proactivity"
+    );
+    assert!(developer_messages.len() >= 2);
+    assert_eq!(
+        developer_messages.last(),
+        Some(&(
+            guardian_policy,
+            Some(vec![ContentItemKind("guardian.policy".to_string())]),
+        ))
+    );
+}
+
+#[tokio::test]
 #[cfg(unix)]
 async fn exec_command_allows_sticky_turn_permissions_without_inline_request_permissions_feature() {
     let (mut session, turn_context_raw) = make_session_and_context().await;
@@ -1253,7 +1317,7 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
         parent_rollout_thread_trace: codex_rollout_trace::ThreadTraceContext::disabled(),
         user_shell_override: None,
         parent_trace: None,
-        environment_selections: Vec::new(),
+        environment_requests: Vec::new(),
         thread_extension_init,
         turn_extension_init: Default::default(),
         client_mcp_extensions: ClientMcpExtensions::default(),

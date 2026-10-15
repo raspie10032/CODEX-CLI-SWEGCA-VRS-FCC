@@ -26,7 +26,6 @@ const MAX_CONNECTION_RETRY_DELAY: Duration = Duration::from_secs(60);
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ResponsesStreamRequest {
     Sampling,
-    RemoteCompactionV2,
 }
 
 pub(crate) struct ResponsesStreamRetryState {
@@ -80,10 +79,7 @@ pub(crate) async fn handle_response_stream_error(
         )
         .await;
     }
-    let operation = match request {
-        ResponsesStreamRequest::Sampling => RetryOperation::Sampling,
-        ResponsesStreamRequest::RemoteCompactionV2 => RetryOperation::RemoteCompactionV2,
-    };
+    let operation = RetryOperation::Sampling;
     let retry_count = retry_state.retries.saturating_add(1);
     let Some(delay) = err.retry_delay(retry_count) else {
         return Err(err);
@@ -183,26 +179,14 @@ fn log_retry(
     max_retries: u64,
     delay: Duration,
 ) {
-    match request {
-        ResponsesStreamRequest::Sampling => {
-            warn!(
-                turn_id = %turn_context.sub_id,
-                retries,
-                max_retries,
-                sampling_error = %err,
-                "stream disconnected - retrying sampling request ({retries}/{max_retries} in {delay:?})...",
-            );
-        }
-        ResponsesStreamRequest::RemoteCompactionV2 => {
-            warn!(
-                turn_id = %turn_context.sub_id,
-                retries,
-                max_retries,
-                compact_error = %err,
-                "remote compaction v2 stream failed; retrying request after delay"
-            );
-        }
-    }
+    let ResponsesStreamRequest::Sampling = request;
+    warn!(
+        turn_id = %turn_context.sub_id,
+        retries,
+        max_retries,
+        sampling_error = %err,
+        "stream disconnected - retrying sampling request ({retries}/{max_retries} in {delay:?})...",
+    );
 }
 
 #[cfg(test)]
