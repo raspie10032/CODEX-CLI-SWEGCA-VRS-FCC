@@ -15,7 +15,10 @@ Every place that builds model input calls that same assembly. That includes the 
 - **Branch:** `vrs-int`, with libvrs round 7 (`vrs-lib7/`).
 - **In daily use:** since 2026-10-13 this build has been the Codex binary of the maintainer's ChatGPT desktop app on Linux.
 - **Gates:** the application smoke gates (S1–S5) pass, with no failed receipts and no compaction events.
-- **A long autonomous run (Anima, on an earlier build of this branch):** 129 requests over 45 minutes, with zero compaction, zero window overflows and every request assembled. The planned long-run bar (2 hours or 300 requests) has not been fully met yet, because the task finished first.
+- **Real use:** this branch was measured across 5 threads with 2,577 model requests after it replaced the app's Codex.
+  - Result: zero compaction, zero errors or aborts, and every request assembled.
+  - Two threads cleared the long-run bar (2 hours or 300 requests): 1,019 requests over 37 hours, and 961 requests.
+  - The largest request was 127,480 tokens, 49% of the window.
 - **Open defects:** no blocking defects are open. Smaller items are listed in the design document.
 
 ## Build
