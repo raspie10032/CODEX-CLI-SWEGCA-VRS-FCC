@@ -1,4 +1,4 @@
-//! Returns literal model instructions from the captured model metadata.
+//! Returns model instructions from the captured model metadata, minus compaction sentences.
 //! Missing templates produce a warning; supplied empty templates remain valid input.
 
 use crate::ResolvedModelMessages;
@@ -13,7 +13,9 @@ pub fn render_model_instructions(model_info: &ModelInfo) -> String {
             "Model has no instruction template; returning empty instructions."
         );
     }
-    template.unwrap_or_default().to_owned()
+    template
+        .map(crate::without_compaction_guidance)
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

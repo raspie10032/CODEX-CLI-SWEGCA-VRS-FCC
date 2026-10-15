@@ -1507,7 +1507,14 @@ impl Session {
     /// Render the request copy without changing instructions persisted or inherited by forks.
     pub(crate) async fn get_prompt_base_instructions(&self) -> BaseInstructions {
         let config = self.get_config().await;
-        let instructions = self.get_base_instructions().await;
+        let mut instructions = self.get_base_instructions().await;
+        // Compaction never happens in this build; saved Codex-owned text may still describe it.
+        if !matches!(
+            instructions.provenance,
+            Some(BaseInstructionsProvenance::Custom)
+        ) {
+            instructions.text = codex_prompts::without_compaction_guidance(&instructions.text);
+        }
         if !config.update_plan_enabled
             && config.model_catalog.is_none()
             && matches!(

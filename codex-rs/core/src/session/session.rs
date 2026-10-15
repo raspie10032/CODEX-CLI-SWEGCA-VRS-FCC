@@ -793,7 +793,9 @@ impl Session {
         } else if let Some(inherited_base_instructions) = initial_history.get_base_instructions() {
             let BaseInstructions { text, provenance } = inherited_base_instructions;
             provenance.or_else(|| {
-                (text == render_model_instructions(&model_info)).then(|| {
+                (codex_prompts::without_compaction_guidance(&text)
+                    == render_model_instructions(&model_info))
+                .then(|| {
                     BaseInstructionsProvenance::Model {
                         model: model_info.slug.clone(),
                     }

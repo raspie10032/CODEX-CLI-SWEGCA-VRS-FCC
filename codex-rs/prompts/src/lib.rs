@@ -1,4 +1,5 @@
 mod compact;
+mod compaction_guidance;
 mod guardian_instructions;
 mod model_instructions;
 mod model_messages;
@@ -11,6 +12,7 @@ mod update_plan_instructions;
 
 pub use compact::SUMMARIZATION_PROMPT;
 pub use compact::SUMMARY_PREFIX;
+pub use compaction_guidance::without_compaction_guidance;
 pub use guardian_instructions::GuardianClassifierInstructions;
 pub use guardian_instructions::GuardianPolicyInstructions;
 pub use guardian_instructions::render_guardian_rejection;
