@@ -2,7 +2,7 @@
 
 **No more context compaction.** About the name:
 
-- **SWEGCA VRS** is the verification-reinforced synapse (검증강화시냅스) that rebuilds each request.
+- **SWEGCA VRS** is the verification-reinforced synapse (&#xAC80;&#xC99D;&#xAC15;&#xD654;&#xC2DC;&#xB0C5;&#xC2A4;) that rebuilds each request.
 - **FCC** stands for Full Context Continuity.
 
 Welcome! This is a fork of [OpenAI Codex CLI](https://github.com/openai/codex) with **context compaction removed entirely**. Nothing summarizes, trims or remotely compacts your conversation. That covers automatic compaction, the manual compact task, remote compaction, and the token-limit trigger. The original session records (rollout files) are kept losslessly. Every model request is rebuilt from those originals by **libvrs**, a C++ assembly library linked right into the process.
@@ -16,7 +16,7 @@ Every place that builds model input calls that same assembly. That includes the 
 - **Branch:** `main`, with libvrs round 7 (`vrs-lib7/`). The work was done on a branch named `vrs-int`, which the design records still mention.
 - **Release:** [`fcc-v1.1.0`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.0) has a prebuilt, stripped `codex` for x86_64 Linux.
 - **In daily use:** this fork has been the Codex binary of the maintainer's ChatGPT desktop app on Linux since 2026-10-13. It ran on the alpha.2 base with app 26.1002 until 2026-10-15, and since then on this base with app 26.1007.
-- **Gates:** the application smoke gates (S1–S5) pass, with no failed receipts and no compaction events.
+- **Gates:** the application smoke gates (S1-S5) pass, with no failed receipts and no compaction events.
 - **CI:** [`fcc-ci`](.github/workflows/fcc-ci.yml) builds and tests on x86_64 Linux with the prebuilt libvrs, then runs one mock-provider turn that must be assembled by VRS. Upstream's Bazel and multi-platform workflows are turned off in this repository: they need OpenAI's own runners and a toolchain the prebuilt library is not built for.
 - **Real use (alpha.2 base):** this branch was measured across 5 threads with 2,577 model requests after it replaced the app's Codex. The long-run figures below are being measured again on the new base.
   - Result: zero compaction, zero errors or aborts, and every request assembled.
@@ -61,8 +61,8 @@ A few notes:
 
 The design documents are written in Korean.
 
-- [VRS_코덱스일체화_v1.md](VRS_코덱스일체화_v1.md): goals, definitions, proofs, tests and deployment records for every round.
-- [vrs-lib5/](vrs-lib5/), [vrs-lib6/](vrs-lib6/), [vrs-lib7/](vrs-lib7/): library sources, patches, tests and reports for rounds 5–7.
+- [VRS_&#xCF54;&#xB371;&#xC2A4;&#xC77C;&#xCCB4;&#xD654;_v1.md](VRS_%EC%BD%94%EB%8D%B1%EC%8A%A4%EC%9D%BC%EC%B2%B4%ED%99%94_v1.md): goals, definitions, proofs, tests and deployment records for every round.
+- [vrs-lib5/](vrs-lib5/), [vrs-lib6/](vrs-lib6/), [vrs-lib7/](vrs-lib7/): library sources, patches, tests and reports for rounds 5-7.
 - [l3check/](l3check/): integration audits, test classification and the application smoke gates.
 
 Paths in these records are written relative to `~` or as `$WORK/`, a stand-in for the maintainer's working directory, so some of the older test scripts need their paths adjusted before they run elsewhere. The release smoke test in [l3check/release1/](l3check/release1/) runs anywhere: `./run.sh <path-to-codex>`.
