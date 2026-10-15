@@ -14,9 +14,10 @@ Every place that builds model input calls that same assembly. That includes the 
 - **Base:** `rust-v0.162.0-alpha.17.2` (`740e5af`), the Codex version bundled with ChatGPT desktop app 26.1007. The first VRS build was on `rust-v0.162.0-alpha.2` (`74e804dee`, tagged `vrs-base`) and was merged forward.
 - **Incremental tools:** upstream's experimental `incremental_tools` feature records instructions and tool definitions into the history. This fork rebuilds that prefix on every request instead, so the feature is accepted but ignored.
 - **Branch:** `vrs-int`, with libvrs round 7 (`vrs-lib7/`).
-- **In daily use:** since 2026-10-13 this build has been the Codex binary of the maintainer's ChatGPT desktop app on Linux.
+- **Release:** [`fcc-v1.1.0`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.0) has a prebuilt, stripped `codex` for x86_64 Linux.
+- **In daily use:** this fork has been the Codex binary of the maintainer's ChatGPT desktop app on Linux since 2026-10-13. It ran on the alpha.2 base with app 26.1002 until 2026-10-15, and since then on this base with app 26.1007.
 - **Gates:** the application smoke gates (S1–S5) pass, with no failed receipts and no compaction events.
-- **Real use:** this branch was measured across 5 threads with 2,577 model requests after it replaced the app's Codex.
+- **Real use (alpha.2 base):** this branch was measured across 5 threads with 2,577 model requests after it replaced the app's Codex. The long-run figures below are being measured again on the new base.
   - Result: zero compaction, zero errors or aborts, and every request assembled.
   - Two threads cleared the long-run bar (2 hours or 300 requests): 1,019 requests over 37 hours, and 961 requests.
   - The largest request was 127,480 tokens, 49% of the window.
@@ -25,6 +26,8 @@ Every place that builds model input calls that same assembly. That includes the 
 ## Build
 
 This is Linux only (on other systems the store refuses to open).
+
+To skip building, download the binary from the [`fcc-v1.1.0` release](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.0). It was built on glibc 2.43 with GCC 16.2.1, so it needs a recent distribution.
 
 The library is already here: [`vrs-lib7/prebuilt/x86_64-linux-gnu/libvrs.a`](vrs-lib7/prebuilt/x86_64-linux-gnu/) is the exact libvrs round 7 used by the deployed build, with the SWEGCA C++ core compiled in. The Rust build links it by default, so this is all you need:
 

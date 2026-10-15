@@ -1347,8 +1347,55 @@ L1 끝: 뜻이 바뀌는 것은 하나(앞부분이 이력 상태가 되는 증�
 
 끝 조건: 우리 이음매(압축 끊음 자리, 조립 입구, 지시문 빼기 자리)마다 새 트리의 자리를 적는다. 새로 생긴 자리는 어떻게 처리하는지(압축이면 지우거나 호출 자리에서 끊는다, 모델 입력이면 VRS 조립 입구로 보낸다, 모델 입력이 아니면 그 근거) 적는다. libvrs·FFI·스토어 배치는 바꾸지 않는다.
 
+**11.2 결과 (18시대).** 새 트리(병합 커밋 `fb4c2e2`)에서 센 자리다.
+
+- 압축 끊음. upstream 이 고친 압축 모듈 11개(`compact.rs`, `compact_model_fallback.rs`, `compact_remote_v2.rs`, `compact_remote_v2_attempt.rs`, `compact_token_budget.rs`, `tasks/compact.rs`, 압축 전용 시험 5개)는 우리 쪽 삭제를 그대로 둔다. 압축이 아닌 도움 함수는 그 안에 없었다. 호출 자리에서 끊은 것: `session/turn.rs` 의 턴 앞·중·뒤 압축과 guardian 예산 압축, `guardian/review_session*.rs` 의 부모 체크포인트 압축 복구(`5f8b37c`), `ext/guardian-v2` 의 `parent_compaction` 입력, `session/rollout_reconstruction.rs` 의 압축 대체 이력 재생.
+- 조립 입구. 모델 입력을 짓는 `build_prompt` 호출은 다섯 자리다. 그 가운데 모델에 가는 셋은 VRS 조립에서 입력을 받는다.
+  - `session/turn.rs:1230`: A1 과 A2 재시도마다 `vrs_prompt_input`.
+  - `session/startup_prewarm.rs:419`: `vrs_prompt_input`.
+  - `guardian/input_budget.rs:101`: `vrs_history`.
+  - 나머지 둘은 모델에 가지 않는다. `session/vrs_input.rs:167` 은 앞부분 토큰을 재는 빈 프롬프트다. `prompt_debug.rs:111` 은 디버그용으로 입력 목록을 돌려줄 뿐이고, alpha.2 판과 같다.
+  - `for_prompt` 호출은 둘이다(`vrs_input.rs:238`, `prompt_debug.rs:109`).
+  - 새 자리인 포크(`agent/control/spawn.rs`, A20)는 부모 rollout 을 펼치지 않고 `vrs_history()` 로 조립한다.
+- 지시문 빼기. `prompts/src/model_instructions.rs`, `session/mod.rs` `get_prompt_base_instructions`, `session/session.rs` 출처 추정을 §10 그대로 옮겼다.
+
+L2 끝: 빠진 자리 0. libvrs·FFI·스토어 배치는 바꾸지 않았다.
+
 ### 11.3 L3 — 코드
 
 끝 조건: 충돌 36 해결, `cargo build --release -p codex-cli` 통과, codex-prompts·models-manager 시험 통과, codex-core·app-server 시험이 컴파일된다. 감사 보고(충돌별 해결, 새 압축 코드와 끊은 방법, 모델 입력 자리 전수, 새 직렬 구조 0, 뜻 바뀜 후보).
 
+**11.3 결과 (18시대).** 충돌 36 을 모두 풀었다. 파일별 해결은 `l3check/port_a17/REPORT.md` 4a 에 있다.
+
+- 병합 인터페이스 오류 14개를 고쳤고 릴리스 빌드가 통과했다(`codex-cli 0.162.0-alpha.17.2`).
+- codex-prompts 46/46, codex-models-manager 54/54.
+- codex-core·app-server 시험이 컴파일된다. 시험 코드만 네 곳 고쳤다: upstream 원판에서도 컴파일되지 않던 두 곳, 병합으로 생긴 두 곳.
+- D3′ 로 결과가 달라질 시험은 지우지 않고 목록에 남겼다: `scenarios_incremental_tools` 2건.
+- 압축 전용 시험은 지우거나 무시했고, 그 목록도 보고서에 있다.
+
 ### 11.4 L4 — P1–P8.
+
+**11.4 결과 (18–19시대).**
+
+- P1 통과. 소스의 압축 함수 참조는 0이다(`run_inline_auto_compact|run_compact_task|compact_remote|CompactTask|auto_compact_limit(|should_compact`, core·app-server, 시험 제외). 압축 사건도 0이다: S1–S5, release1, 앱 스레드 rollout 21,874줄.
+- P2 통과. 위 11.2 의 셈대로 빠진 자리가 없다.
+- P3 통과(코드 확인). 턴·prewarm 의 조립 실패는 `?` 로 턴 오류가 된다. guardian 증거가 예산을 넘으면 압축하거나 자르지 않고 실패한다(D5). 누적 이력으로 대신 보내는 길은 없다.
+- P4 통과 4/4. 배포 빌드와 릴리스 바이너리 둘 다에서 확인했다. 압축 문장 0, 깨끗한 문단 누락 0, Custom 불변이다.
+- P5 통과.
+  - 실 백엔드 S1·S2·S3·S4A·S4B·S5 6/6. 실패 영수증 0, 압축 0이고, S2 가 앞 턴을 기억했다(`l3check/port_a17/smoke5.txt`).
+  - 앱 26.1007 의 app-server 가 떴다(local·durable 모두 initialized).
+  - 앱 한 턴(18:41–18:43)이 조립됐다. 재기동 뒤 영수증 23건이 모두 assembled 이고, 최대 207항목·68,552토큰이다.
+- P6 하지 않음. 사용자 결정(「ㅇㅇ 그렇게 ㄱㄱ」, 「최대한 빠르게 합시다 시간이 없소」)으로 교체 범위를 빌드·실 스모크·교체로 줄였다. 원판 비교용 작업 트리만 만들어 두었다(빌드와 시험 컴파일 고침까지). 그래서 G_port 는 P6 이 빈 채로 배포했다고 적는다.
+- P7.
+  - 보고서 4a 기준으로 이식 diff 에 새 잠금·대기·장벽이 없다.
+  - libvrs(round 7)와 조립 정의는 바뀌지 않았다.
+  - 재기동 뒤 첫 조립은 46 ms 로, 5초 조건 안이다. 그 뒤는 약 2 ms 다. 다만 첫 조립 46 ms 는 1/120 s 예산을 넘는다(관측만 적는다).
+- P8 통과.
+  - 태그 `fcc-v1.1.0` = `c7f45b4`. 깨끗한 클론에서 경로를 지워 빌드했다(12분 48초).
+  - strip 뒤 경로·개인정보 문자열은 0이다. 실행 파일 sha256 `f726c461…`, 묶음 sha256 `5834c931…`.
+  - 터미널은 릴리스 바이너리로 바꿨고, 실 백엔드 한 턴이 assembled 였다. 앱은 `launch_fcc110.sh` 로 띄운다.
+  - 되돌리기: `launch_a17.sh`(같은 소스의 개발 빌드), `launch_fcc1.sh`(alpha.2, fcc-v1.0.0).
+
+새로 드러난 것. 한 턴의 단계는 모두 필수 입력이라, 혼자 오래 도는 한 턴은 창을 넘으면 오류로 멈춘다. codex exec 에서 관측했다(1턴 198항목, 입력 212,190토큰). 층은 L1 이다. G_port 에는 영향이 없지만 긴 자율 턴을 막는다. README 의 알려진 한계에 적었다.
+
+장기 실행(I4·I5)은 이 빌드로 실사용하면서 다시 잰다.
