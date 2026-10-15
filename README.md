@@ -17,6 +17,7 @@ Every place that builds model input calls that same assembly. That includes the 
 - **Release:** [`fcc-v1.1.0`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.0) has a prebuilt, stripped `codex` for x86_64 Linux.
 - **In daily use:** this fork has been the Codex binary of the maintainer's ChatGPT desktop app on Linux since 2026-10-13. It ran on the alpha.2 base with app 26.1002 until 2026-10-15, and since then on this base with app 26.1007.
 - **Gates:** the application smoke gates (S1–S5) pass, with no failed receipts and no compaction events.
+- **CI:** [`fcc-ci`](.github/workflows/fcc-ci.yml) builds and tests on x86_64 Linux with the prebuilt libvrs, then runs one mock-provider turn that must be assembled by VRS. Upstream's Bazel and multi-platform workflows are turned off in this repository: they need OpenAI's own runners and a toolchain the prebuilt library is not built for.
 - **Real use (alpha.2 base):** this branch was measured across 5 threads with 2,577 model requests after it replaced the app's Codex. The long-run figures below are being measured again on the new base.
   - Result: zero compaction, zero errors or aborts, and every request assembled.
   - Two threads cleared the long-run bar (2 hours or 300 requests): 1,019 requests over 37 hours, and 961 requests.

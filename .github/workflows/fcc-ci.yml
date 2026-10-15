@@ -1,0 +1,90 @@
+name: fcc-ci
+
+# Checks for this fork. It builds with Cargo on x86_64 Linux and links the
+# prebuilt libvrs (see README). Upstream's Bazel and multi-platform workflows
+# need OpenAI's own runners and a hermetic toolchain the prebuilt library is
+# not built for, so they are turned off in this repository's settings.
+
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fcc-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codespell:
+    uses: ./.github/workflows/codespell.yml
+
+  cargo-deny:
+    uses: ./.github/workflows/cargo-deny.yml
+
+  repo-checks:
+    uses: ./.github/workflows/repo-checks.yml
+
+  blob-size-policy:
+    # Compares the pushed or proposed commit range, which a manual run does not have.
+    if: ${{ github.event_name != 'workflow_dispatch' }}
+    uses: ./.github/workflows/blob-size-policy.yml
+
+  lint:
+    name: cargo fmt and cargo shear
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: codex-rs
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: cargo-shear@1.11.2
+      - name: cargo fmt
+        run: cargo fmt -- --config imports_granularity=Item --check
+      - name: cargo shear
+        run: cargo shear --deny-warnings
+
+  build-test:
+    name: Build, test and smoke (x86_64-unknown-linux-gnu)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    defaults:
+      run:
+        working-directory: codex-rs
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+      - name: Install system packages
+        run: |
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: fcc-ci-cargo-${{ hashFiles('codex-rs/Cargo.lock') }}
+          restore-keys: fcc-ci-cargo-
+      - name: Build codex
+        run: cargo build -p codex-cli
+      - name: Unit tests (VRS bindings, instructions, model catalog)
+        run: cargo test -p codex-vrs -p codex-prompts -p codex-models-manager
+      - name: Smoke (mock provider, VRS assembly, no compaction)
+        run: ../l3check/ci/smoke.sh "$CARGO_TARGET_DIR/debug/codex"

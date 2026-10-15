@@ -5280,7 +5280,6 @@ version = "0.162.0-alpha.17.2"
 dependencies = [
  "codex-utils-home-dir",
  "serde_json",
- "tracing",
 ]
 
 [[package]]
