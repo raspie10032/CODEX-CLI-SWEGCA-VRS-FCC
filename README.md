@@ -61,7 +61,7 @@ A few notes:
 
 The design documents are written in Korean.
 
-- [VRS_&#xCF54;&#xB371;&#xC2A4;&#xC77C;&#xCCB4;&#xD654;_v1.md](VRS_%EC%BD%94%EB%8D%B1%EC%8A%A4%EC%9D%BC%EC%B2%B4%ED%99%94_v1.md): goals, definitions, proofs, tests and deployment records for every round.
+- [VRS\_&#xCF54;&#xB371;&#xC2A4;&#xC77C;&#xCCB4;&#xD654;\_v1.md](VRS_%EC%BD%94%EB%8D%B1%EC%8A%A4%EC%9D%BC%EC%B2%B4%ED%99%94_v1.md): goals, definitions, proofs, tests and deployment records for every round.
 - [vrs-lib5/](vrs-lib5/), [vrs-lib6/](vrs-lib6/), [vrs-lib7/](vrs-lib7/): library sources, patches, tests and reports for rounds 5-7.
 - [l3check/](l3check/): integration audits, test classification and the application smoke gates.
 
