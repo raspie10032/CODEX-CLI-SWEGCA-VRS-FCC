@@ -1,4 +1,9 @@
-# No More Context Compaction — codex-vrs9-lib5
+# CODEX-CLI-SWEGCA-VRS-FCC
+
+**No more context compaction.** About the name:
+
+- **SWEGCA VRS** is the verification-reinforced synapse (검증강화시냅스) that rebuilds each request.
+- **FCC** stands for Full Context Continuity.
 
 Welcome! This is a fork of [OpenAI Codex CLI](https://github.com/openai/codex) with **context compaction removed entirely**. Nothing summarizes, trims or remotely compacts your conversation. That covers automatic compaction, the manual compact task, remote compaction, and the token-limit trigger. The original session records (rollout files) are kept losslessly. Every model request is rebuilt from those originals by **libvrs**, a C++ assembly library linked right into the process.
 
