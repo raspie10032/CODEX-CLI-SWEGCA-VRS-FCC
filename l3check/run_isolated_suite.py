@@ -10,7 +10,7 @@ with pathlib.Path(a.binary).open('rb') as binary_file:
     binary_sha256=hashlib.file_digest(binary_file, 'sha256').hexdigest()
 env=os.environ.copy()
 for k in ('CODEX_VRS_SOCK','CODEX_VRS_LOG','CODEX_VRS_DUMP'): env.pop(k,None)
-env['PATH']='~/.cargo/bin:/usr/local/bin:/usr/bin:/bin'
+env['PATH']=os.path.expanduser('~/.cargo/bin')+':/usr/local/bin:/usr/bin:/bin'
 env['CODEX_HOME']=str(out.resolve()/'home'); pathlib.Path(env['CODEX_HOME']).mkdir(exist_ok=True)
 env['RUST_MIN_STACK']='33554432'
 env['OMP_NUM_THREADS']='1'; env['OPENBLAS_NUM_THREADS']='1'; env['RAYON_NUM_THREADS']='1'

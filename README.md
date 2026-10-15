@@ -43,12 +43,12 @@ A few notes:
 - The store lives next to your sessions: rollouts in `$CODEX_HOME/sessions`, the index in `$CODEX_HOME/vrs/idx`. It is opened once at startup and restored in the background, usually in about half a second. A request that arrives while the store is still restoring waits for it instead of failing.
 - The input budget follows the model's context window. For the desktop app's model that is 258,400 tokens. In everyday use the assembled requests usually stay under about 150k, so there is plenty of headroom. (That 150k figure is the maintainer's observation, not a benchmark.)
 - Every past user message is **required input**. If those alone no longer fit the window, assembly reports that the required input is over budget, and the turn stops with an error instead of quietly dropping your words.
+- **Instructions:** the base instructions in the model catalog (the bundled one and the one the server sends) tell the model that a long conversation gets compacted into a summary. Here that never happens, so those sentences are dropped before a request goes out, including for threads saved before this change. The rest of the instructions is sent unchanged, and instructions you supply yourself (`model_instructions_file`) are never edited.
 
 ## Known limitations
 
 - **Very long sessions:** as above, a session whose user messages alone exceed the context window can no longer be continued.
 - **Memory per process:** each Codex process loads its own copy of the store. The desktop app's app-server process was observed at about 3.6 GB resident.
-- **Instruction text:** the model's base instructions still mention that compaction may happen. That text is unchanged from upstream; no compaction actually occurs.
 - **Upstream README:** everything below the divider is the unmodified upstream README, so some of its descriptions do not match this fork.
 
 ## Documentation
@@ -58,6 +58,8 @@ The design documents are written in Korean.
 - [VRS_코덱스일체화_v1.md](VRS_코덱스일체화_v1.md): goals, definitions, proofs, tests and deployment records for every round.
 - [vrs-lib5/](vrs-lib5/), [vrs-lib6/](vrs-lib6/), [vrs-lib7/](vrs-lib7/): library sources, patches, tests and reports for rounds 5–7.
 - [l3check/](l3check/): integration audits, test classification and the application smoke gates.
+
+Paths in these records are written relative to `~` or as `$WORK/`, a stand-in for the maintainer's working directory, so some of the older test scripts need their paths adjusted before they run elsewhere. The release smoke test in [l3check/release1/](l3check/release1/) runs anywhere: `./run.sh <path-to-codex>`.
 
 ---
 

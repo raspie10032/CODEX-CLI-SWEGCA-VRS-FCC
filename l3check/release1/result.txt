@@ -1,0 +1,39 @@
+== S_a_astra
+exit=0
+tokens used
+2
+ok
+requests=1 main(gpt-6-astra)=1
+template E sentences=4
+[0] len=20967 E=0 markers=0 clean_paragraphs=69 missing=0
+PASS
+== S_a_sol
+exit=0
+tokens used
+2
+ok
+requests=1 main(gpt-5.6-sol)=1
+template E sentences=5
+[0] len=17142 E=0 markers=0 clean_paragraphs=59 missing=0
+PASS
+resume source size=52221 id=01a137e9-2686-73d2-adb3-7c86a7c7aca5
+== S_b_resume
+exit=0
+tokens used
+9,035
+ok
+requests=1 main(gpt-5.6-sol)=1
+template E sentences=5
+[0] len=17142 E=0 markers=0 clean_paragraphs=59 missing=0
+PASS
+== S_c_custom
+exit=0
+tokens used
+2
+ok
+requests=1 main(gpt-5.6-sol)=1
+template E sentences=5
+[0] custom verbatim=True E=1
+PASS
+== compaction items in temp rollouts
+0

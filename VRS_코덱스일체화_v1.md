@@ -1208,3 +1208,99 @@ G_int 와 I1–I8 은 그대로다(§0, 결과를 보고 바꾸지 않음).
   - 스모크 `l3check/smoke7/gates.json` 은 all_passed 다(S1–S5, 실패 영수증 0, 압축 0, 겹침 52 s). 색인은 VX06 그대로다(magic 안 올림).
 - 교체: `$WORK/codexint_deploy/codex-lib7-1018`, `launch_lib7.sh`. 되돌리기는 `launch_lib6.sh`(codex-lib6-2051)다. `chatgpt.desktop` 백업은 `before-lib7-*` 다.
 - G 진척: V6-03 이 닫혔다. 막음 결함 목록이 비었다. 늦춤·무관 목록은 §7 그대로다.
+
+## 10. 지시문의 압축 서술 제거와 릴리즈 정리 (2026-10-15, 사용자 「기본 지시문 압축 문구도 지우고 클린 릴리즈 상태까지 만들어놔줘」)
+
+### 10.0 G_rel 와 통과 조건 (실행 전 고정)
+
+G_rel: 이 포크가 모델에 보내는 기본 지시문에 「맥락이 압축된다·요약을 보게 된다」는 서술이 없고, 저장소가 개인정보·로컬 경로 없이 그대로 빌드되는 판으로 GitHub 에 있다.
+
+조사(읽기만): 압축 서술은 `codex-rs/models-manager/models.json` 의 `model_messages.instructions_template` 에만 있다(11모델 중 다수). 실행 중에는 서버 모델 목록(`$CODEX_HOME/models_cache.json`, 9모델, 모델마다 문장 셋)이 동봉 목록을 덮으므로 파일만 고쳐서는 G_rel 이 서지 않는다. 지시문은 두 길로 요청에 들어간다: 새 스레드는 `render_model_instructions`(prompts/src/model_instructions.rs:8) 로 만든 글을 저장하고, 이어 여는 스레드는 저장된 글(session_meta)을 쓴다. 요청 사본은 `get_prompt_base_instructions`(core/src/session/mod.rs:1508) 가 만든다(이미 update_plan 문단을 사본에서만 뺀다).
+
+- R1 새 스레드·모델 전환·이어 연 스레드 모두, 요청에 실리는 기본 지시문에서 아래 E1–E12 문장 수 = 0 (동봉 11모델, 서버 9모델).
+- R2 압축 서술 문장이 없는 문단은 바이트 그대로다. 지워지는 문장은 E1–E12 뿐이다(그 밖의 문장 0).
+- R3 사용자가 준 지시문(config `base_instructions`, 출처 Custom)은 바꾸지 않는다.
+- R4 저장된 기록(롤아웃)은 바꾸지 않는다. 이어 연 스레드는 요청 사본에서만 뺀다.
+- R5 1/120 s: 변환은 지시문 길이에 선형이고 이력 길이와 무관하다. 순서 의존 상태가 없다.
+- R6 끝 판과 우리 커밋 이력 전체에 개인 이메일(정리 전 작성자 주소 둘), 사용자 이름이 든 절대 경로(`/home/<user>/`, `/var/home/<user>/`, `C:\Users\<user>\`), 작업 경로(`$WORK/…`, `$WORK/vrsint…` 등)가 0.
+- R7 `cargo build --release -p codex-cli` 가 `VRS_LIB_DIR` 없이 통과한다. 바꾼 크레이트(codex-prompts, codex-core 의 관련 시험)가 통과한다. 스모크: `codex exec` 한 턴, 압축 사건 0, 요청 지시문의 E 문장 0.
+- R8 README 「Known limitations」 갱신, 태그, 비공개 GitHub 릴리스.
+
+지울 문장 E (실행 전에 위 두 목록을 읽고 고정):
+
+- E1 When you run out of context, the conversation is automatically compacted into a summary, but you will still see all prior user requests.
+- E2 Compaction does not end the task.
+- E3 Continue naturally from the summarized state, make reasonable assumptions about anything missing from the summary, and treat work spanning compactions as one logical chain of events.
+- E4 Do not restart from scratch, redo completed work, or repeat commentary updates already delivered.
+- E5 When you run out of context, the conversation is automatically summarized for you, but you will see all prior user requests.
+- E6 That means time never runs out, though sometimes you may see a summary instead of the full conversation history.
+- E7 When that happens, you assume compaction occurred while you were working.
+- E8 Do not restart from scratch; you continue naturally and make reasonable assumptions about anything missing from the summary.
+- E9 Do not redo completely finished work or repeat already delivered commentary updates; treat a turn spanning compactions as one logical chain of events.
+- E10 This matters especially after long-running resumes or context compaction.
+- E11 When you run out of context, the tool automatically compacts the conversation.
+- E12 That means time never runs out, though sometimes you may see a summary instead of the full thread.
+
+남는 것(기대): E1 의 문단은 「Treat the most recent user message as the latest steering …」 이하 세 문장, E5 의 문단은 「Assume the last user request is current and previous requests are stale but useful context.」 한 문장, E10 의 문단은 E10 을 뺀 나머지. E2–E4 의 문단과 E11·E12 의 문단은 통째로 사라진다. 사용자 요청을 다루는 지침은 VRS 에서도 참이므로 남긴다.
+
+### 10.1 L1 — 정의·수식·증명
+
+끝 조건: 정의 D1–D3, 정리 1–4 를 손으로 따라갈 수 있게 적는다. 직렬 구조 없음.
+
+D1 (문단·문장). 지시문 T 는 문단 p₁…p_k 와 그 사이 구분자(줄바꿈 둘 이상의 연속) g₁…g_{k−1} 이다. 문단 p 의 문장은 p 를 「`.`·`!`·`?` 바로 뒤의 공백 한 덩어리」에서 자른 조각 s₁…s_m 이다.
+
+D2 (압축 서술 문장). 문장 s 가 표지 집합 K 의 한 원소를 담으면(대소문자 무시) 압축 서술이다. 뜻은 「맥락이 차면 대화가 압축·요약된다」 또는 「요약을 받았을 때 어떻게 하라」는 문장이다. K 는 그 뜻을 E 에서 가르는 최소 표지다:
+- 낱말 compact 에 어미 ion·ions·ed·s 가 붙은 꼴(낱말 경계 안에서). 형용사 compact(「Compact notation」, 「more compact for an expert」, 「compact panels」)는 어미가 없으므로 들지 않는다.
+- 「run out of context」, 「summary instead of the full」, 「restart from scratch」.
+
+E1–E12 각각에 K 의 원소가 있다(E1 compacted, E2·E7·E10 compaction, E3·E9 compactions, E11 compacts, E5 run out of context, E6·E12 summary instead of the full, E4·E8 restart from scratch).
+
+D3 (변환). σ(T) 는 각 문단 p 를 φ(p) 로 바꾼다. p 에 압축 서술 문장이 없으면 φ(p) = p. 있으면 φ(p) = 압축 서술이 아닌 문장들을 원래 자리 순으로 공백 하나로 이은 것이고, 그것이 비면 p 와 그 뒤 구분자(마지막 문단이면 앞 구분자)를 함께 뺀다. 적용 자리: 모델 목록에서 렌더한 지시문, 그리고 출처가 Custom 이 아닌 저장 지시문의 요청 사본.
+
+정리 1 (R2 보존). 압축 서술 문장이 없는 문단은 바이트 그대로 남고, 지워지는 것은 압축 서술 문장뿐이다.
+증명. D3 의 첫 갈래가 φ(p) = p 이다. 둘째 갈래는 압축 서술 문장만 버리고 나머지 문장의 글자를 바꾸지 않는다(바뀌는 것은 문장 사이 공백뿐). 남은 문단의 구분자는 건드리지 않는다. □
+
+정리 2 (멱등). σ(σ(T)) = σ(T).
+증명. σ(T) 의 어느 문단에도 압축 서술 문장이 없음을 보이면 된다(그러면 D3 첫 갈래로 모두 그대로). 둘째 갈래에서 남은 문장 sᵢ 가운데 마지막이 아닌 것은 원래 자를 자리(종결 부호 + 공백)에서 끝나므로 종결 부호로 끝나고, 공백 하나로 이으면 같은 자리에서 다시 잘려 같은 조각이 된다. 어느 조각 안에도 「종결 부호 + 공백」 이 없다(있었다면 처음에 잘렸다). 그러니 다시 자른 문장은 남은 문장과 같고, 그것들은 표지가 없다. 표지 판정은 문장 하나만 보므로 잇는다고 표지가 생기지 않는다. □
+
+정리 3 (일관성). 저장 지시문 t 가 지금 모델의 템플릿 렌더 r 과 같았으면(출처 Model) 요청 사본 σ(t) 와 새 렌더 σ(r) 은 같다. 새 스레드가 저장한 σ(r) 의 사본은 σ(σ(r)) = σ(r) 이다.
+증명. σ 는 함수이므로 t = r 이면 σ(t) = σ(r). 둘째 문장은 정리 2. 그래서 world_state 의 모델 전환 판정(사본 ≠ 렌더 이면 전환)이 옛 스레드에서 거짓으로 서지 않는다. update_plan 문단 빼기 u 는 두 쪽 모두 σ 뒤에 붙인다(u∘σ). 같은 합성이므로 같은 값이다. □
+
+정리 4 (R5 비용·병렬). σ 의 비용은 O(|T|·|K|) 이고 이력 길이·세대와 무관하다. φ(p) 는 p 에만, 표지 판정은 문장 하나에만 기댄다. 문단끼리·문장끼리 서로의 결과를 읽지 않는다.
+증명. 문단 나누기·문장 나누기·표지 찾기가 각각 T 를 한 번 훑는다. 입력에 이력이 없다. φ 와 판정의 정의역이 각각 문단 하나, 문장 하나다. □
+
+한계(무관, 목록만): K 는 오늘의 두 목록에서 E 를 가르는 표지다. 서버가 압축 서술을 다른 말로 바꾸면 R1 은 그 판에서 다시 재야 한다. 그때는 L1(K) 결함이다.
+
+### 10.2 L2 — 알고리즘
+
+끝 조건: 자리·자료·비용을 적고, 처리 순서에 기댄 상태가 없음을 보인다.
+
+- `codex_prompts::without_compaction_guidance(&str) -> String` (prompts/src/compaction_guidance.rs, 새 파일). 바이트 훑기로 구분자(`\n` 두 개 이상, 사이 `\r`·공백 허용 안 함 — 목록의 문단 구분은 `\n\n`)를 찾아 문단 조각을 얻고, 조각마다 φ 를 계산해 이어 붙인다. 문단에 표지가 하나도 없으면(문단 전체 소문자 사본에서 표지 찾기로 먼저 거른다) 원문 조각을 그대로 복사한다. 상태는 조각마다 지역 변수뿐이다.
+- 적용 1: `render_model_instructions` 가 템플릿을 σ 로 돌려준다(새 스레드 저장, 모델 전환 섹션, 토큰 어림, 세션 가져오기).
+- 적용 2: `get_prompt_base_instructions` 가 출처 Custom 이 아니면 σ 를 먼저 적용하고, 그 뒤 기존 update_plan 갈래를 그대로 탄다.
+- 적용 3: `session.rs:796` 의 옛 출처 추정(`text == render`)을 `σ(text) == render` 로 바꾼다(정리 3 과 같은 이유).
+- 비용: 지시문 2만 바이트 안팎, 요청마다 한 번, 마이크로초 단위.
+
+### 10.3 L3 — 코드
+
+끝 조건: 위 세 자리만 바꾼다. 시험: (a) E1–E12 각각이 지워지고 기대 남김과 같다, (b) 동봉 목록의 모든 모델에서 렌더 결과에 E 가 0 이고 지워진 문장 집합 ⊆ E, (c) 멱등, (d) 압축 서술 없는 지시문(prompt.md)은 그대로.
+
+### 10.4 저장소 정리 (R6)
+
+- 이력: 우리 커밋(기준 74e804dee 위)만 다시 쓴다. 작성자·커밋자를 `raspie10032` 과 GitHub noreply 주소로(개인 이메일은 작성자에 넣지 않는다 — 사용자 2026-10-15), 우리 파일(codex-rs 밖) 의 경로를 `$WORK/`·`~/` 로 바꾼다. upstream 파일과 codex-rs 의 글은 건드리지 않는다(codex-rs 에서 걸린 줄 0 을 먼저 확인했다).
+- 끝 판: 같은 규칙. 사용자 이름이 든 경로가 남은 파일 0 을 다시 센다.
+
+### 10.5 L4 — 결과 (2026-10-15 16시)
+
+- **codex-prompts 시험** 46/46 통과(새 시험 5: E1–E12 표지, 형용사 compact 제외, 문단 기대값, 마지막 문단 모양, 동봉 11모델에서 지운 문장 ⊆ E·깨끗한 문단 보존·멱등). codex-models-manager 54/54.
+- **스모크**(`l3check/release1/run.sh`, 결과 `result.txt`). 릴리스 바이너리 + 로컬 모의 공급자 + 서버 모델 목록 사본(9모델). 요청 본문을 그대로 받아 봤다. 기본 지시문은 `instructions` 필드가 아니라 `input` 의 첫 developer 메시지로 간다.
+  - S_a(새 스레드, gpt-6-astra·gpt-5.6-sol): E 0, 표지 0, 깨끗한 문단 69·59 개 모두 그대로. 통과.
+  - S_b(옛 스레드 이어 열기, 저장 지시문 출처 model·E 5개): 요청의 E 0. 저장 기록의 E 는 5 그대로(R4). 모델 전환 메시지가 새로 붙지 않았다(정리 3). 통과.
+  - S_c(`model_instructions_file`, Custom): 사용자 글 그대로, E 1 유지(R3). 통과.
+  - 세 요청 본문 전체에서 표지 0. 임시 롤아웃의 압축 사건 0.
+  - 서버 9모델 템플릿에서 표지가 걸리는 문장 가운데 E 밖의 것 0(R2).
+- **codex-core 회귀**: 바꾸기 전(d41a756)과 뒤를 같은 조건(시험 하나에 프로세스 하나, 32 MiB 스택, `l3check/run_isolated_suite.py`)으로 돌려 실패 집합을 맞댔다. lib `session::` 382건: 전후 모두 통과 345·실패 37, 실패 집합 같음. 통합 시험(model_switching·prompt_caching·remote_models·personality·collaboration_instructions·step_settings) 131건: 전후 모두 통과 15·실패 115(종료 101 이 83, SIGSEGV 32), 집합 같음. 이 실패는 바꾸기 전부터 있던 것이다(앞 판 기록 `ours4`·`baseline3` 에도 이 환경의 대량 실패가 있다). 새 실패 0.
+- 한 프로세스에 여러 시험을 몰아 돌리면 기본 스택에서 넘침, 32 MiB 에서도 SIGSEGV 로 중간에 멈춘다(전후 같음). 무관 목록.
+- 덤으로 본 것(무관): 작업 트리 둘이 대상 디렉터리 하나를 같이 쓰면 cargo 가 새 파일을 못 보고 다른 트리의 산출물을 신선하다고 본다. 비교 빌드에서 걸렸고, 바뀐 파일의 수정 시각을 갱신해 다시 지었다. 릴리스 바이너리는 바뀐 쪽을 먼저 지은 것이고 스모크가 그것을 확인했다.
+
+G_rel 진척: 지시문 쪽(R1–R5) 통과. 남은 것은 R6–R8(이력 정리·새 클론 빌드·릴리스).
