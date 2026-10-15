@@ -14,7 +14,7 @@ Every place that builds model input calls that same assembly. That includes the 
 - **Base:** `rust-v0.162.0-alpha.17.2` (`740e5af`), the Codex version bundled with ChatGPT desktop app 26.1007. The first VRS build was on `rust-v0.162.0-alpha.2` (`74e804dee`, tagged `vrs-base`) and was merged forward.
 - **Incremental tools:** upstream's experimental `incremental_tools` feature records instructions and tool definitions into the history. This fork rebuilds that prefix on every request instead, so the feature is accepted but ignored.
 - **Branch:** `main`, with libvrs round 7 (`vrs-lib7/`). The work was done on a branch named `vrs-int`, which the design records still mention.
-- **Release:** [`fcc-v1.1.0`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.0) has a prebuilt, stripped `codex` for x86_64 Linux.
+- **Release:** [`fcc-v1.1.1`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.1) has a prebuilt, stripped `codex` for x86_64 Linux.
 - **In daily use:** this fork has been the Codex binary of the maintainer's ChatGPT desktop app on Linux since 2026-10-13. It ran on the alpha.2 base with app 26.1002 until 2026-10-15, and since then on this base with app 26.1007.
 - **Gates:** the application smoke gates (S1-S5) pass, with no failed receipts and no compaction events.
 - **CI:** [`fcc-ci`](.github/workflows/fcc-ci.yml) builds and tests on x86_64 Linux with the prebuilt libvrs, then runs one mock-provider turn that must be assembled by VRS. Upstream's Bazel and multi-platform workflows are turned off in this repository: they need OpenAI's own runners and a toolchain the prebuilt library is not built for.
@@ -28,7 +28,7 @@ Every place that builds model input calls that same assembly. That includes the 
 
 This is Linux only (on other systems the store refuses to open).
 
-To skip building, download the binary from the [`fcc-v1.1.0` release](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.0). It was built on glibc 2.43 with GCC 16.2.1, so it needs a recent distribution.
+To skip building, download the binary from the [`fcc-v1.1.1` release](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.1). It was built on Ubuntu 24.04 (glibc 2.39) and runs there and on newer distributions.
 
 The library is already here: [`vrs-lib7/prebuilt/x86_64-linux-gnu/libvrs.a`](vrs-lib7/prebuilt/x86_64-linux-gnu/) is the exact libvrs round 7 used by the deployed build, with the SWEGCA C++ core compiled in. The Rust build links it by default, so this is all you need:
 
@@ -39,7 +39,7 @@ cargo build --release -p codex-cli
 
 A few notes:
 
-- The prebuilt archive is for x86_64 and was built with GCC 16.2.1 on glibc 2.43. On an older distribution, linking may fail with missing `GLIBCXX_*` symbols. The [prebuilt README](vrs-lib7/prebuilt/x86_64-linux-gnu/README.md) has the details.
+- The prebuilt archive is for x86_64 and was built with GCC 14.2.0 on Ubuntu 24.04 (glibc 2.39). It needs glibc 2.38 or newer and a `libstdc++` from GCC 13 or newer; CI links it on Ubuntu 24.04. The [prebuilt README](vrs-lib7/prebuilt/x86_64-linux-gnu/README.md) has the details.
 - To link a different `libvrs.a`, set `VRS_LIB_DIR` to the directory that holds it. The library source is `vrs-lib7/vrs_lib.cpp`. The SWEGCA core sources it also needs are not included, only their compiled objects inside the prebuilt archive.
 - To use it with the ChatGPT desktop app, point `CODEX_CLI_PATH` at your build. The app picks its Codex binary from that variable.
 
