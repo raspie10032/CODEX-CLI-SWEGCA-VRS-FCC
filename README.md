@@ -13,7 +13,7 @@ Every place that builds model input calls that same assembly. That includes the 
 
 - **Base:** `rust-v0.162.0-alpha.17.2` (`740e5af`), the Codex version bundled with ChatGPT desktop app 26.1007. The first VRS build was on `rust-v0.162.0-alpha.2` (`74e804dee`, tagged `vrs-base`) and was merged forward.
 - **Incremental tools:** upstream's experimental `incremental_tools` feature records instructions and tool definitions into the history. This fork rebuilds that prefix on every request instead, so the feature is accepted but ignored.
-- **Branch:** `vrs-int`, with libvrs round 7 (`vrs-lib7/`).
+- **Branch:** `main`, with libvrs round 7 (`vrs-lib7/`). The work was done on a branch named `vrs-int`, which the design records still mention.
 - **Release:** [`fcc-v1.1.0`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.0) has a prebuilt, stripped `codex` for x86_64 Linux.
 - **In daily use:** this fork has been the Codex binary of the maintainer's ChatGPT desktop app on Linux since 2026-10-13. It ran on the alpha.2 base with app 26.1002 until 2026-10-15, and since then on this base with app 26.1007.
 - **Gates:** the application smoke gates (S1–S5) pass, with no failed receipts and no compaction events.
