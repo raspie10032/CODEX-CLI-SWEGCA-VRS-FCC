@@ -1330,6 +1330,19 @@ G_port: 앱 26.1007 과 터미널 codex 가 upstream 0.162.0-alpha.17.2 위에 V
 
 끝 조건: upstream 변화 가운데 「모델 입력이 무엇인가」·「압축이 무엇인가」의 뜻을 바꾸는 것을 모두 적는다. 있으면 정의를 고친다. 없으면 §3 정의를 그대로 쓴다고 적는다. 직렬 구조 없음.
 
+**11.1 결과 (17시대, 읽기만).** upstream 8d44977..740e5af 의 커밋 가운데 압축·모델 입력·기록에 닿는 것을 읽었다.
+
+- `6326163`(Responses Lite 의 도구 목록을 증분으로 보냄)·`062439b`(기본 지시문을 증분 도구 이력에 developer 항목으로 기록하고 요청의 `instructions` 를 뺌)·`602d2ad`(`additional_tools` 항목을 rollout 에 기록). 셋이 합쳐지면 요청 앞부분(기본 지시문·도구 정의)이 이력에 쌓이는 상태가 된다. 그러면 앞부분이 스토어 S 의 항목이 되고 A 가 그것을 고른다. libvrs 는 이 종류(`BaseInstructionsState`, `TopLevelToolsState`)를 모른다. 모르는 종류는 「남기고 바꾸지 않음」이라, 지시문·도구가 겹쳐 쌓이거나 예산에서 잘릴 수 있다. D3 의 뜻(앞부분은 요청마다 붙이고, A 는 대화 항목)과 맞지 않는다.
+  - 이 길은 `Feature::IncrementalTools`(UnderDevelopment, 기본 꺼짐) 와 `use_responses_lite` 가 모두 참일 때만 열린다(`session/step_context.rs:52`). 기본 설정에서는 alpha.2 와 같이 앞부분이 요청마다 붙는다.
+  - **D3′ (추가 정의).** 요청 앞부분(기본 지시문, 도구 정의, 출력 형식)은 요청마다 그 단계의 설정에서 새로 만들어 붙인다. 스토어의 항목이 아니고 A 의 출력에 들지 않는다. `incremental_tools` 는 이 뜻과 맞지 않으므로 이 포크에서는 켜도 꺼진 것으로 다룬다(`uses_incremental_tools()` = 거짓).
+  - 증명. `uses_incremental_tools()` 가 거짓이면 (a) world_state 가 `TopLevelToolsState`·`BaseInstructionsState` 를 더하지 않는다(`session/world_state.rs:122`). (b) 요청의 `tools`·`base_instructions` 는 그 단계의 값으로 채워진다(`session/turn.rs:1581–1587`). (c) 그 둘을 다루는 나머지 자리는 압축 경로(`compact_remote_v2_attempt.rs:46·94`)라 이미 지워졌다. 그러면 앞부분은 이력에 기록되지 않는다. A 의 입력 S 에 들지 않고, 요청마다 새로 붙는다. 이것은 alpha.2 에서 검증한 뜻 그대로다. ∎
+- `8b6bb1c`(메시지 phase 에 partial answer 추가): libvrs 는 `phase` 를 읽지 않는다. 뜻 바뀜 없음.
+- `bee28e8`(rollout 에 기록하는 명령 출력 `aggregated_output` 을 64 KiB 로 자름): 이벤트(`ExecCommandEnd`)의 UI 용 출력이다. 모델에 가는 `function_call_output` 항목의 기록 규칙은 바뀌지 않는다(L4 에서 rollout 으로 확인). 그렇다면 원문 무손실의 대상(모델이 본 항목)은 그대로다.
+- `4e37bbe`(실험적 prediction fork, 부모 맥락 물려받음)·`5f8b37c`(guardian 이 부모 체크포인트에서 복구)·`6221a21`(부분 이력 포크 제거): 새 모델 입력 자리다. D3 표의 A20(포크)·A10/A13(guardian)과 같은 뜻으로 다룬다. 자리는 L2(감사 4c)에서 센다.
+- `551bd40`·`8571b9e`·`86a54b0`: 압축 쪽의 변경이라 지운 모듈과 함께 사라진다.
+
+L1 끝: 뜻이 바뀌는 것은 하나(앞부분이 이력 상태가 되는 증분 도구 모드)였고, D3′ 로 닫았다. 나머지는 §3 정의를 그대로 쓴다. 직렬 구조 없음(D3′ 는 꺼짐 판정 하나). G_port 진척: P1–P3 의 뜻이 새 판에서도 그대로임을 정했다.
+
 ### 11.2 L2 — 자리
 
 끝 조건: 우리 이음매(압축 끊음 자리, 조립 입구, 지시문 빼기 자리)마다 새 트리의 자리를 적는다. 새로 생긴 자리는 어떻게 처리하는지(압축이면 지우거나 호출 자리에서 끊는다, 모델 입력이면 VRS 조립 입구로 보낸다, 모델 입력이 아니면 그 근거) 적는다. libvrs·FFI·스토어 배치는 바꾸지 않는다.
