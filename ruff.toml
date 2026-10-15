@@ -1,1 +1,1 @@
-extend-exclude = ["sdk/python", "codex-rs/vendor"]
+extend-exclude = ["sdk/python", "codex-rs/vendor", "l3check", "vrs-lib5", "vrs-lib6", "vrs-lib7"]
