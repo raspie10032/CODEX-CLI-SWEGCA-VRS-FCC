@@ -16,8 +16,8 @@ Extract the macOS ARM64 binary archive, keep `codex` and
 `codex-code-mode-host` together in the same directory, and run `codex`:
 
 ```sh
-./codex --version
-./codex
+./bin/codex --version
+./bin/codex
 ```
 
 The FCC CLI is ad hoc signed, not Apple notarized. It uses your normal Codex
