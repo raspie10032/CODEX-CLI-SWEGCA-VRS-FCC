@@ -50,7 +50,7 @@ pub struct Assembled {
     pub micros: u64,
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 mod ffi {
     use super::*;
 
@@ -100,7 +100,7 @@ mod ffi {
 }
 
 struct Handle {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     raw: *mut ffi::VrsH,
 }
 
@@ -163,7 +163,7 @@ fn initialize_once(open: impl FnOnce() -> Result<Handle, VrsError>) -> Result<()
     handle().map(|_| ())
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn open_handle(home: &Path) -> Result<Handle, String> {
     let sessions = home.join("sessions");
     let index = home.join("vrs").join("idx");
@@ -192,9 +192,9 @@ fn open_handle(home: &Path) -> Result<Handle, String> {
     Ok(Handle { raw })
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn open_handle(_home: &Path) -> Result<Handle, String> {
-    Err("libvrs is only available on Linux".to_string())
+    Err("libvrs is only available on Linux and macOS".to_string())
 }
 
 fn handle() -> Result<&'static Handle, VrsError> {
@@ -205,7 +205,7 @@ fn handle() -> Result<&'static Handle, VrsError> {
     result.as_ref().map_err(Clone::clone)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn c_path(path: &Path) -> Result<CString, VrsError> {
     use std::os::unix::ffi::OsStrExt;
     CString::new(path.as_os_str().as_bytes())
@@ -216,7 +216,7 @@ fn c_path(path: &Path) -> Result<CString, VrsError> {
 ///
 /// The insert is a union on the key `(path, off)`, so inserting the same line twice is harmless.
 /// An optional trailing newline is removed to match the C API's line contract.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub fn insert(path: &Path, off: u64, line: &[u8]) -> Result<(), VrsError> {
     let handle = handle()?;
     let path = c_path(path)?;
@@ -238,7 +238,7 @@ pub fn insert(path: &Path, off: u64, line: &[u8]) -> Result<(), VrsError> {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn insert(_path: &Path, _off: u64, _line: &[u8]) -> Result<(), VrsError> {
     handle().map(|_| ())
 }
@@ -246,7 +246,7 @@ pub fn insert(_path: &Path, _off: u64, _line: &[u8]) -> Result<(), VrsError> {
 /// Releases the library's in-memory copy after the line at `off` has been written and flushed.
 ///
 /// This acknowledges persistence; it does not wait for a writer or assembly operation.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub fn written(path: &Path, off: u64) -> Result<(), VrsError> {
     let handle = handle()?;
     let path = c_path(path)?;
@@ -261,7 +261,7 @@ pub fn written(path: &Path, off: u64) -> Result<(), VrsError> {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn written(_path: &Path, _off: u64) -> Result<(), VrsError> {
     handle().map(|_| ())
 }
@@ -271,7 +271,7 @@ pub fn written(_path: &Path, _off: u64) -> Result<(), VrsError> {
 /// Returns `Ok(true)` when it can, `Ok(false)` when `timeout_ms` passed first (call again),
 /// and an error when the store failed. The caller sleeps on the library's progress word; no
 /// other call is held.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub fn wait(path: &Path, timeout_ms: u64) -> Result<bool, VrsError> {
     let handle = handle()?;
     let path = c_path(path)?;
@@ -284,7 +284,7 @@ pub fn wait(path: &Path, timeout_ms: u64) -> Result<bool, VrsError> {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn wait(_path: &Path, _timeout_ms: u64) -> Result<bool, VrsError> {
     handle().map(|_| true)
 }
@@ -296,7 +296,7 @@ pub fn assemble(path: &Path) -> Result<Assembled, VrsError> {
 
 /// Assembles with the current request's input allowance, without changing shared store options.
 /// A zero allowance is an overflow, never a request to use the default budget.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub fn assemble_with_budget(path: &Path, budget: Option<u64>) -> Result<Assembled, VrsError> {
     if budget == Some(0) {
         return Err(VrsError::OverWindow);
@@ -341,7 +341,7 @@ pub fn assemble_with_budget(path: &Path, budget: Option<u64>) -> Result<Assemble
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn assemble_with_budget(_path: &Path, budget: Option<u64>) -> Result<Assembled, VrsError> {
     if budget == Some(0) {
         return Err(VrsError::OverWindow);

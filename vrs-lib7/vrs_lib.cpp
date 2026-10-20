@@ -32,14 +32,20 @@
 #include <pthread.h>
 #include <sched.h>
 #include <strings.h>
+#if defined(__linux__)
 #include <sys/eventfd.h>
 #include <sys/inotify.h>
+#include <linux/futex.h>
+#include <sys/syscall.h>
+#elif defined(__APPLE__)
+#include <CoreServices/CoreServices.h>
+#include <dispatch/dispatch.h>
+#include <os/os_sync_wait_on_address.h>
+#endif
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <climits>
-#include <linux/futex.h>
-#include <sys/syscall.h>
 #include "swegca_architecture/evidence_rules.hpp"
 
 namespace fs = std::filesystem;
@@ -1291,6 +1297,10 @@ struct Store {
   bool stale_index = false;                      // the index was built for another spelling of the sessions directory: its shards are not used
   std::atomic<int64_t> fin_left{0};              // base sessions whose first look after the load has not run
   std::atomic<uint32_t> progress{0};             // 6th stage P-14: bumped (and futex-woken) when ready is set or a lineage is set up; vrs_wait sleeps on it
+#if defined(__APPLE__)
+  std::atomic<int> watcher_status{0};
+  int stop_write_fd = -1;
+#endif
   std::chrono::steady_clock::time_point hold_ready{};  // test hook VRS_DBG_HOLD_READY_MS (race injection T6-2): ready is not latched before this
   std::atomic<int> hold_armed{0};
   bool dbg_fail_ready = false;  // test hook VRS_DBG_FAIL_READY (T6-2)
@@ -1332,6 +1342,9 @@ struct Store {
     for (int k = 0; k < 3; k++) for (RetNode* r = ebr.lst[k].load(); r;) { RetNode* nx = r->next; free_ret(r); r = nx; }
     for (uint32_t q = 1, e = nsg.load(); q <= e; q++) delete sp[q].load();
     if (stop_fd >= 0) ::close(stop_fd);
+#if defined(__APPLE__)
+    if (stop_write_fd >= 0) ::close(stop_write_fd);
+#endif
   }
   const PSlot* pt_find(uint64_t key) const { auto* n = PT.find(key); return n ? &n->val : nullptr; }
   void pt_add(uint32_t sg, uint64_t h, uint32_t tpos) {  // sorted insert; the turns of a session may close in any order
@@ -3723,7 +3736,11 @@ void ingest_file_tail(Store& S, Sess& ss, bool restore = false) {
   const uint64_t from = ss.front.load(std::memory_order_seq_cst);
   struct stat st;
   if (fstat(fd, &st) != 0 || (uint64_t)st.st_size <= from) { ::close(fd); return; }
+#if defined(__APPLE__)
+  ::fcntl(fd, F_RDAHEAD, 1);
+#else
   posix_fadvise(fd, (off_t)from, 0, POSIX_FADV_SEQUENTIAL);
+#endif
   std::string buf; uint64_t base_off = from; size_t scan = 0, start = 0;
   const size_t CHUNK = size_t(1) << 24;
   bool nul_stop = false;
@@ -3851,7 +3868,11 @@ uint64_t ident_hash(const Sess& ss) {
 // P-14: wake every vrs_wait sleeper after a state change it may be waiting for
 void bump_progress(Store& S) {
   S.progress.fetch_add(1, std::memory_order_seq_cst);
+#if defined(__APPLE__)
+  os_sync_wake_by_address_all(&S.progress, sizeof(uint32_t), OS_SYNC_WAKE_BY_ADDRESS_NONE);
+#else
   syscall(SYS_futex, reinterpret_cast<uint32_t*>(&S.progress), FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
+#endif
 }
 // P-12: the path a caller hands in, as the store spells it: the real path of its directory plus its name (the file may not exist yet).
 // A directory that does not exist yet: the real path of its longest existing ancestor plus the rest (what the directory will be once made,
@@ -3921,10 +3942,14 @@ void ask_ingest(Store& S, Sess& ss) {  // the file has new bytes: a task reads t
 // sleeps on a futex word and is woken by the next push. No batch creates threads.
 void worker_main(Store* Sp, unsigned wi) {
   Store& S = *Sp;
+#if defined(__linux__)
   if (!S.cpus.empty()) {
     cpu_set_t set; CPU_ZERO(&set); CPU_SET(S.cpus[wi % S.cpus.size()], &set);
     pthread_setaffinity_np(pthread_self(), sizeof set, &set);
   }
+#else
+  (void)wi;  // macOS schedules workers; Linux CPU affinity masks do not apply.
+#endif
   for (;;) {
     if (S.stop.load(std::memory_order_relaxed)) break;
     uint64_t v;
@@ -3949,6 +3974,7 @@ void scan_new_dir(Store& S, const std::string& dir, AddW& addw) {  // a director
     if (ss) ask_ingest(S, *ss);
   }
 }
+#if defined(__linux__)
 void watch_main(Store* Sp) {
   Store& S = *Sp;
   const int fd = inotify_init1(IN_CLOEXEC);
@@ -3991,11 +4017,91 @@ void watch_main(Store* Sp) {
   }
   ::close(fd);
 }
+#elif defined(__APPLE__)
+void mac_watch_failed(Store& S) {
+  S.watcher_status.store(-1, std::memory_order_release);
+  S.watcher_status.notify_all();
+  bump_progress(S);
+}
+void mac_watch_events(ConstFSEventStreamRef, void* context, size_t count,
+                      void* paths, const FSEventStreamEventFlags flags[],
+                      const FSEventStreamEventId[]) {
+  Store& S = *static_cast<Store*>(context);
+  if (S.stop.load(std::memory_order_acquire)) return;
+  const auto names = static_cast<char**>(paths);
+  auto addw = [](const std::string&) {};  // FSEvents watches the whole subtree.
+  for (size_t i = 0; i < count; ++i) {
+    if (flags[i] & kFSEventStreamEventFlagRootChanged) {
+      mac_watch_failed(S);
+      return;
+    }
+    if (flags[i] & (kFSEventStreamEventFlagMustScanSubDirs |
+                    kFSEventStreamEventFlagUserDropped |
+                    kFSEventStreamEventFlagKernelDropped)) {
+      scan_new_dir(S, S.sdir, addw);
+      continue;
+    }
+    const fs::path path(names[i]);
+    std::error_code ec;
+    const auto st = fs::symlink_status(path, ec);
+    if (ec || fs::is_symlink(st)) continue;
+    if (fs::is_directory(st)) {
+      scan_new_dir(S, path.string(), addw);
+    } else if (fs::is_regular_file(st) && path.extension() == ".jsonl") {
+      if (Sess* ss = get_sess(S, canon_path(S, path.c_str()), true)) ask_ingest(S, *ss);
+    }
+  }
+}
+void watch_main(Store* Sp) {
+  Store& S = *Sp;
+  const auto root = CFStringCreateWithFileSystemRepresentation(nullptr, S.sdir.c_str());
+  if (!root) { mac_watch_failed(S); return; }
+  const void* root_value = root;
+  const auto paths = CFArrayCreate(nullptr, &root_value, 1, &kCFTypeArrayCallBacks);
+  CFRelease(root);
+  if (!paths) { mac_watch_failed(S); return; }
+  FSEventStreamContext context{0, &S, nullptr, nullptr, nullptr};
+  const auto stream = FSEventStreamCreate(nullptr, mac_watch_events, &context, paths,
+      kFSEventStreamEventIdSinceNow, 0.05,
+      kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer |
+      kFSEventStreamCreateFlagWatchRoot);
+  CFRelease(paths);
+  if (!stream) { mac_watch_failed(S); return; }
+  const auto queue = dispatch_queue_create("swegca.vrs.file-events", DISPATCH_QUEUE_SERIAL);
+  if (!queue) { FSEventStreamRelease(stream); mac_watch_failed(S); return; }
+  FSEventStreamSetDispatchQueue(stream, queue);
+  if (!FSEventStreamStart(stream)) {
+    FSEventStreamInvalidate(stream);
+    FSEventStreamRelease(stream);
+    dispatch_release(queue);
+    mac_watch_failed(S);
+    return;
+  }
+  // Close the creation/append race between the initial restore inventory and
+  // starting the event stream. Inserts are idempotent on (path, offset).
+  auto addw = [](const std::string&) {};
+  scan_new_dir(S, S.sdir, addw);
+  int starting = 0;
+  S.watcher_status.compare_exchange_strong(starting, 1, std::memory_order_release);
+  S.watcher_status.notify_all();
+  pollfd stop{S.stop_fd, POLLIN, 0};
+  while (::poll(&stop, 1, -1) < 0 && errno == EINTR) {}
+  FSEventStreamStop(stream);
+  FSEventStreamInvalidate(stream);
+  // Drain callbacks before the Store can be destroyed.
+  dispatch_sync_f(queue, nullptr, [](void*) {});
+  FSEventStreamRelease(stream);
+  dispatch_release(queue);
+}
+#endif
 
 // ---------------- D3: the input of a thread ----------------
 int assemble_impl(Store& S, const char* path, uint64_t B, char** json, size_t* jlen) {
   const auto t0 = std::chrono::steady_clock::now();
   *json = nullptr; *jlen = 0;
+#if defined(__APPLE__)
+  if (S.watcher_status.load(std::memory_order_acquire) < 0) return -2;
+#endif
   const int rd = S.ready.load(std::memory_order_acquire);
   if (rd < 0) return -2;
   if (rd == 0) return 1;  // D5: not ready is an error, never a fallback
@@ -4102,7 +4208,16 @@ int vrs_open(const vrs_opts* o, vrs_h** out) {
     S.base.push_back(ss);
   }
   S.nsg.store((uint32_t)files.size());
+#if defined(__APPLE__)
+  int stop_pipe[2];
+  if (::pipe(stop_pipe) != 0) return -4;
+  S.stop_fd = stop_pipe[0];
+  S.stop_write_fd = stop_pipe[1];
+  if (::fcntl(S.stop_fd, F_SETFD, FD_CLOEXEC) == -1 ||
+      ::fcntl(S.stop_write_fd, F_SETFD, FD_CLOEXEC) == -1) return -4;
+#else
   S.stop_fd = ::eventfd(0, EFD_CLOEXEC);
+#endif
   vrs_h* h = new vrs_h{sp.release()};
   Store* Sr = h->S;
   Sr->B.st = Sr; Sr->B.yields = &Sr->insert_waits;
@@ -4111,6 +4226,10 @@ int vrs_open(const vrs_opts* o, vrs_h** out) {
   for (unsigned w = 0; w < Sr->nworkers; w++) Sr->workers.emplace_back(worker_main, Sr, w);
   if (S.base.empty()) restore_last(*Sr);
   Sr->watcher = std::thread(watch_main, Sr);
+#if defined(__APPLE__)
+  Sr->watcher_status.wait(0, std::memory_order_acquire);
+  if (Sr->watcher_status.load(std::memory_order_acquire) < 0) { vrs_close(h); return -4; }
+#endif
   *out = h;
   return 0;
 }
@@ -4161,6 +4280,9 @@ int vrs_wait(vrs_h* h, const char* path, uint64_t timeout_ms) {
   for (;;) {
     const uint32_t seen = S.progress.load(std::memory_order_seq_cst);
     const int rd = S.ready.load(std::memory_order_seq_cst);
+#if defined(__APPLE__)
+    if (S.watcher_status.load(std::memory_order_acquire) < 0) return -2;
+#endif
     if (rd < 0) return -2;
     if (rd == 1) {
       if (cp.empty()) return 0;
@@ -4170,9 +4292,15 @@ int vrs_wait(vrs_h* h, const char* path, uint64_t timeout_ms) {
     }
     const auto now = std::chrono::steady_clock::now();
     if (now >= end) return 1;
+#if defined(__APPLE__)
+    const auto left = std::chrono::duration_cast<std::chrono::nanoseconds>(end - now).count();
+    os_sync_wait_on_address_with_timeout(&S.progress, seen, sizeof(uint32_t),
+        OS_SYNC_WAIT_ON_ADDRESS_NONE, OS_CLOCK_MACH_ABSOLUTE_TIME, uint64_t(left));
+#else
     const auto left = std::chrono::duration_cast<std::chrono::nanoseconds>(end - now).count();
     timespec ts{time_t(left / 1000000000), long(left % 1000000000)};
     syscall(SYS_futex, reinterpret_cast<uint32_t*>(&S.progress), FUTEX_WAIT_PRIVATE, seen, &ts, nullptr, 0);
+#endif
   }
 }
 int vrs_assemble_b(vrs_h* h, const char* path, uint64_t budget, char** json, size_t* len) {
@@ -4192,7 +4320,11 @@ void vrs_close(vrs_h* h) {
   S.wq.sig.fetch_add(1);
   S.wq.sig.notify_all();
   const uint64_t one = 1;
+#if defined(__APPLE__)
+  if (S.stop_write_fd >= 0) { const ssize_t w = ::write(S.stop_write_fd, &one, sizeof one); (void)w; }
+#else
   if (S.stop_fd >= 0) { const ssize_t w = ::write(S.stop_fd, &one, sizeof one); (void)w; }
+#endif
   for (auto& t : S.workers) if (t.joinable()) t.join();
   if (S.watcher.joinable()) S.watcher.join();
   delete h->S;

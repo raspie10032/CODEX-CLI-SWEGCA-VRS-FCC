@@ -15,7 +15,7 @@ Every place that builds model input calls that same assembly. That includes the 
 - **Incremental tools:** upstream's experimental `incremental_tools` feature records instructions and tool definitions into the history. This fork rebuilds that prefix on every request instead, so the feature is accepted but ignored.
 - **Branch:** `main`, with libvrs round 7 (`vrs-lib7/`). The work was done on a branch named `vrs-int`, which the design records still mention.
 - **Release:** [`fcc-v1.1.2`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.2) has a prebuilt, stripped `codex` for x86_64 Linux.
-- **macOS preview:** [`fcc-v1.1.1-macos.1`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.1-macos.1) is a prerelease for Apple Silicon (macOS 14.4 or newer). See [macOS (preview)](#macos-preview) below.
+- **macOS preview:** [`fcc-v1.1.2-macos.1`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.2-macos.1) includes the v1.1.2 fixes for Apple Silicon (macOS 14.4 or newer). See [macOS (preview)](#macos-preview) below.
 - **In daily use:** this fork has been the Codex binary of the maintainer's ChatGPT desktop app on Linux since 2026-10-13. It ran on the alpha.2 base with app 26.1002 until 2026-10-15, and since then on this base with app 26.1007.
 - **Gates:** the application smoke gates (S1-S5) pass, with no failed receipts and no compaction events.
 - **CI:** [`fcc-ci`](.github/workflows/fcc-ci.yml) builds and tests on x86_64 Linux with the prebuilt libvrs, then runs one mock-provider turn that must be assembled by VRS. Upstream's Bazel and multi-platform workflows are turned off in this repository: they need OpenAI's own runners and a toolchain the prebuilt library is not built for.
@@ -27,7 +27,8 @@ Every place that builds model input calls that same assembly. That includes the 
 
 ## Build
 
-Building from this branch is Linux only (on other systems the store refuses to open). For a Mac, see [macOS (preview)](#macos-preview).
+The Linux build uses `main`. For Apple Silicon, check out the complete macOS
+source tag `fcc-v1.1.2-macos.1`; see [macOS (preview)](#macos-preview).
 
 To skip building, download the binary from the [`fcc-v1.1.2` release](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.2). It was built on Ubuntu 24.04 (glibc 2.39) and runs there and on newer distributions.
 
@@ -46,14 +47,15 @@ A few notes:
 
 ## macOS (preview)
 
-[`fcc-v1.1.1-macos.1`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.1-macos.1) is a prerelease of v1.1.1 for Apple Silicon, so it does not have the v1.1.2 fixes yet. It needs macOS 14.4 or newer on arm64. There is no Intel Mac build, and the Linux release is still the stable one.
+[`fcc-v1.1.2-macos.1`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.2-macos.1) is the Apple Silicon preview of v1.1.2, including prediction-fork VRS input, Markdown-link user message retention, and idle-thread memory release. It needs macOS 14.4 or newer on arm64. There is no Intel Mac build, and the Linux release is still the stable one.
 
-- **Install:** download `codex-fcc-v1.1.1-macos.1-aarch64-apple-darwin.tar.gz` and `SHA256SUMS` from the release, compare the archive's hash (`shasum -a 256 <archive>`), and extract it. Keep `codex` and `codex-code-mode-host` in the same directory, because Code Mode models need the host. Then run `./codex --version`.
-- **ChatGPT desktop app:** put both files at a stable path, export the absolute path of `codex` as `CODEX_CLI_PATH` in your login shell configuration, then quit the app completely and open it again. This was checked with app 26.1007.71326.
-- **Signing:** the FCC `codex` is ad hoc signed and not notarized by Apple. `codex-code-mode-host` is the unmodified one from ChatGPT.app 26.1007.71326 with its original signature; `BUILD-INFO.json` in the archive records where it came from and its hash.
+- **Install:** download `codex-fcc-v1.1.2-macos.1-aarch64-apple-darwin.tar.gz` and `SHA256SUMS` from the release, compare the archive's hash (`shasum -a 256 <archive>`), and extract it. Keep `codex` and `codex-code-mode-host` in the same directory, because Code Mode models need the host. Then run `./codex --version`. The CLI reports its upstream version `0.162.0-alpha.17.2`; `BUILD-INFO.json` identifies the FCC version.
+- **ChatGPT desktop app:** put both files at a stable path, export the absolute path of `codex` as `CODEX_CLI_PATH` in your login shell configuration, then quit the app completely and open it again. The override selection was inspected in apps 26.1013.31256 and 26.1013.40934. A running app-server keeps its old executable until restart.
+- **Signing:** the FCC `codex` is ad hoc signed and not notarized by Apple. `codex-code-mode-host` is the unmodified one from ChatGPT.app 26.1013.31256 (identical in 26.1013.40934) with its original signature; `BUILD-INFO.json` records its provenance, hash and runtime validation.
 - **Going back:** `README-MACOS.md` in the archive explains how to roll back.
-- **Source:** the macOS changes (FSEvents for file watching, Darwin's atomic wait/wake API) and the arm64 `libvrs.a` are in the release's `codex-fcc-v1.1.1-macos.1-source.tar.gz`. They are not on `main`: the tag points at the base commit, so GitHub's automatic source archives for the tag do not include them.
-- **Tested so far:** short runs only. Native macOS scenario tests, the same output as Linux on synthetic conversations, and two real turns including exact recall after a resume, with no failed receipts and no compaction. The multi-day numbers in this README were measured on Linux.
+- **Source:** tag `fcc-v1.1.2-macos.1` and the attached `codex-fcc-v1.1.2-macos.1-source.tar.gz` contain the complete macOS port (FSEvents, Darwin atomic wait/wake) and arm64 `libvrs.a`. GitHub's automatic source archives now include those changes too.
+- **Index upgrade:** VX06 indexes rebuild as VX07 without changing the original session records. The first launch can take longer.
+- **Tested so far:** short runs only. Native file-watch and wait/wake scenarios, VX06-to-VX07 migration with 24 original user messages, CLI/app-server prediction forks, and authenticated file-read/resume checks. See the release's `BUILD-INFO.json` for results. The multi-day numbers in this README were measured on Linux.
 
 ## How it runs
 
