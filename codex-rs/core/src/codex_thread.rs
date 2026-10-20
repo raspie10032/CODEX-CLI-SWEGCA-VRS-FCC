@@ -1030,6 +1030,12 @@ impl CodexThread {
         self.session.multi_agent_version()
     }
 
+    /// Releases the live history while the thread is unused (design §12 D4''). False if a turn
+    /// is running.
+    pub async fn release_live_history(&self) -> bool {
+        self.session.release_live_history().await
+    }
+
     /// Assembles an immutable parent model context with retained host facts.
     /// Assembly failures are returned without substituting another context.
     pub async fn conversation_history_snapshot(

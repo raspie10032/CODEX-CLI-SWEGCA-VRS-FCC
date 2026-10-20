@@ -12,9 +12,19 @@ use crate::PreparedFork;
 use crate::ThreadStoreError;
 use crate::ThreadStoreResult;
 
+/// What a prepared fork carries as its startup context.
+#[derive(Clone, Copy)]
+pub(super) enum ForkContext {
+    /// The source's rollout items behind the cut, replayed by the child.
+    Replayed,
+    /// The source's metadata line only; the child references its loaded parent (design D19).
+    Referenced,
+}
+
 pub(super) async fn prepare(
     store: &LocalThreadStore,
     params: PrepareForkParams,
+    context: ForkContext,
 ) -> ThreadStoreResult<PreparedFork> {
     let PrepareForkParams {
         thread_id,
@@ -74,7 +84,10 @@ pub(super) async fn prepare(
 
     let history_base = history_base_at_boundary(store, thread_id, boundary, &lineage).await?;
     drop(source_writer_guard);
-    let model_context = Arc::new(model_context::load_for_fork(lineage, history_base).await?);
+    let model_context = Arc::new(match context {
+        ForkContext::Replayed => model_context::load_for_fork(lineage, history_base).await?,
+        ForkContext::Referenced => model_context::load_reference_for_fork(&lineage).await?,
+    });
 
     Ok(PreparedFork::new(
         thread_id,

@@ -214,6 +214,11 @@ impl SessionState {
         Ok(self.vrs_live_cache.install(&mut self.history, cut, items))
     }
 
+    /// Design §12 D4'': releases the assembled history of an unused thread.
+    pub(crate) fn release_vrs_history(&mut self) {
+        self.vrs_live_cache.release(&mut self.history);
+    }
+
     #[cfg(test)]
     pub(crate) fn replace_history(
         &mut self,

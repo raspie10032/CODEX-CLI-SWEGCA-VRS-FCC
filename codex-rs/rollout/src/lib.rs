@@ -165,6 +165,7 @@ pub use policy::should_persist_response_item;
 pub use policy::should_persist_response_item_for_memories;
 pub use recorder::RolloutRecorder;
 pub use recorder::RolloutRecorderParams;
+pub use recorder::VirtualRollout;
 pub use recorder::append_rollout_item_to_path;
 pub use recorder::encode_rollout_line;
 pub use reverse_jsonl_scanner::ReverseJsonlScanner;

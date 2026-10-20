@@ -811,12 +811,52 @@ struct InstrState {
   }
 };
 
-// 3판 2판 정정: a relay = a role user message whose first text starts with "["
+// One character of the raw JSON string s at p, escapes decoded: its code point and its length n. Bytes of a UTF-8 sequence count one by one
+// (none of them equals an ASCII code point), except the route arrow U+2192 (E2 86 92). -1 (n = 0) at the closing quote, the end or a bad escape.
+int json_char(const std::string& s, size_t p, size_t& n) {
+  n = 0;
+  if (p >= s.size() || s[p] == '"') return -1;
+  if (s[p] != '\\') {
+    if (s.compare(p, 3, "\xE2\x86\x92") == 0) { n = 3; return 0x2192; }
+    n = 1; return (unsigned char)s[p];
+  }
+  if (p + 1 >= s.size()) return -1;
+  const char e = s[p + 1];
+  if (e == 'u') {
+    if (p + 6 > s.size()) return -1;
+    int v = 0;
+    for (size_t k = p + 2; k < p + 6; k++) {
+      const char h = s[k];
+      const int d = h >= '0' && h <= '9' ? h - '0' : h >= 'a' && h <= 'f' ? h - 'a' + 10 : h >= 'A' && h <= 'F' ? h - 'A' + 10 : -1;
+      if (d < 0) return -1;
+      v = v * 16 + d;
+    }
+    n = 6; return v;
+  }
+  n = 2;
+  switch (e) {
+    case 'n': return '\n'; case 'r': return '\r'; case 't': return '\t'; case 'b': return 8; case 'f': return 12;
+    case '"': case '\\': case '/': return e;
+    default: n = 0; return -1;
+  }
+}
+// 8차 §12.6 D17' (V8-04): a relay opens with its sender's route label. The first line of the first text starts with "[", the label runs to
+// the first "]" on that line, holds the route arrow "→", and that "]" is not followed by "(" (an inline link "[text](url)" is the user's own text).
 bool is_fwd(const std::string& line) {
   const size_t c = line.find("\"content\":[");
   if (c == std::string::npos) return false;
   const size_t tx = line.find("\"text\":\"", c);
-  return tx != std::string::npos && tx + 8 < line.size() && line[tx + 8] == '[';
+  if (tx == std::string::npos) return false;
+  size_t p = tx + 8, n = 0;
+  if (json_char(line, p, n) != '[') return false;
+  bool arrow = false;
+  for (p += n;;) {
+    const int ch = json_char(line, p, n);
+    if (ch < 0 || ch == '\n' || ch == '\r') return false;  // the string or its first line ends before the label closes
+    p += n;
+    if (ch == 0x2192) arrow = true;
+    else if (ch == ']') return arrow && json_char(line, p, n) != '(';
+  }
 }
 // L1 v24 D15/D16, L2 v25 E2-59: s(m) = ceil(e(kappa(m)) / 4), codex estimate_response_item_model_visible_bytes of the item as
 // ContextManager::process_item records it (history.rs:338-360, 467-530; utils/string truncate.rs; output-truncation lib.rs)
@@ -2461,7 +2501,7 @@ std::string payload_of(const std::string& line) {  // the "payload" object, verb
 // One append-only file per rollout file: <index_dir>/<relative path>.vx. A record is  magic u32 | type u8 | pad 3 | len u32 | chk u32 | payload.
 // Every record carries its own key (byte offsets inside the rollout file), so the reader keeps one record per key and the same record
 // appended twice (by this process and by another) changes nothing (T-int-4). A torn or damaged record fails its check and is skipped.
-constexpr uint32_t VX_MAGIC = 0x36305856u;  // "VX06" (6th stage: D12 seeds); before: "VX05", little endian (5th stage: `rho` of the records is the ordinal, a unit is keyed by the fingerprint of the set it was counted over)
+constexpr uint32_t VX_MAGIC = 0x37305856u;  // "VX07" (8차 §12.6 P-F4: the relay flag of R_ITEM is D17'); before: "VX06" (6th stage: D12 seeds), "VX05", little endian (5th stage: `rho` of the records is the ordinal, a unit is keyed by the fingerprint of the set it was counted over)
 enum : uint8_t { R_ITEM = 1, R_META = 2, R_TS = 3, R_TURN = 4, R_CONTRIB = 5, R_WM = 6, R_CONTRIB2 = 7 };  // R_CONTRIB (5) has no fingerprint: read and not used (P-8)  // R_WM: every line before this offset is on disk (P-3')
 
 uint32_t chk32(const void* p, size_t n) { const uint64_t h = fnv((const char*)p, n); return uint32_t(h ^ (h >> 32)); }

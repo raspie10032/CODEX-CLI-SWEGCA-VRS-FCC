@@ -231,6 +231,21 @@ pub trait ThreadStore: Any + Send + Sync {
         })
     }
 
+    /// Like [`Self::prepare_fork`], but the startup context is the source's metadata line only.
+    ///
+    /// The child references its loaded parent: its model input is assembled from the VRS lineage
+    /// and the parent's live state supplies the rest, so the source history is not read.
+    fn prepare_reference_fork(
+        &self,
+        _params: PrepareForkParams,
+    ) -> ThreadStoreFuture<'_, PreparedFork> {
+        Box::pin(async {
+            Err(ThreadStoreError::Unsupported {
+                operation: "prepare_reference_fork",
+            })
+        })
+    }
+
     /// Reverts a paginated thread's durable history so it ends immediately before
     /// `before_turn_id`.
     ///

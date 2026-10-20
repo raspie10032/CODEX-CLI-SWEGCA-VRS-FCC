@@ -6631,7 +6631,10 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         forked_from_ordinal_exclusive: None,
         next_internal_sub_id: AtomicU64::new(0),
         ephemeral_vrs_generation: Uuid::new_v4(),
-        ephemeral_vrs_offset: AtomicU64::new(0),
+        ephemeral_vrs: Some(codex_rollout::VirtualRollout::without_metadata(
+            codex_vrs::ephemeral_path(&Uuid::new_v4().to_string(), &thread_id.to_string())
+                .expect("virtual rollout path"),
+        )),
     };
     let per_turn_config = session.build_per_turn_config(
         &session_configuration,
@@ -8899,7 +8902,10 @@ where
         forked_from_ordinal_exclusive: None,
         next_internal_sub_id: AtomicU64::new(0),
         ephemeral_vrs_generation: Uuid::new_v4(),
-        ephemeral_vrs_offset: AtomicU64::new(0),
+        ephemeral_vrs: Some(codex_rollout::VirtualRollout::without_metadata(
+            codex_vrs::ephemeral_path(&Uuid::new_v4().to_string(), &thread_id.to_string())
+                .expect("virtual rollout path"),
+        )),
     });
     let per_turn_config = session.build_per_turn_config(
         &session_configuration,
@@ -11267,6 +11273,13 @@ async fn same_thread_non_local_resume_seeds_a_distinct_vrs_generation() {
     // Keep the first generation alive, including its keys starting at offset zero.
     let (mut resumed, _) = make_session_and_context().await;
     resumed.thread_id = first.thread_id;
+    resumed.ephemeral_vrs = Some(codex_rollout::VirtualRollout::without_metadata(
+        codex_vrs::ephemeral_path(
+            &resumed.ephemeral_vrs_generation.to_string(),
+            &resumed.thread_id.to_string(),
+        )
+        .unwrap(),
+    ));
     let resumed_store = attach_in_memory_thread_store(&mut resumed).await;
     let resumed_path = resumed.ephemeral_vrs_path().unwrap();
     assert_ne!(first_path, resumed_path);
@@ -11291,8 +11304,6 @@ async fn same_thread_non_local_resume_seeds_a_distinct_vrs_generation() {
     // Only the new settings checkpoint is appended; supplied history is already in the backend.
     assert_eq!(resumed_store.calls().await.append_items, 1);
 
-    let next_offset = resumed.ephemeral_vrs_offset.load(Ordering::Relaxed);
-    assert!(next_offset > 0);
     let new_item = serde_json::from_value::<ResponseItem>(json!({
         "type": "message", "role": "user", "content": [{
             "type": "input_text", "text": "append the resumed non-local request"
@@ -11304,7 +11315,6 @@ async fn same_thread_non_local_resume_seeds_a_distinct_vrs_generation() {
             .persist_rollout_items(&[RolloutItem::ResponseItem(new_item.clone().into())])
             .await
     );
-    assert!(resumed.ephemeral_vrs_offset.load(Ordering::Relaxed) > next_offset);
     assert_eq!(
         super::vrs_input::vrs_input(&resumed, None).await.unwrap(),
         vec![old_item.clone(), new_item]
@@ -11320,9 +11330,7 @@ async fn same_thread_non_local_resume_seeds_a_distinct_vrs_generation() {
 async fn non_local_resume_seed_failure_prevents_model_input() {
     let (mut session, turn) = make_session_and_context().await;
     attach_in_memory_thread_store(&mut session).await;
-    session
-        .ephemeral_vrs_offset
-        .store(u64::MAX, Ordering::Relaxed);
+    session.ephemeral_vrs = None;
     session
         .record_initial_history(InitialHistory::Resumed(ResumedHistory {
             history_revision: None,
@@ -11331,10 +11339,7 @@ async fn non_local_resume_seed_failure_prevents_model_input() {
             rollout_path: None,
         }))
         .await;
-    assert_eq!(
-        session.ephemeral_vrs_offset.load(Ordering::Relaxed),
-        u64::MAX
-    );
+    assert!(session.ephemeral_vrs.is_none());
     let error = super::vrs_input::vrs_prompt_input(
         &session,
         &StepContext::for_test(Arc::new(turn)),

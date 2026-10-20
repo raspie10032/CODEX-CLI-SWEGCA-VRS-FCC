@@ -10,6 +10,8 @@
 | Needs | glibc 2.38 or newer and a `libstdc++` from GCC 13 or newer; CI links it on Ubuntu 24.04 |
 | SHA-256 | see `SHA256SUMS` |
 
+On 2026-10-20 `vrs_lib.o` was rebuilt from the current `vrs_lib.cpp` with the same compiler and flags, and the other three members were kept as they were. The source change fixes how relayed messages are told apart from the user's own (they are now recognized by the sender's route label, so a user message that starts with a Markdown link is no longer taken for a relay) and moves the index format to `VX07`. An older index is rebuilt once from the session records the first time the new build opens it.
+
 Until 2026-10-15 this directory held a GCC 16.2.1 build of the same source. That build needed GCC 16's `libstdc++` (`GLIBCXX_3.4.35`), so it did not link on Ubuntu 24.04. The two builds were run on the same 462 stored sessions, and every assembled request came out identical; only the timing field differs.
 
 `codex-rs/vrs/build.rs` links this directory by default. To use another build, set `VRS_LIB_DIR` to the directory holding your `libvrs.a`.

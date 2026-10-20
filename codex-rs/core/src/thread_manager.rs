@@ -182,6 +182,13 @@ pub struct NewThread {
     pub session_configured: SessionConfiguredEvent,
 }
 
+/// An idle loaded parent's latest started turn, taken before a referenced fork's cut.
+#[derive(Debug)]
+pub struct ReferenceForkMarker {
+    parent_thread_id: ThreadId,
+    latest_turn: Option<String>,
+}
+
 // TODO(ccunningham): Add an explicit non-interrupting live-turn snapshot once
 // core can represent sampling boundaries directly instead of relying on
 // whichever items happened to be persisted mid-turn.
@@ -1541,6 +1548,72 @@ impl ThreadManager {
             history_base: prepared.history_base,
             inherited_item_count: prepared.model_context.len(),
         };
+        let result = self
+            .fork_thread_with_initial_history(
+                options,
+                ForkHistory {
+                    snapshot: ForkSnapshot::Interrupted,
+                    initial_history: history,
+                    persistence: fork_persistence,
+                },
+            )
+            .await;
+        drop(prepared);
+        result
+    }
+
+    /// Marks an idle loaded parent before a referenced fork is prepared (design D19).
+    pub async fn reference_fork_marker(
+        &self,
+        parent_thread_id: ThreadId,
+    ) -> CodexResult<ReferenceForkMarker> {
+        let parent = self.get_thread(parent_thread_id).await?;
+        let latest_turn = parent.session.idle_turn_marker().await.ok_or_else(|| {
+            CodexErr::InvalidRequest("a referenced fork requires an idle parent".to_string())
+        })?;
+        Ok(ReferenceForkMarker {
+            parent_thread_id,
+            latest_turn,
+        })
+    }
+
+    /// Forks a reference prepared from a loaded parent without replaying its history.
+    ///
+    /// The child's model input is assembled from its VRS lineage (the cut in `prepared`). Its
+    /// remaining inherited state is the parent's live state (design D19), which equals the state
+    /// at the cut when no turn started since `marker` was taken (theorem 8-2).
+    pub async fn fork_prepared_reference_thread(
+        &self,
+        options: StartThreadOptions,
+        prepared: PreparedFork,
+        marker: ReferenceForkMarker,
+    ) -> CodexResult<NewThread> {
+        if marker.parent_thread_id != prepared.source_thread_id {
+            return Err(CodexErr::InvalidRequest(
+                "the fork marker names another parent".to_string(),
+            ));
+        }
+        let parent = self.get_thread(prepared.source_thread_id).await?;
+        let inherited_state = parent.session.reference_fork_state().await;
+        if parent.session.idle_turn_marker().await.as_ref() != Some(&marker.latest_turn) {
+            return Err(CodexErr::InvalidRequest(
+                "the parent started a turn while the fork was prepared".to_string(),
+            ));
+        }
+        let mut inherited_items = prepared.model_context.as_ref().clone();
+        inherited_items.extend(inherited_state);
+        let inherited_items = Arc::new(inherited_items);
+        let history = InitialHistory::Resumed(ResumedHistory {
+            history_revision: None,
+            conversation_id: prepared.source_thread_id,
+            history: Arc::clone(&inherited_items),
+            rollout_path: None,
+        });
+        let fork_persistence = ForkPersistence::Referenced {
+            history_base: prepared.history_base,
+            inherited_item_count: inherited_items.len(),
+        };
+        drop(inherited_items);
         let result = self
             .fork_thread_with_initial_history(
                 options,

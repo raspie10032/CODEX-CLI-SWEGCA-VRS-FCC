@@ -915,75 +915,26 @@ impl RolloutRecorder {
         // Clone the cwd for the spawned task to collect git info asynchronously.
         let cwd = config.cwd().to_path_buf();
         let (state, reservations, repaired_on_resume) = match params {
-            RolloutRecorderParams::Create {
-                session_id,
-                conversation_id,
-                rollout_id_override,
-                forked_from_id,
-                forked_from_ordinal_exclusive,
-                parent_thread_id,
-                source,
-                thread_source,
-                originator,
-                creator_user_id,
-                creator_account_id,
-                base_instructions,
-                dynamic_tools,
-                selected_capability_roots,
-                runtime_workspace_roots,
-                multi_agent_version,
-                history_mode,
-                history_base,
-                subagent_history_start_ordinal,
-                initial_window_id,
-            } => {
-                let ordinal_state =
-                    RolloutOrdinalState::for_new_rollout(history_mode, history_base);
-                let (path, started_at) =
-                    precompute_new_rollout_path(config, conversation_id, rollout_id_override)?;
-
-                let timestamp_format: &[FormatItem] = format_description!(
-                    "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z"
-                );
-                let timestamp = started_at
-                    .to_offset(time::UtcOffset::UTC)
-                    .format(timestamp_format)
-                    .map_err(|e| IoError::other(format!("failed to format timestamp: {e}")))?;
-
-                let session_meta = SessionMeta {
-                    session_id,
-                    id: conversation_id,
-                    forked_from_id,
-                    forked_from_ordinal_exclusive: forked_from_ordinal_exclusive
-                        .filter(|_| forked_from_id.is_some()),
-                    parent_thread_id,
-                    timestamp,
-                    cwd: cwd.clone(),
-                    runtime_workspace_roots,
-                    originator,
-                    creator_user_id,
-                    creator_account_id,
-                    cli_version: env!("CARGO_PKG_VERSION").to_string(),
-                    agent_nickname: source.get_nickname(),
-                    agent_role: source.get_agent_role(),
-                    agent_path: source.get_agent_path().map(Into::into),
-                    source: *source,
-                    thread_source,
-                    model_provider: Some(config.model_provider_id().to_string()),
-                    base_instructions: Some(base_instructions),
-                    dynamic_tools: if dynamic_tools.is_empty() {
-                        None
-                    } else {
-                        Some(dynamic_tools)
-                    },
-                    selected_capability_roots,
-                    memory_mode: (!config.generate_memories()).then_some("disabled".to_string()),
+            create @ RolloutRecorderParams::Create { .. } => {
+                let RolloutRecorderParams::Create {
+                    conversation_id,
+                    rollout_id_override,
                     history_mode,
                     history_base,
-                    subagent_history_start_ordinal,
-                    multi_agent_version,
-                    context_window: initial_window_id.map(SessionContextWindow::new),
+                    ..
+                } = &create
+                else {
+                    unreachable!("matched a create request");
                 };
+                let ordinal_state =
+                    RolloutOrdinalState::for_new_rollout(*history_mode, *history_base);
+                let (path, started_at) = precompute_new_rollout_path(
+                    config,
+                    *conversation_id,
+                    rollout_id_override.clone(),
+                )?;
+                let session_meta =
+                    create_session_meta(config, create, format_rollout_timestamp(started_at)?)?;
 
                 let reservations = Arc::new(RolloutReservations::new(ordinal_state, 0));
                 let metadata = session_meta_item(session_meta, &cwd).await;
@@ -2009,6 +1960,149 @@ async fn session_meta_item(session_meta: SessionMeta, cwd: &Path) -> RolloutItem
     };
 
     RolloutItem::SessionMeta(session_meta_line)
+}
+
+fn format_rollout_timestamp(at: OffsetDateTime) -> std::io::Result<String> {
+    let timestamp_format: &[FormatItem] =
+        format_description!("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z");
+    at.to_offset(time::UtcOffset::UTC)
+        .format(timestamp_format)
+        .map_err(|e| IoError::other(format!("failed to format timestamp: {e}")))
+}
+
+/// The first line of the rollout a create request starts. A file recorder and a virtual
+/// rollout write the same line for the same request (design D18).
+fn create_session_meta(
+    config: &impl RolloutConfigView,
+    params: RolloutRecorderParams,
+    timestamp: String,
+) -> std::io::Result<SessionMeta> {
+    let RolloutRecorderParams::Create {
+        session_id,
+        conversation_id,
+        rollout_id_override: _,
+        forked_from_id,
+        forked_from_ordinal_exclusive,
+        parent_thread_id,
+        source,
+        thread_source,
+        originator,
+        creator_user_id,
+        creator_account_id,
+        base_instructions,
+        dynamic_tools,
+        selected_capability_roots,
+        runtime_workspace_roots,
+        multi_agent_version,
+        history_mode,
+        history_base,
+        subagent_history_start_ordinal,
+        initial_window_id,
+    } = params
+    else {
+        return Err(IoError::other("a resumed rollout has no new metadata line"));
+    };
+    Ok(SessionMeta {
+        session_id,
+        id: conversation_id,
+        forked_from_id,
+        forked_from_ordinal_exclusive: forked_from_ordinal_exclusive
+            .filter(|_| forked_from_id.is_some()),
+        parent_thread_id,
+        timestamp,
+        cwd: config.cwd().to_path_buf(),
+        runtime_workspace_roots,
+        originator,
+        creator_user_id,
+        creator_account_id,
+        cli_version: env!("CARGO_PKG_VERSION").to_string(),
+        agent_nickname: source.get_nickname(),
+        agent_role: source.get_agent_role(),
+        agent_path: source.get_agent_path().map(Into::into),
+        source: *source,
+        thread_source,
+        model_provider: Some(config.model_provider_id().to_string()),
+        base_instructions: Some(base_instructions),
+        dynamic_tools: if dynamic_tools.is_empty() {
+            None
+        } else {
+            Some(dynamic_tools)
+        },
+        selected_capability_roots,
+        memory_mode: (!config.generate_memories()).then_some("disabled".to_string()),
+        history_mode,
+        history_base,
+        subagent_history_start_ordinal,
+        multi_agent_version,
+        context_window: initial_window_id.map(SessionContextWindow::new),
+    })
+}
+
+/// The lines a thread without a rollout file would have written (design D18).
+///
+/// Lines keep the file recorder's joint (ordinal, offset) reservation (P-3″) under a virtual
+/// path, so the VRS store reads them as it reads a file: metadata at offset 0, an ordinal on
+/// every line, and a fork's lineage in that metadata.
+pub struct VirtualRollout {
+    path: PathBuf,
+    reservations: RolloutReservations,
+}
+
+impl VirtualRollout {
+    /// Starts a new thread's virtual rollout with the metadata line a file would begin with.
+    pub async fn create(
+        config: &impl RolloutConfigView,
+        params: RolloutRecorderParams,
+        path: PathBuf,
+    ) -> std::io::Result<Self> {
+        // Lines carry ordinals whatever the history mode: the store places only ordered lines.
+        let first_ordinal = match &params {
+            RolloutRecorderParams::Create { history_base, .. } => {
+                history_base.map_or(0, |base| base.end_ordinal_exclusive)
+            }
+            RolloutRecorderParams::Resume { .. } => {
+                return Err(IoError::other(
+                    "a virtual rollout starts from a create request",
+                ));
+            }
+        };
+        let session_meta = create_session_meta(
+            config,
+            params,
+            format_rollout_timestamp(OffsetDateTime::now_utc())?,
+        )?;
+        let rollout = Self::starting_at(path, first_ordinal);
+        let metadata = session_meta_item(session_meta, config.cwd()).await;
+        rollout.insert(&metadata)?;
+        Ok(rollout)
+    }
+
+    /// A virtual rollout whose supplied lines bring their own metadata, such as a resumed
+    /// history owned by another store.
+    pub fn without_metadata(path: PathBuf) -> Self {
+        Self::starting_at(path, 0)
+    }
+
+    fn starting_at(path: PathBuf, first_ordinal: u64) -> Self {
+        Self {
+            path,
+            reservations: RolloutReservations::new(
+                RolloutOrdinalState::Paginated {
+                    next: Some(first_ordinal),
+                },
+                0,
+            ),
+        }
+    }
+
+    pub fn path(&self) -> &Path {
+        self.path.as_path()
+    }
+
+    /// Publishes one already-filtered item at its reserved (ordinal, offset).
+    pub fn insert(&self, item: &RolloutItem) -> std::io::Result<()> {
+        self.reservations.insert(&self.path, item).map(|_| ())
+    }
 }
 
 /// Append one already-filtered rollout item to an existing rollout JSONL file.

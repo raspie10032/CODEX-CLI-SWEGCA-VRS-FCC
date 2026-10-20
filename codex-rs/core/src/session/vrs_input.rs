@@ -6,7 +6,6 @@
 //! in its place.
 
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use codex_history::RolloutItem;
@@ -270,12 +269,16 @@ impl Session {
         Ok(state.history.with_assembled_items(items))
     }
 
-    /// One immutable generation per live Session; insertion and assembly share this identity.
+    /// One immutable generation per live Session; insertion and assembly share this identity,
+    /// the path of the Session's virtual rollout.
     pub(super) fn ephemeral_vrs_path(&self) -> Result<PathBuf, VrsError> {
-        codex_vrs::ephemeral_path(
-            &self.ephemeral_vrs_generation.to_string(),
-            &self.thread_id.to_string(),
-        )
+        match &self.ephemeral_vrs {
+            Some(rollout) => Ok(rollout.path().to_path_buf()),
+            None => codex_vrs::ephemeral_path(
+                &self.ephemeral_vrs_generation.to_string(),
+                &self.thread_id.to_string(),
+            ),
+        }
     }
 
     /// Ingests the original supplied non-local history into this Session's new S (design D1).
@@ -296,27 +299,68 @@ impl Session {
         }
     }
 
-    /// Records rollout items of a thread that has no rollout file into the store (design D1).
+    /// The latest started turn of an idle session, or `None` while a turn runs.
+    ///
+    /// Read under the active-turn lock, where every turn records its id before it runs, so
+    /// equal markers at two moments show that no turn started between them (theorem 8-2).
+    pub(crate) async fn idle_turn_marker(&self) -> Option<Option<String>> {
+        let active_turn = self.active_turn.lock().await;
+        if active_turn.is_some() {
+            return None;
+        }
+        let latest_turn = self.state.lock().await.last_started_turn_id.clone();
+        drop(active_turn);
+        Some(latest_turn)
+    }
+
+    /// Design §12 D4'': an unused thread holds no assembled history. Checked under the
+    /// active-turn lock, where every turn registers before it runs, so a running turn keeps its
+    /// history (theorem 8-7). The next assembly fills the history again. False if a turn runs.
+    pub(crate) async fn release_live_history(&self) -> bool {
+        let active_turn = self.active_turn.lock().await;
+        if active_turn.is_some() {
+            return false;
+        }
+        self.state.lock().await.release_vrs_history();
+        drop(active_turn);
+        true
+    }
+
+    /// The non-model state a referenced fork inherits from this live parent (design D19): the
+    /// newest TurnContext and the world-state baseline, as the items a replay reads them from.
+    pub(crate) async fn reference_fork_state(&self) -> Vec<RolloutItem> {
+        let state = self.state.lock().await;
+        state
+            .reference_context_item()
+            .map(RolloutItem::TurnContext)
+            .into_iter()
+            .chain(
+                state
+                    .history
+                    .world_state_checkpoint()
+                    .map(RolloutItem::WorldState),
+            )
+            .collect()
+    }
+
+    /// Records rollout items of a thread that has no rollout file into the store (design D1),
+    /// as lines of its virtual rollout (D18).
     pub(crate) async fn insert_ephemeral_vrs_lines(
         &self,
         items: &[RolloutItem],
     ) -> Result<(), VrsError> {
         let history_mode = self.state.lock().await.session_configuration.history_mode;
-        let path = self.ephemeral_vrs_path()?;
+        let rollout = self
+            .ephemeral_vrs
+            .as_ref()
+            .ok_or_else(|| VrsError::Unavailable("thread has a rollout file".into()))?;
         for item in items {
             let Some(item) = codex_rollout::persisted_rollout_item(item, history_mode) else {
                 continue;
             };
-            let line = codex_rollout::encode_rollout_line(item.as_ref(), None).map_err(|err| {
-                VrsError::Unavailable(format!("rollout line encoding failed: {err}"))
+            rollout.insert(item.as_ref()).map_err(|err| {
+                VrsError::Unavailable(format!("virtual rollout line failed: {err}"))
             })?;
-            let offset = self
-                .ephemeral_vrs_offset
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |offset| {
-                    offset.checked_add(line.len() as u64)
-                })
-                .map_err(|_| VrsError::Unavailable("virtual rollout offset overflow".into()))?;
-            codex_vrs::insert(&path, offset, line.as_bytes())?;
         }
         Ok(())
     }

@@ -4988,6 +4988,23 @@ impl ThreadRequestProcessor {
             .name
             .as_deref()
             .and_then(codex_core::util::normalize_thread_name);
+        // A prediction fork references its loaded parent instead of replaying the parent's
+        // history (design D19). The parent's lines must carry ordinals for the VRS lineage (D10).
+        let reference_marker = if experimental_prediction_mode {
+            if !paginated_source {
+                return Err(invalid_request(
+                    "`experimentalPredictionMode` requires a paginated parent",
+                ));
+            }
+            Some(
+                self.thread_manager
+                    .reference_fork_marker(source_thread_id)
+                    .await
+                    .map_err(|err| invalid_request(err.to_string()))?,
+            )
+        } else {
+            None
+        };
         let mut prepared_fork = if paginated_source {
             let boundary = match (last_turn_id.as_deref(), before_turn_id.as_deref()) {
                 (Some(turn_id), None) => {
@@ -4999,24 +5016,25 @@ impl ThreadRequestProcessor {
                 (None, None) => codex_thread_store::ForkBoundary::Latest,
                 (Some(_), Some(_)) => unreachable!("fork boundaries are mutually exclusive"),
             };
-            Some(
-                self.thread_store
-                    .prepare_fork(codex_thread_store::PrepareForkParams {
-                        thread_id: source_thread_id,
-                        boundary,
-                    })
-                    .await
-                    .map_err(|err| match err {
-                        ThreadStoreError::InvalidRequest { message } => invalid_request(message),
-                        ThreadStoreError::ThreadNotFound { thread_id } => {
-                            invalid_request(format!("no rollout found for thread id {thread_id}"))
-                        }
-                        ThreadStoreError::Unsupported { .. } => {
-                            method_not_found("paginated_threads is not supported yet")
-                        }
-                        err => internal_error(format!("failed to prepare paginated fork: {err}")),
-                    })?,
-            )
+            let params = codex_thread_store::PrepareForkParams {
+                thread_id: source_thread_id,
+                boundary,
+            };
+            let prepared = if reference_marker.is_some() {
+                self.thread_store.prepare_reference_fork(params).await
+            } else {
+                self.thread_store.prepare_fork(params).await
+            };
+            Some(prepared.map_err(|err| match err {
+                ThreadStoreError::InvalidRequest { message } => invalid_request(message),
+                ThreadStoreError::ThreadNotFound { thread_id } => {
+                    invalid_request(format!("no rollout found for thread id {thread_id}"))
+                }
+                ThreadStoreError::Unsupported { .. } => {
+                    method_not_found("paginated_threads is not supported yet")
+                }
+                err => internal_error(format!("failed to prepare paginated fork: {err}")),
+            })?)
         } else {
             None
         };
@@ -5253,9 +5271,18 @@ impl ThreadRequestProcessor {
             ..options
         };
         let new_thread = if let Some(prepared_fork) = prepared_fork {
-            self.thread_manager
-                .fork_prepared_thread(fork_options, prepared_fork)
-                .await
+            match reference_marker {
+                Some(marker) => {
+                    self.thread_manager
+                        .fork_prepared_reference_thread(fork_options, prepared_fork, marker)
+                        .await
+                }
+                None => {
+                    self.thread_manager
+                        .fork_prepared_thread(fork_options, prepared_fork)
+                        .await
+                }
+            }
         } else {
             self.thread_manager
                 .fork_thread_from_history(

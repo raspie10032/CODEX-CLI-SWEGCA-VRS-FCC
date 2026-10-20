@@ -91,6 +91,30 @@ pub(super) async fn load_from_rollout_path(
     })
 }
 
+/// Startup context of a fork that references its loaded parent (design D19): the source's
+/// metadata line only. The model input is assembled from the VRS lineage and the live parent
+/// supplies the remaining inherited state, so nothing behind the fork cut is read.
+pub(super) async fn load_reference_for_fork(
+    lineage: &RolloutLineage,
+) -> ThreadStoreResult<Vec<RolloutItem>> {
+    let source_path = lineage
+        .segments()
+        .last()
+        .map(|segment| segment.rollout_path.as_path())
+        .ok_or_else(|| ThreadStoreError::Internal {
+            message: "fork lineage has no source segment".to_string(),
+        })?;
+    let session_meta = codex_rollout::read_session_meta_line(source_path)
+        .await
+        .map_err(|err| ThreadStoreError::Internal {
+            message: format!(
+                "failed to read session metadata {}: {err}",
+                source_path.display()
+            ),
+        })?;
+    Ok(vec![RolloutItem::SessionMeta(session_meta)])
+}
+
 /// Loads startup context from a fork's frozen inherited prefix.
 pub(super) async fn load_for_fork(
     lineage: RolloutLineage,

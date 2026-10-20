@@ -23,6 +23,18 @@ struct UnloadingState {
     has_subscribers: (bool, Instant),
     thread_status_rx: watch::Receiver<ThreadStatus>,
     is_active: (bool, Instant),
+    /// Design §12 D4'': the live history was released in the current unused stretch.
+    released: bool,
+}
+
+/// What the listener does when the use of its thread changes.
+enum UnloadingTrigger {
+    /// The thread just became unused (no subscriber, not active): release its live history.
+    Release,
+    /// The unload delay may have passed.
+    Unload,
+    /// A watcher closed.
+    Closed,
 }
 
 impl UnloadingState {
@@ -50,6 +62,7 @@ impl UnloadingState {
             has_subscribers,
             thread_status_rx,
             is_active,
+            released: false,
         })
     }
 
@@ -86,14 +99,20 @@ impl UnloadingState {
         }
     }
 
-    async fn wait_for_unloading_trigger(&mut self) -> bool {
+    async fn wait_for_unloading_trigger(&mut self) -> UnloadingTrigger {
         loop {
             self.sync_receiver_values();
             let unloading_target = self.unloading_target();
+            if unloading_target.is_none() {
+                self.released = false;
+            } else if !self.released {
+                self.released = true;
+                return UnloadingTrigger::Release;
+            }
             if let Some(target) = unloading_target
                 && target <= Instant::now()
             {
-                return true;
+                return UnloadingTrigger::Unload;
             }
             let unloading_sleep = async {
                 if let Some(target) = unloading_target {
@@ -103,16 +122,16 @@ impl UnloadingState {
                 }
             };
             tokio::select! {
-                _ = unloading_sleep => return true,
+                _ = unloading_sleep => return UnloadingTrigger::Unload,
                 changed = self.has_subscribers_rx.changed() => {
                     if changed.is_err() {
-                        return false;
+                        return UnloadingTrigger::Closed;
                     }
                     self.sync_receiver_values();
                 },
                 changed = self.thread_status_rx.changed() => {
                     if changed.is_err() {
-                        return false;
+                        return UnloadingTrigger::Closed;
                     }
                     self.sync_receiver_values();
                 },
@@ -371,9 +390,14 @@ pub(super) async fn ensure_listener_task_running(
                         let _ = completion_tx.send(());
                     }
                 }
-                unloading_watchers_open = unloading_state.wait_for_unloading_trigger() => {
-                    if !unloading_watchers_open {
-                        break;
+                unloading_trigger = unloading_state.wait_for_unloading_trigger() => {
+                    match unloading_trigger {
+                        UnloadingTrigger::Closed => break,
+                        UnloadingTrigger::Release => {
+                            conversation.release_live_history().await;
+                            continue;
+                        }
+                        UnloadingTrigger::Unload => {}
                     }
                     if !unloading_state.should_unload_now() {
                         continue;

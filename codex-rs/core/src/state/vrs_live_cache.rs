@@ -145,6 +145,16 @@ impl VrsLiveCache {
         true
     }
 
+    /// Design §12 D4'': the thread is unused, so the cache gives up its assembly. An assembly
+    /// started before this is not installed later; records not yet published keep their items,
+    /// so the next install still unions them (D4).
+    pub(crate) fn release(&mut self, history: &mut ContextManager) {
+        self.last_installed_assembly = self.last_started_assembly;
+        self.records
+            .retain(|_, batch| batch.publication.load(Ordering::Acquire) != PUBLISHED);
+        history.replace_assembled_with_suffix(Vec::new(), Vec::new());
+    }
+
     pub(crate) fn reset(&mut self) {
         self.last_installed_assembly = self.last_started_assembly;
         // A destructive host reset invalidates old cache payloads, but cannot make an

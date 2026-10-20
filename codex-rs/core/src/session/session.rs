@@ -99,8 +99,8 @@ pub(crate) struct Session {
     pub(super) next_internal_sub_id: AtomicU64,
     /// Names this live Session's virtual store separately from other incarnations of its thread.
     pub(super) ephemeral_vrs_generation: uuid::Uuid,
-    /// Next byte offset of this thread's virtual rollout when it has no rollout file.
-    pub(super) ephemeral_vrs_offset: AtomicU64,
+    /// This thread's virtual rollout when it has no rollout file (design D18).
+    pub(super) ephemeral_vrs: Option<codex_rollout::VirtualRollout>,
 }
 
 #[derive(Clone)]
@@ -1212,6 +1212,68 @@ impl Session {
             } else {
                 None
             };
+            // A thread without a rollout file publishes the lines a file would hold (design D18):
+            // the same metadata first, then every line at its reserved ordinal and offset.
+            let ephemeral_vrs_generation = uuid::Uuid::new_v4();
+            let ephemeral_vrs = if rollout_path.is_some() {
+                None
+            } else {
+                let path = codex_vrs::ephemeral_path(
+                    &ephemeral_vrs_generation.to_string(),
+                    &thread_id.to_string(),
+                )?;
+                Some(match &initial_history {
+                    InitialHistory::Resumed(_) => {
+                        codex_rollout::VirtualRollout::without_metadata(path)
+                    }
+                    InitialHistory::New | InitialHistory::Cleared | InitialHistory::Forked(_) => {
+                        let history_base = match &fork_persistence {
+                            ForkPersistence::Copied | ForkPersistence::CopiedDeferred => None,
+                            ForkPersistence::Referenced { history_base, .. } => *history_base,
+                        };
+                        let params = codex_rollout::RolloutRecorderParams::new(
+                            thread_id,
+                            forked_from_id,
+                            parent_thread_id,
+                            session_configuration.session_source.clone(),
+                            session_configuration.thread_source.clone(),
+                            session_configuration.originator.clone(),
+                            BaseInstructions {
+                                text: session_configuration.base_instructions.clone(),
+                                provenance: base_instructions_provenance.clone(),
+                            },
+                            session_configuration.dynamic_tools.clone(),
+                        )
+                        .with_creator(
+                            auth.as_ref().and_then(CodexAuth::get_chatgpt_user_id),
+                            auth.as_ref().and_then(CodexAuth::get_account_id),
+                        )
+                        .with_session_id(session_id)
+                        .with_selected_capability_roots(selected_capability_roots.clone())
+                        .with_runtime_workspace_roots(Some(
+                            config
+                                .workspace_roots
+                                .clone()
+                                .into_iter()
+                                .map(|root| root.into_path_buf())
+                                .collect(),
+                        ))
+                        .with_multi_agent_version(initial_multi_agent_version)
+                        .with_history_mode(session_configuration.history_mode)
+                        .with_history_base(history_base)
+                        .with_forked_from_ordinal_exclusive(
+                            forked_from_id
+                                .and(history_base)
+                                .map(|base| base.end_ordinal_exclusive),
+                        )
+                        .with_initial_window_id(
+                            initial_auto_compact_window_ids.window_id.to_string(),
+                        );
+                        codex_rollout::VirtualRollout::create(config.as_ref(), params, path)
+                            .await?
+                    }
+                })
+            };
             let trace_agent_path = session_configuration
                 .session_source
                 .get_agent_path()
@@ -1837,8 +1899,8 @@ impl Session {
                 fork_persistence,
                 forked_from_ordinal_exclusive,
                 next_internal_sub_id: AtomicU64::new(0),
-                ephemeral_vrs_generation: uuid::Uuid::new_v4(),
-                ephemeral_vrs_offset: AtomicU64::new(0),
+                ephemeral_vrs_generation,
+                ephemeral_vrs,
             });
             if let Some(startup) = &startup {
                 let _ = startup.session.set(Arc::clone(&sess));
