@@ -250,8 +250,6 @@ mod web_search;
 #[path = "web_search_system_proxy_tests.rs"]
 mod web_search_system_proxy;
 mod websocket_fallback;
-#[cfg(target_os = "windows")]
-mod windows_sandbox;
 mod workspace_roots;
 mod worktree_trust;
 

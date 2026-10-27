@@ -332,8 +332,7 @@ pub(super) async fn unpersisted_session_meta(
 ) -> Option<(PathBuf, SessionMeta)> {
     let (recorder, _, _) = live_writer_parts(store, thread_id).await.ok()?;
     // Materialized reads should not queue behind unrelated transcript writes.
-    if let Some(existing_path) =
-        codex_rollout::existing_rollout_path(recorder.rollout_path()).await
+    if let Some(existing_path) = codex_rollout::existing_rollout_path(recorder.rollout_path()).await
     {
         // VI-22 reserves a zero-byte identity before deferred metadata is materialized.
         // A non-empty file has crossed the durable boundary and must be read from disk.

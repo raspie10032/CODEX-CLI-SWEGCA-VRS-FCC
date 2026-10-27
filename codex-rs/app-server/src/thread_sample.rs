@@ -7,7 +7,6 @@ use crate::error_code::invalid_request;
 use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::ThreadSampleParams;
 use codex_app_server_protocol::ThreadSampleResponse;
-use codex_app_server_protocol::TurnStatus;
 use codex_core::CodexThread;
 use codex_core::ThreadManager;
 use codex_extension_api::ModelRequestContributor;
@@ -123,7 +122,9 @@ impl SampleTask {
         let parent_history = parent
             .conversation_history_snapshot()
             .await
-            .map_err(|error| internal_error(format!("failed to assemble sample source: {error}")))?;
+            .map_err(|error| {
+                internal_error(format!("failed to assemble sample source: {error}"))
+            })?;
         let revision = parent_history.history_version();
         parent
             .flush_rollout()
@@ -217,13 +218,10 @@ impl SampleTask {
             .await
             .map_err(|error| internal_error(format!("sample fork preparation failed: {error}")))?;
         // Do not cancel startup by dropping it: the owner must reclaim a partially initialized fork.
-        let fork = Box::pin(manager.fork_prepared_reference_thread(
-            *options,
-            prepared,
-            reference_marker,
-        ))
-        .await
-        .map_err(|error| internal_error(format!("sample fork failed: {error}")))?;
+        let fork =
+            Box::pin(manager.fork_prepared_reference_thread(*options, prepared, reference_marker))
+                .await
+                .map_err(|error| internal_error(format!("sample fork failed: {error}")))?;
         let (sender, mut receiver) = oneshot::channel();
         samples
             .captures
@@ -312,7 +310,9 @@ impl SampleTask {
         if parent
             .conversation_history_snapshot()
             .await
-            .map_err(|error| internal_error(format!("failed to reassemble sample source: {error}")))?
+            .map_err(|error| {
+                internal_error(format!("failed to reassemble sample source: {error}"))
+            })?
             .history_version()
             != revision
         {

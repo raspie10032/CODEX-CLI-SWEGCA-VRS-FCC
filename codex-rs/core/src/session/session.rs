@@ -1293,8 +1293,7 @@ impl Session {
                         .with_initial_window_id(
                             initial_auto_compact_window_ids.window_id.to_string(),
                         );
-                        codex_rollout::VirtualRollout::create(config.as_ref(), params, path)
-                            .await?
+                        codex_rollout::VirtualRollout::create(config.as_ref(), params, path).await?
                     }
                 })
             };

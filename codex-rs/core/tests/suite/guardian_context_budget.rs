@@ -343,8 +343,7 @@ async fn review_respects_complete_context_budget(
     }
     if matches!(
         reviewer_response,
-        ReviewerResponse::ToolContinuation
-            | ReviewerResponse::FileImageContinuation
+        ReviewerResponse::ToolContinuation | ReviewerResponse::FileImageContinuation
     ) {
         events.insert(
             /*index*/ 2,
@@ -445,8 +444,7 @@ async fn review_respects_complete_context_budget(
     } else {
         let recovered = matches!(
             reviewer_response,
-            ReviewerResponse::ToolContinuation
-                | ReviewerResponse::FileImageContinuation
+            ReviewerResponse::ToolContinuation | ReviewerResponse::FileImageContinuation
         );
         assert_eq!(requests.len(), if recovered { 4 } else { 3 });
         assert_eq!(guardian_requests.len(), if recovered { 2 } else { 1 });

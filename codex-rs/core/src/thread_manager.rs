@@ -1259,9 +1259,7 @@ impl ThreadManager {
                 .vrs_history()
                 .await
                 .map_err(crate::session::vrs_input::vrs_error_to_codex)?,
-            Err(error)
-                if matches!(error.details(), CodexErrorDetails::ThreadNotFound(_)) =>
-            {
+            Err(error) if matches!(error.details(), CodexErrorDetails::ThreadNotFound(_)) => {
                 let stored_thread = self
                     .state
                     .read_stored_thread(ReadThreadParams {

@@ -89,8 +89,13 @@ async fn client_with_effort_updates(
         &catalog,
         serde_json::to_string(&json!({"models": [model]}))?,
     )?;
-    let mut config = MockResponsesConfig::new(&server.uri()).with_model("gpt-5.4").with_provider_name("OpenAI")
-        .with_root_config(&format!("model_catalog_json = {}\nmodel_reasoning_effort = \"high\"", serde_json::to_string(&catalog)?));
+    let mut config = MockResponsesConfig::new(&server.uri())
+        .with_model("gpt-5.4")
+        .with_provider_name("OpenAI")
+        .with_root_config(&format!(
+            "model_catalog_json = {}\nmodel_reasoning_effort = \"high\"",
+            serde_json::to_string(&catalog)?
+        ));
     config = if overrides {
         config.enable_feature(Feature::ReasoningEffortOverride)
     } else {

@@ -103,11 +103,10 @@ impl LocalAgentRuntime {
                         let Some(rollout_path) = stored.rollout_path else {
                             return Ok(None);
                         };
-                        let history = crate::session::vrs_input::vrs_history_for_path(
-                            rollout_path.as_path(),
-                        )
-                        .await
-                        .map_err(crate::session::vrs_input::vrs_error_to_codex)?;
+                        let history =
+                            crate::session::vrs_input::vrs_history_for_path(rollout_path.as_path())
+                                .await
+                                .map_err(crate::session::vrs_input::vrs_error_to_codex)?;
                         Ok::<_, CodexErr>(Some(history.retained_context().clone()))
                     })
                     .await
