@@ -1812,3 +1812,146 @@ F4 교체 절차(실행 전에 적음):
   - `launch_fork8.sh` 로 재기동한다. `launch_fcc111.sh` 의 사본이고, BIN 만 바꾼다.
   - 되돌리기는 `launch_fcc111.sh` 에 옮겨 둔 VX06 색인을 되돌려 놓는 것이다.
 - 교체 뒤 확인: 사용자가 앱을 쓸 때 생기는 예측 포크(덧없는 스레드)의 영수증이 assembled 이고 items > 0 인지, 빈 입력 오류가 0 인지 본다.
+
+## 13. 새 앱(26.1021)·codex 0.164.0-alpha.11.1 로 이식 — fcc-v1.1.3 (2026-10-26 17시대)
+
+사용자 원문: 「굿굿 이제 1.1.3버전인가 4버전인가 fcc 올려야하나」, 「홈 앱 최신버전을 받아서 1.1.3을 넣은 후에 업데이트를 진행하자」. c1 콜드 libvrs 는 넣지 않기로 했다(「ㅇㅋ 그 안대로 가자」). c1 콜드 저장소는 한 PC 의 데몬 하나를 전제로 만들어 프로세스 사이 잠금이 없다. FCC 는 codex 프로세스마다 libvrs 를 안에 넣어 같은 `~/.codex/vrs/idx` 를 함께 쓴다. 그래서 c1 은 1.1.4 에서 데몬 방식으로 따로 다룬다.
+
+조사(읽기만):
+- 공식 저장소의 최신 앱은 chatgpt-26.1021.22027 이다. 서명 키 3BFA0E4A… 로 확인했고 `~/apps/_dl-26.1021/x` 에 풀었다.
+- 동봉 codex 는 0.164.0-alpha.11.1 이다. upstream 태그 `rust-v0.164.0-alpha.11.1` 은 6905ece 다.
+- alpha.17.2(740e5af)는 0.164 의 조상이 아니다. 우리 main(b783265)과 0.164 의 merge-base 는 0ef50c9 다.
+- upstream 쪽 커밋은 597개, codex-rs 에서 바뀐 파일은 2,715개다. 우리가 바꾼 codex-rs 파일 248개 가운데 187개가 겹친다.
+- 시험 병합(작업 사본 `~/tmp/codex-p113`, 브랜치 p113 ← 0.164)에서 충돌은 79개다. 내용 충돌 59개, 우리가 지운 압축 파일을 upstream 이 고친 것 20개다.
+
+### 13.0 G_113 와 통과 조건 (실행 전 고정)
+
+G_113: 앱 26.1021 과 터미널 codex 가 upstream 0.164.0-alpha.11.1 위에 VRS 를 얹은 빌드(fcc-v1.1.3)로 돈다. 그 빌드는 §11.0 의 P1–P5·P7·P8 을 그대로 만족한다. libvrs 는 lib7(VX07, `libvrs.a` sha256 c141357f…)를 바꾸지 않는다.
+
+- Q1 (= P1) 압축 경로 0. 새 트리에 압축 경로가 소스로 남지 않는다. 대상은 자동·수동·원격·토큰 한도 압축과, upstream 이 새로 들인 압축 경로(배경·비동기·추측 압축 등)다. 감사 목록과 grep 패턴을 적는다. 스모크 롤아웃의 압축 사건은 0이다.
+- Q2 (= P2) 입구 하나. 새 트리에서 모델 입력을 짓는 자리를 처음부터 다시 센다. 모두 VRS 조립을 부르거나, 모델 입력이 아님을 보인다. 빠짐은 0이다. 센 방법과 개수를 적는다.
+- Q3 (= P3) 폴백 0. 조립이 실패하면 오류로 드러난다. 누적 이력으로 대신 보내지 않는다.
+- Q4 (= P4) 26.1021 이 받는 서버 모델 목록과 동봉 목록에서 압축 문장이 0이다. 깨끗한 문단은 보존되고 Custom 은 바뀌지 않는다(`l3check/release1/run.sh`).
+- Q5 (= P5) 앱 스모크.
+  - `l3check/smoke4` 의 S1–S5 가 실 백엔드에서 모두 통과한다. 실패 영수증 0, 압축 사건 0이고, S2 가 앞 턴을 기억한다.
+  - 앱 26.1021 을 새 바이너리로 띄워 app-server 가 뜬다. 앱의 한 턴이 조립된다(영수증 assembled).
+- Q6 (= P7) 이식 diff 에 직렬 구조(전역 잠금·순서 보장·단계 대기)가 새로 없다. libvrs 와 조립 정의가 같다. 재기동 뒤 첫 요청이 조립 준비로 5초 넘게 막히지 않는다.
+- Q7 (= P8) 릴리스와 배포.
+  - 이력 신원은 noreply 이고, 경로·개인정보 문자열은 0이다. README 의 기준판을 갱신하고 fcc-ci 가 통과한다.
+  - 태그는 fcc-v1.1.3 이다. 앱(26.1021 + 새 바이너리)과 터미널을 함께 바꿔, 두 쪽이 같은 판을 쓴다(VX 형식이 같아 서로 shard 를 지우지 않는다). 되돌리기를 기록한다.
+  - 공개 저장소 push 와 릴리스는 사용자 확인 뒤에 한다.
+
+넣지 않은 것:
+- P6(원판 대조 회귀)은 넣지 않는다. 10-15 결정을 따른다: 교체는 빌드·실 스모크·교체까지다.
+- I4·I5(장기 실행)도 넣지 않는다.
+- I7(앱 서버 메모리)도 넣지 않는다. lib7 의 RAM 색인이 쓰임에 따라 자라는 것은 그대로 남고, 1.1.4(c1 데몬)에서 다룬다.
+
+단계 끝 조건(각 단계 들어가기 전):
+- L1: upstream 변화 가운데 「모델 입력이 무엇인가」·「압축이 무엇인가」·「원문 무손실의 대상(롤아웃)이 무엇인가」의 뜻을 바꾸는 것을 모두 적는다. 있으면 정의를 고친다. 없으면 §3·§11.1 정의를 그대로 쓴다고 적는다. 직렬 구조 없음.
+- L2: 우리 이음매마다 새 트리의 자리를 적는다. 이음매는 압축을 끊는 자리, 조립 입구, 지시문을 빼는 자리, D3′ 스위치, 포크 조립이다. 새로 생긴 자리는 처리 방법을 적는다. libvrs·FFI·스토어 배치는 바꾸지 않는다.
+- L3: 충돌 79개를 해결한다. `cargo build --release -p codex-cli` 가 통과하고, codex-prompts·models-manager 시험이 통과하고, codex-core·app-server 시험이 컴파일된다. 감사 보고(`l3check/port_164/REPORT.md`)를 남긴다.
+- L4: Q1–Q7.
+
+### 13.1 L1 — 뜻이 바뀌는가 (17시대, 읽기만)
+
+upstream `0ef50c9..6905ece` 를 세 갈래로 읽었다: 롤아웃 기록, 압축 경로, 모델 입력 자리. 근거 file:line 은 0.164 원판 `~/tmp/codex-u164` 기준이다.
+
+**1. 원문 무손실의 대상(롤아웃)은 바뀌지 않는다.**
+- 롤아웃은 그대로 JSONL 이다. 경로 `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, 줄 모양 `{timestamp, type, payload}`, 직렬화가 모두 같다(`rollout/src/recorder.rs:2141`, `history/src/rollout_payload.rs`). `c7234c117` 은 메모리 안 enum 을 Box 로 감쌌을 뿐이다.
+- RolloutItem·ResponseItem 에 새 변형이 없다. 선택 키만 늘었다: `encrypted_content`·`status`·`annotations`·`logprobs`·`content_item_metadata`.
+  - libvrs 는 payload JSON 을 그대로 돌려준다. 포크는 그것을 0.164 의 `ResponseItem` 으로 푼다(`session/vrs_input.rs` `decode_assembled_items`). 그래서 새 키도 요청에 그대로 실린다.
+- 도구 출력은 live history 에서만 잘린다. 롤아웃에는 전문이 남는다(`context_manager/history.rs:518–576`). 이것은 alpha.17.2 와 같다. 실행된 도구 호출 메타의 8 KiB 상한은 사라졌다(`35a9b7044`).
+- SQLite 이력 실체화(`47db41930`·`4491caf1a`)는 JSONL 의 거울이다(`thread-store/src/local/live_writer.rs:372`). 모델 입력 경로는 SQLite 를 읽지 않는다.
+- 덧없는 스레드는 여전히 JSONL 이 없다(`session/session.rs:1065`). D18 처리는 그대로 둔다.
+- zstd 롤아웃 압축 정책도 alpha.17.2 와 같다. 기준은 7일이고, 기능은 기본 꺼짐이다.
+- `turn_context` 줄에서 필드 몇 개가 빠졌다(`28cd3e250`). libvrs 는 `turn_context` 를 읽지 않는다(`vrs-lib7/vrs_lib.cpp` 에 참조 0).
+
+**2. 압축의 뜻은 바뀌지 않는다. 새 압축 경로가 있고, 모두 D7·I1 의 압축이라 지운다.**
+- 새로 생긴 것:
+  - 배경(비동기·추측) 압축 `session/async_compaction.rs`. `Feature::AsyncCompaction` 으로 켜며 기본은 꺼짐이다.
+  - 원격 V2 설치 단계 `compact_remote_v2_installation.rs`.
+  - 보존 도구 출력 `compact_retained_tool_outputs.rs`.
+  - 원격 압축 이력 `compact_remote_history.rs`.
+  - 표지 `AutoCompactionDisabled`(`044e74fef`).
+- TokenBudget 은 원격 모델 목록(`model_messages.token_budget.enabled`)으로도 켜질 수 있다(`session/token_budget.rs:123–158`). fork8 은 새 창 도구와 `start_new_context_window` 를 지웠으므로, 켜져도 실행할 압축 경로가 없다. 이것은 L4 Q1 감사로 확인한다.
+- 압축 파일 안의 비압축 도움 함수 `content_items_to_text`·`is_summary_message` 를 다른 모듈이 쓴다. fork8 처럼 `message_text.rs` 로 옮긴다(L2).
+
+**3. 모델 입력 — 바뀌는 것 하나(D3″), 새 자리 셋, fork8 이 빠뜨린 자리 하나.**
+
+(a) **D3″ (D3′ 를 갈음).** alpha.17.2 의 단일 스위치 `uses_incremental_tools()` 가 둘로 갈라졌다.
+- `StepContext::incremental_tools_enabled()`(`session/step_context.rs:52`)는 새 창에 쓴다.
+- `Session::current_window_uses_incremental_tools()`(`session/world_state.rs:44`)는 이력이 비어 있지 않으면 `history.has_tool_declarations()` 를 읽는다.
+- 증분 도구는 Responses Lite 에서 기본 켜짐이 되었다(`c953dacb4`).
+- 그래서 D3′ 처럼 앞의 것만 거짓으로 두면, 이력에 도구 선언 항목이 하나만 있어도 뒤의 것이 참이 된다. 그러면 앞부분이 다시 이력에 쌓인다.
+- **D3″.** 요청 앞부분(기본 지시문·도구 정의·출력 형식)은 요청마다 그 단계 설정에서 새로 붙인다. 스토어의 항목이 아니고 A 의 출력에 들지 않는다. 이 포크에서는 두 함수가 모두 거짓이다. 뒤의 것은 이력을 읽기 전에 거짓을 돌려준다.
+- 증명.
+  - (i) 두 함수가 거짓이면 `build_world_state_for_step`(`world_state.rs:59–69`)이 어느 쪽을 골라도 거짓이다. 그러면 지시문 상태(`world_state.rs:97–103`)와 최상위 도구 상태(`world_state.rs:168`)가 만들어지지 않는다. 앞부분은 이력에 기록되지 않는다.
+  - (ii) `build_prompt(.., incremental_tools = false)`(`turn.rs:1671`)는 `tools`·`base_instructions` 를 단계 값으로 채운다. 비우는 분기를 타지 않는다.
+  - (iii) 그 밖의 소비자는 `current_window_uses_incremental_tools` 를 부르는 넷뿐이다: `turn.rs:1745`, `startup_prewarm.rs:422`, `prompt_debug.rs:115`, `guardian/input_budget.rs:168`(grep, 시험 제외). 모두 같은 함수 값을 읽으므로 같은 결론이다.
+  - (iv) 남는 길은 S 에 이미 있던 앞부분 항목이 A 의 출력에 드는 것이다. 이 포크는 (i)에 따라 그런 항목을 쓰지 않는다. 그러면 앞부분은 요청마다 새로 붙고 A 의 입력에 들지 않는다. ∎
+- 다른 기록기(원판 codex)가 쓴 앞부분 항목: home 롤아웃 전체(`sessions`·`archived_sessions`)에서 `"type":"additional_tools"` 줄을 가진 파일은 0개다(17:3x, grep). G_113 에 영향이 없어 무관 목록에만 둔다.
+
+(b) **새 자리 `thread/sample`**(`app-server/src/thread_sample.rs`, `014489466`): 부모의 최신 모델 맥락을 불러 포크(Resumed)를 만들고 표본 턴을 돌린다. D3 A20 과 같은 뜻이다. 자식의 첫 이력은 A(S_t, 부모)이고, 그 뒤로는 A(S_t, 자식)이다. 표본 스레드가 덧없으면 D18(덧없는 줄도 S 에 든다)을 따른다. 예측 포크(§12, V8-01·V8-02)와 같은 처리다.
+
+(c) **새 자리: 메모리에 없는 발신자의 기록 재생**(`agent/control/sender_context.rs:73–110`).
+- guardian 에 넘기는 발신자 발화를, 지금까지는 메모리에 올라온 발신자에서만 읽었다. 이제 올라오지 않은 발신자는 스토어의 최신 모델 맥락을 읽어 `reconstruct_rollout` 으로 다시 짓는다.
+- 이것은 D3 A10·A13 의 「부모(발신자) 몫 = A(S_t, 발신자)」와 같은 뜻이다. 올라온 발신자는 fork8 에서 이미 VRS 스냅숏이다. 올라오지 않은 발신자는 그 롤아웃 경로로 A 를 부른다.
+
+(d) **배경 압축의 이력 복사**(`async_compaction.rs:107`, `compact_remote_v2_installation.rs:114·267`)는 압축이다. 2 에 따라 지운다.
+
+(e) 뜻이 같은 것:
+- 전체 포크의 이력 앞부분 보존이 기본 켜짐이 되었다(`a06545b31`·`e1b9c9457`). A20 에서 자식 첫 이력은 A(S_t, 부모)라, 부모 이력 앞부분의 보존 여부와 상관없다. upstream 의 지시문 조각 거르기(`spawn.rs:1219`)는 둔다. D3″ 에서는 그 조각이 S 에 없다.
+- guardian-v2 대화 모드가 기본이 되었다(`4d82d36cc`).
+  - 분류기가 자기 요청·응답을 캐시해 두고, 크기가 넘으면 버리고 새 증거로 다시 짓는다(`ext/guardian-v2/src/async_scorer/conversation.rs:6·132–190`). 요약은 없다. 증거는 A14 = A(S_t, g) 그대로다.
+  - 그러니 S 의 압축이 아니다. 재사용 키의 `parent_compaction` 은 fork8 처럼 뺀다.
+- 기억 추출 phase1(`5670b1c18`)은 끝난 롤아웃을 뒤에서부터 읽는 범위만 바뀌었다. D3 의 A17·A19 대로 I2 대상이 아니다.
+- 프롬프트 캐시 키(`ab6095dde`)와 이력 초기화 메타(`780d7ab09`)는 요청 필드·헤더다. 항목 출처를 바꾸지 않는다.
+- `prompt_debug.rs` 는 §11.2 대로 모델에 가지 않는다.
+
+(f) **fork8 이 빠뜨린 자리 V9-01: 옛 하위 에이전트 생성**(`core/src/thread_manager.rs:1246` `spawn_legacy_subagent`).
+- `read_thread(include_history)` 로 부모 롤아웃을 읽어 자식 첫 이력으로 넣는다. fork8(alpha.17.2)에서도 그대로였다.
+- D3 A20 과 어긋난다. A20 에서 자식 첫 이력은 A(S_t, 부모)다.
+- 정의는 맞고 자리를 빠뜨린 것이라 층은 L2 다. G 영향은 막음이다(Q2).
+
+L1 끝:
+- 뜻이 바뀌는 것은 D3″ 하나다. 증명은 위와 같다.
+- 새 자리 셋은 D3 의 A20·A10/A13·D7 로 정했다.
+- 빠뜨린 자리 V9-01 은 L2 에서 다룬다.
+- 직렬 구조 없음. D3″ 는 거짓 상수 둘이고, 새 자리는 기존 A 호출이다.
+- G_113 진척: Q1–Q3 의 뜻이 0.164 에서도 성립하도록 정했다.
+
+### 13.2 L2 — 자리
+
+끝 조건: 우리 이음매마다 0.164 의 자리를 적는다. 새 자리는 처리 방법을 적는다. libvrs·FFI·스토어 배치는 바꾸지 않는다.
+
+- **압축 끊음.**
+  - 우리가 지운 파일을 upstream 이 고친 DU 20개는 지운 채로 둔다.
+  - 병합으로 새로 들어온 압축 파일을 지운다: `session/async_compaction.rs`, `compact_remote_v2_installation.rs`(+시험), `compact_retained_tool_outputs.rs`, `compact_remote_history.rs`(+시험), `compact_token_budget.rs`.
+  - 호출 자리에서 끊는 곳:
+    - `turn.rs`: 턴 앞·중·뒤 압축, guardian 예산 압축, `async_compaction::{maybe_start, take_ready}`, `emit_compact_metric`.
+    - `session/handlers.rs`: 종료 때 배경 압축 종료. `Op::Compact` 는 fork8 처럼 `compact_unsupported` 로 둔다.
+    - `session/mod.rs`: `replace_compacted_history`, `start_new_context_window`.
+    - `codex_thread.rs`: 배경 압축 시험 장벽.
+    - app-server 의 `thread_processor.rs`·`thread_sample.rs`: `AutoCompactionDisabled` 넣기를 지운다. `thread/compact/start` 는 fork8 처럼 invalid_request 로 둔다.
+    - 새 창 도구 처리기와 `tools/spec_plan.rs` 등록.
+    - `guardian/review_session.rs` 검토자의 `Op::Compact`.
+    - guardian-v2 `parent_compaction`.
+    - `rollout_reconstruction.rs` 의 압축 대체 이력 재생(fork8 그대로 멈춤).
+  - 비압축 도움 함수 `content_items_to_text`·`is_summary_message` 는 `message_text.rs` 로 옮긴다(fork8). 0.164 의 `OutputText { text, .. }` 모양을 따른다.
+- **D3″.** `session/step_context.rs` `incremental_tools_enabled()` 를 거짓으로 둔다. `session/world_state.rs` `current_window_uses_incremental_tools()` 도 이력을 읽기 전에 거짓을 돌려준다. `build_prompt` 의 넷째 인자 자리(`turn.rs` 표본 반복, `vrs_input.rs`, `startup_prewarm.rs`, `guardian/input_budget.rs`)는 그 값을 쓴다.
+- **조립 입구.**
+  - A1·A2: `turn.rs` 표본 반복마다 `vrs_prompt_input`.
+  - A4: `startup_prewarm.rs` History.
+  - A8·A9: `guardian/input_budget.rs`(새 `retain_new_agent_messages` 는 VRS 출력 위에서), `guardian/request_budget.rs`.
+  - A10·A13: `guardian/review.rs`·`review_session_setup.rs` 의 부모 이력.
+  - A14: guardian-v2 스냅숏(fork8 의 실패를 드러내는 `conversation_history_snapshot`).
+  - A15: `realtime_context.rs`.
+  - A20: `spawn.rs` `prepare_forked_history` 의 부모 항목(`load_agent_model_context`)을 `vrs_history()` 로 바꾼다.
+  - 새 자리 (b) `thread_sample.rs` 는 예측 포크(`thread_processor.rs` §12 V8-01)와 같은 길로 보낸다.
+  - 새 자리 (c) `sender_context.rs` 의 올라오지 않은 발신자는 그 롤아웃 경로로 `codex_vrs::assemble_with_budget` 를 부르고, 같은 `retained_context` 추출을 적용한다.
+  - V9-01 `thread_manager.rs` `spawn_legacy_subagent` 는 A20 길로 바꾼다.
+- **지시문 빼기.** §10 의 자리 그대로다: `prompts/src/model_instructions.rs`, `session/mod.rs` `get_prompt_base_instructions`, `session/session.rs` 출처 추정.
+- **§12(V8) 자리.** 예측 포크, 덧없는 롤아웃 계보, 쉬는 스레드 live history 해제(`vrs_input.rs` `reference_fork_state`·`insert_ephemeral_vrs_lines`·`release_live_history`, `thread_processor.rs` 예측 갈래)를 그대로 옮긴다.
+- 실패는 모두 오류로 드러낸다(D5). 새 잠금·대기·장벽을 두지 않는다.
+
+L2 끝: 이음매마다 자리를 적었고, 새 자리 셋과 V9-01 의 처리를 정했다. libvrs·FFI·스토어 배치는 그대로다.

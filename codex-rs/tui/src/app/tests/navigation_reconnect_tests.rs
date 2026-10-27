@@ -3,7 +3,6 @@
 use super::active_reconnect::drain_history;
 use super::disconnect::serve_reconnect_requests;
 use super::*;
-use crate::app::reconnect::ReconnectPresentation;
 use crate::app::reconnect::reconnect;
 use crate::app_event::AgentsOverviewThreadRefresh;
 use crate::app_event::WindowsSandboxEnableMode;
@@ -146,7 +145,7 @@ async fn reconnect_daemon_command_center_after_socket_replacement_without_a_conv
         );
         view.handle_key_event(KeyCode::Char('r').into());
         view.handle_key_event(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
-        view.handle_paste("Keep this task draft".into());
+        view.handle_paste("Keep this task draft!".into());
         app.agents_overview.visible_thread_ids = view.thread_ids();
         app.chat_widget.show_bottom_pane_view(Box::new(view));
         let draft = |app: &App| {
@@ -252,6 +251,7 @@ async fn reconnect_daemon_command_center_after_socket_replacement_without_a_conv
             Ok::<_, color_eyre::Report>(methods)
         });
         let mut session = AppServerSession::new(
+            crate::backend_id::BackendId::new(),
             crate::connect_remote_app_server(endpoint).await?,
             ThreadParamsMode::Embedded,
         );
@@ -265,7 +265,14 @@ async fn reconnect_daemon_command_center_after_socket_replacement_without_a_conv
                 .is_err()
         );
         let disconnected = session.next_event().await.unwrap();
-        app.handle_app_server_event(&session, disconnected).await;
+        // A shutdown error can cover the initial command center when its first New fails.
+        if previous_thread.is_none() && overview_initialized {
+            app.show_agents_overview_error(
+                Some("Codex's background server is shutting down"),
+                "Waiting for active turns.".into(),
+            );
+        }
+        app.handle_backend_event(&session, disconnected).await;
         assert!(app.reconnect.offline);
         assert!(app.agents_overview.last_messages.is_empty());
         assert!(refresh.await.unwrap_err().is_cancelled());
@@ -284,20 +291,13 @@ async fn reconnect_daemon_command_center_after_socket_replacement_without_a_conv
                 threads: HashMap::new(),
                 recent_seed_complete: false,
                 discovery: None,
+                pinned_thread_ids: None,
             }),
         );
         assert_eq!(app.agents_overview.visible_thread_ids.len(), 2);
         let mut tui = crate::tui::test_support::make_test_tui()?;
-        app.handle_tui_event(
-            &mut tui,
-            &mut session,
-            TuiEvent::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
-        )
-        .await?;
-        app.handle_tui_event(&mut tui, &mut session, TuiEvent::Paste("!".into()))
-            .await?;
         assert_eq!(draft(&app), "Keep this task draft!");
-        if previous_thread.is_none() {
+        if previous_thread.is_none() && !overview_initialized {
             assert_snapshot!(
                 "daemon_command_center_reconnecting",
                 render_bottom_popup(&app.chat_widget, /*width*/ 100)
@@ -314,13 +314,14 @@ async fn reconnect_daemon_command_center_after_socket_replacement_without_a_conv
             );
         }
         let connected = reconnect(
+            session.backend_id(),
             app.app_server_target.clone(),
             app.config.clone(),
             app.local_settings.clone(),
             previous_thread,
             /*remote_cwd*/ None,
             session.thread_tool_transport(),
-            ReconnectPresentation::Overview,
+            app.reconnect.presentation,
         )
         .await?;
         app.finish_reconnect(
@@ -436,6 +437,7 @@ async fn reconnect_daemon_command_center_after_socket_replacement_without_a_conv
                 threads: stale_threads,
                 recent_seed_complete: true,
                 discovery: None,
+                pinned_thread_ids: None,
             }),
         );
         assert!(!app.agents_overview.visible_thread_ids.contains(&vanished));

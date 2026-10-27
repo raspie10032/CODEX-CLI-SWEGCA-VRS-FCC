@@ -27,7 +27,6 @@ use codex_otel::STARTUP_PREWARM_AGE_AT_FIRST_TURN_METRIC;
 use codex_otel::STARTUP_PREWARM_DURATION_METRIC;
 use codex_otel::SessionTelemetry;
 use codex_protocol::error::Result as CodexResult;
-use codex_protocol::models::BaseInstructions;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 
@@ -327,7 +326,7 @@ async fn schedule_startup_prewarm_inner(
     if websocket_ready {
         return Ok(client_session);
     }
-    let base_instructions = session.get_prompt_base_instructions().await.text;
+    let base_instructions = session.get_prompt_base_instructions().await;
     let startup_turn_context = session
         .new_startup_prewarm_turn_with_sub_id(INITIAL_SUBMIT_ID.to_owned())
         .await;
@@ -394,10 +393,6 @@ async fn schedule_startup_prewarm_inner(
         ),
     )?;
     let build_prompt_started_at = Instant::now();
-    let base_instructions = BaseInstructions {
-        text: base_instructions,
-        provenance: None,
-    };
     let prompt_input = match input {
         PrewarmInput::Base => Vec::new(),
         PrewarmInput::History => {
@@ -416,7 +411,14 @@ async fn schedule_startup_prewarm_inner(
             history
         }
     };
-    let startup_prompt = build_prompt(prompt_input, step_context.as_ref(), base_instructions);
+    let startup_prompt = build_prompt(
+        prompt_input,
+        step_context.as_ref(),
+        base_instructions,
+        session
+            .current_window_uses_incremental_tools(&step_context)
+            .await,
+    );
     super::vrs_input::check_prompt_window(&session, &step_context, &startup_prompt).await?;
     startup_turn_context.session_telemetry.record_startup_phase(
         "startup_prewarm_build_prompt",

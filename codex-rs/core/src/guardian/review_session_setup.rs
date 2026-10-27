@@ -19,7 +19,7 @@ pub struct PreparedGuardianContext {
 impl PreparedGuardianContext {
     async fn prepare(
         parent: Arc<Session>,
-        context: GuardianReviewContext,
+        mut context: GuardianReviewContext,
         config: Config,
         history: &ContextManager,
         node_repl_policy: &GuardianNodeReplPolicy,
@@ -33,9 +33,12 @@ impl PreparedGuardianContext {
             GuardianContextMode::from_history(history.conversation_history_snapshot().as_ref());
         let context_policy = ReviewContextPolicy::for_context(context_mode, &config.features);
         let root_review_version = context_policy.root_review_version(&parent).await?;
+        let mut instructions = parent.inherited_instructions().await;
+        context.capture_project_instructions(&parent).await;
+        instructions.project_snapshot = context.project_instructions.clone();
         let mut key = GuardianReviewSessionReuseKey::from_spawn_config(
             &config,
-            parent.inherited_instructions().await,
+            instructions,
             history.history_version(),
             context_mode,
         )
@@ -70,15 +73,27 @@ impl PreparedGuardianContext {
         key
     }
 
-    /// Moves fork history into startup options and retains only its context bookkeeping.
+    /// Moves fork history into startup options; only reusable reviewers retain a rollback checkpoint.
     /// Guardian selects the agent's identity and lifecycle.
     pub async fn thread_options(
         &self,
+        kind: GuardianReviewSessionKind,
         snapshot: Option<GuardianReviewForkSnapshot>,
     ) -> (crate::StartThreadOptions, GuardianReviewState) {
-        let (conversation, history) = snapshot.map(ConversationState::fork).unzip();
+        let mut conversation = snapshot
+            .map(ConversationState::from)
+            .unwrap_or_default();
+        let history = match kind {
+            GuardianReviewSessionKind::EphemeralForked => conversation.take_history(),
+            // Replacement trunks keep the checkpoint if their first review is invalidated.
+            GuardianReviewSessionKind::TrunkNew | GuardianReviewSessionKind::TrunkReused => {
+                conversation
+                    .snapshot()
+                    .map(|checkpoint| checkpoint.history().clone())
+            }
+        };
         let state = GuardianReviewState {
-            conversation: conversation.unwrap_or_default(),
+            conversation,
             transcript_history_version: 0,
             transcript_source: history
                 .as_ref()
@@ -96,6 +111,7 @@ impl PreparedGuardianContext {
             .model_client
             .responses_websocket_enabled();
         let options = crate::StartThreadOptions {
+            prompt_cache_key: self.parent.services.model_client.prompt_cache_key_policy(),
             history_mode: Some(codex_protocol::protocol::ThreadHistoryMode::Paginated),
             internal_parent: Some(crate::thread_manager::InternalSessionParent {
                 thread_id: self.parent.thread_id(),
@@ -110,6 +126,7 @@ impl PreparedGuardianContext {
                 inherited_instructions: Some(SessionInstructions {
                     user: self.key.user_instructions.clone(),
                     thread: self.key.thread_instructions.clone(),
+                    project_snapshot: self.key.project_instructions.clone(),
                     ..Default::default()
                 }),
             }),
@@ -201,14 +218,76 @@ impl ReviewerRequest for PreparedReview {
         session: &GuardianReviewSession,
         kind: GuardianReviewSessionKind,
     ) -> ReviewSessionResult {
-        let result = Box::pin(run_review_on_session(
+        let mut result = Box::pin(run_review_on_session(
             session,
             &self.params,
             kind,
             self.params.deadline,
         ))
         .await;
+        let checkpoint_items = if result.disposition == SessionDisposition::Reusable
+            && matches!(result.outcome, GuardianReviewSessionOutcome::Completed(_))
+            && !matches!(kind, GuardianReviewSessionKind::EphemeralForked)
+        {
+            match session.session.guardian_fork_history().await {
+                Ok(items) => Some(items),
+                Err(error) => {
+                    result.outcome = GuardianReviewSessionOutcome::SessionFailed {
+                        error: error.into(),
+                        error_info: None,
+                        retry_at: None,
+                    };
+                    result.disposition = SessionDisposition::Discard;
+                    None
+                }
+            }
+        } else {
+            None
+        };
         record_failed_review(&session.session, &self.params, &result.outcome).await;
+        let checkpoint = if let Some(items) = checkpoint_items {
+            Some((items, session.state.lock().await))
+        } else {
+            None
+        };
+        // All checkpoint capture and lock acquisition must precede validation. No await
+        // may follow a valid allow before publication; new guidance during capture must
+        // invalidate the attempt without overwriting the last committed review.
+        if let GuardianReviewSessionOutcome::Completed(Ok(Some(message))) = &result.outcome
+            && codex_guardian_reviewer::parse_guardian_assessment(message).is_ok_and(|assessment| {
+                assessment.outcome == super::super::GuardianAssessmentOutcome::Allow
+            })
+            && let Some(authorization) = &self.params.authorization
+            && let Some(invalidation) = authorization
+                .invalidation(
+                    &self.params.parent_session,
+                    self.params.external_cancel.as_ref(),
+                )
+                .await
+        {
+            let outcome = invalidation.outcome;
+            result.analytics.context_changed |= invalidation.context_changed;
+            result.disposition =
+                if matches!(outcome, GuardianReviewSessionOutcome::StaleAuthorization)
+                    && result.disposition == SessionDisposition::Reusable
+                {
+                    SessionDisposition::Rollback
+                } else {
+                    SessionDisposition::Discard
+                };
+            result.outcome = outcome;
+            return result;
+        }
+        if let Some((items, mut state)) = checkpoint {
+            let last_admitted_node_repl_response_sequence =
+                state.last_admitted_node_repl_response_sequence;
+            let transcript_source = state.transcript_source;
+            state.conversation.commit_snapshot(GuardianReviewHistory {
+                initial_history: InitialHistory::Forked(items),
+                transcript_source,
+                last_admitted_node_repl_response_sequence,
+            });
+        }
         result
     }
 }

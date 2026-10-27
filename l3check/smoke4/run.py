@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """Run the authorized live smoke case, preserving command, output and exit evidence."""
-import argparse, datetime, hashlib, json, os, pathlib, re, signal, subprocess, time
+import argparse, datetime, hashlib, json, os, pathlib, re, shutil, signal, subprocess, time
 
 p = argparse.ArgumentParser()
 p.add_argument('case')
 p.add_argument('--binary', default='$WORK/codexint/codex-rs/target/release/codex')
 p.add_argument('--resume')
 p.add_argument('--timeout', type=int, default=600)
+p.add_argument('--output-root')
+p.add_argument('--work-root')
 a = p.parse_args()
 root = pathlib.Path(__file__).resolve().parent
-out = root / a.case
+output_root = pathlib.Path(a.output_root).resolve() if a.output_root else root
+out = output_root / a.case
 out.mkdir(parents=True, exist_ok=False)
-cwd = pathlib.Path('$WORK/vrsint_smoke') / a.case
+cwd = pathlib.Path(a.work_root).resolve() / a.case if a.work_root else root / 'work' / a.case
 cwd.mkdir(parents=True, exist_ok=False)
 if a.case.startswith('S1'):
     (cwd / 'a.txt').write_text('hello\n')
@@ -34,7 +37,7 @@ cmd += ['--skip-git-repo-check', '--json', '-m', 'gpt-6-astra', '-c',
 env = os.environ.copy()
 env.pop('CODEX_VRS_SOCK', None)
 env.pop('CODEX_VRS_DUMP', None)
-env.update(CODEX_HOME='~/.codex', CODEX_VRS_LOG=str(out / 'vrs.jsonl'),
+env.update(CODEX_HOME=str(pathlib.Path.home() / '.codex'), CODEX_VRS_LOG=str(out / 'vrs.jsonl'),
            RUST_LOG='error,codex_api::responses_websocket_timing=trace',
            OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1')
 with open(a.binary, 'rb') as f:
@@ -88,10 +91,13 @@ commands = [e['item'] for e in events if e.get('type') == 'item.completed' and e
 result['executed_commands'] = len(commands)
 result['command_failures'] = [c for c in commands if c.get('exit_code') != 0 or c.get('status') != 'completed']
 if thread:
-    paths = list(pathlib.Path('~/.codex/sessions').rglob('*'+thread+'*.jsonl'))
+    paths = list((pathlib.Path.home() / '.codex' / 'sessions').rglob('*'+thread+'*.jsonl'))
     result['rollouts'] = []
+    rollout_copies = out / 'rollouts'
+    rollout_copies.mkdir(exist_ok=True)
     for path in paths:
         raw = path.read_bytes()
+        shutil.copy2(path, rollout_copies / path.name)
         lines, parse_errors = [], []
         for index, line in enumerate(raw.splitlines()):
             if not line.strip():

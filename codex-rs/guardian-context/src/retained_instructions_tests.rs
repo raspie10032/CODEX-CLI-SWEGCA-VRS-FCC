@@ -111,7 +111,7 @@ fn ordinary_exchanges_keep_roles_and_drop_assistant_context_before_restrictions(
         }
         .compose(
             presentation,
-            crate::RenderedTranscript {
+            crate::PreparedTranscript {
                 items: vec![],
                 omission_note: None,
                 truncations: vec![],
@@ -155,7 +155,11 @@ fn ordinary_exchanges_keep_roles_and_drop_assistant_context_before_restrictions(
     let restored = serde_json::from_value(checkpoint).unwrap();
     assert_eq!(
         render_retained_instructions(&restored, retained_assistant_message)[0],
-        Budgeted::required(GuardianRootMessage::IncompleteAssistantContext.render())
+        RetainedInstructionItem {
+            content: GuardianRootMessage::IncompleteAssistantContext.render(),
+            kind: RetainedInstructionKind::HostNotice,
+            source: None,
+        }
     );
     context.record_assistant_message(
         RetainedUserMessage {
@@ -171,7 +175,11 @@ fn ordinary_exchanges_keep_roles_and_drop_assistant_context_before_restrictions(
     let rendered = render_retained_instructions(&context, retained_assistant_message);
     assert_eq!(
         rendered[0],
-        Budgeted::required(GuardianRootMessage::IncompleteAssistantContext.render())
+        RetainedInstructionItem {
+            content: GuardianRootMessage::IncompleteAssistantContext.render(),
+            kind: RetainedInstructionKind::HostNotice,
+            source: None,
+        }
     );
     assert!(
         rendered
@@ -352,7 +360,7 @@ fn transcript_context(
             node_repl: None,
         })
         .unwrap();
-    let transcript = profile.render_transcript(
+    let transcript = profile.prepare_transcript(
         collected.transcript_entries(),
         /*entry_number_offset*/ 0,
     );
@@ -498,7 +506,7 @@ fn coalesced_repl_text_cannot_attest_to_host_omission_delivery() {
     // Multimodal REPL results preserve raw text parts, coalesced with host guidance.
     previous.sections.push(crate::composition::SectionOutput {
         id: "node_repl_evidence",
-        delivery: SectionDelivery::UserContent(vec![
+        delivery: SectionDelivery::user_content(vec![
             Budgeted::required(ContentItem::InputText {
                 text: format!("{USER_OMISSION}\n"),
             }),

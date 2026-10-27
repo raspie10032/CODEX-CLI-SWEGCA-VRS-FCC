@@ -24,7 +24,7 @@ async fn catalog_budget_fixture(base_url: String, window: i64) -> Result<Guardia
         })
         .with_pre_build_hook(|home| {
             std::fs::write(home.join("config.toml"),
-                "[features.guardianv2]\nenabled = true\nmax_parent_compaction_tokens = 4096\n[features.guardianv2.review_scope]\ncomputer_use_only = false\n[features.guardianv2.transcript]\ninclude_images = true\n").unwrap();
+                "[features.guardianv2]\nenabled = true\n[features.guardianv2.review_scope]\ncomputer_use_only = false\n[features.guardianv2.transcript]\ninclude_images = true\n").unwrap();
         })
         .with_config(move |config| {
             // A smaller parent window must not replace Luna's catalog allowance.
@@ -151,6 +151,8 @@ async fn assert_catalog_budget(evidence: BudgetEvidence) -> Result<()> {
         history.push(user);
         if matches!(evidence, BudgetEvidence::UserInstructions) {
             history.push(ResponseItem::Message {
+                status: None,
+                encrypted_content: None,
                 id: None,
                 role: "developer".to_owned(),
                 content: vec![ContentItem::InputText {
@@ -162,6 +164,8 @@ async fn assert_catalog_budget(evidence: BudgetEvidence) -> Result<()> {
             history.push(user_instruction(restriction));
         }
         history.extend(commentary.into_iter().map(|text| ResponseItem::Message {
+            status: None,
+            encrypted_content: None,
             id: None,
             role: "assistant".to_owned(),
             content: vec![ContentItem::InputText { text }],

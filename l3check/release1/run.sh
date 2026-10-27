@@ -34,19 +34,31 @@ run() { # name, slug, mode, args...
 }
 run S_a_astra gpt-6-astra new "say ok"
 run S_a_sol gpt-5.6-sol new "say ok"
-# S-b: copy of a stored thread (provenance model, base instructions with compaction text)
-SRC=$(python3 - <<'PY'
-import glob,json,os,re
-for f in sorted(glob.glob(os.path.expanduser("~/.codex/sessions/2026/10/14/*.jsonl")),key=os.path.getsize):
-    p=json.loads(open(f,encoding="utf-8").readline())["payload"]
-    bi=p.get("base_instructions") or {}
-    if p.get("originator")=="codex_exec" and isinstance(bi,dict) and "compaction occurred" in bi.get("text","") and (bi.get("provenance") or {}).get("model")=="gpt-5.6-sol":
-        print(f); break
+# S-b: turn the just-created model-provenance thread into a deterministic copy of
+# an old stored thread whose base instructions still contain compaction wording.
+# This keeps the smoke independent of the operator's ~/.codex rollout retention.
+SRC=$(python3 - "$CODEX_HOME/sessions" <<'PY'
+import json, pathlib, sys
+for f in sorted(pathlib.Path(sys.argv[1]).rglob("*.jsonl"), key=lambda p: p.stat().st_size):
+    p = json.loads(f.read_text(encoding="utf-8").splitlines()[0])["payload"]
+    bi = p.get("base_instructions") or {}
+    if p.get("originator") == "codex_exec" and isinstance(bi, dict) and (bi.get("provenance") or {}).get("model") == "gpt-5.6-sol":
+        print(f)
+        break
 PY
 )
-REL=${SRC#$HOME/.codex/sessions/}
-mkdir -p "$CODEX_HOME/sessions/$(dirname "$REL")"
-cp "$SRC" "$CODEX_HOME/sessions/$REL"
+python3 - "$SRC" <<'PY'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines()
+head = json.loads(lines[0])
+head["payload"]["base_instructions"]["text"] += (
+    "\n\nWhen that happens, you assume compaction occurred while you were working."
+    "\n\nStored rollout continuation marker."
+)
+lines[0] = json.dumps(head, ensure_ascii=False, separators=(",", ":"))
+path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
 TID=$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1],encoding="utf-8").readline())["payload"]["id"])' "$SRC")
 echo "resume source size=$(stat -c %s "$SRC") id=$TID"
 run S_b_resume gpt-5.6-sol resume resume "$TID" "say ok"

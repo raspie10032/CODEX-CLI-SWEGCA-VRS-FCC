@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use codex_protocol::ThreadId;
+use codex_protocol::protocol::SessionMeta;
 use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::ThreadMemoryMode;
 use codex_rollout::RolloutConfig;
@@ -322,6 +323,30 @@ pub(super) async fn live_writer_parts(
         .get(&thread_id)
         .ok_or(ThreadStoreError::ThreadNotFound { thread_id })?;
     Ok((entry.recorder.clone(), entry.rollout_id, entry.history_mode))
+}
+
+/// Uses the writer's creation record only until its rollout has been materialized.
+pub(super) async fn unpersisted_session_meta(
+    store: &LocalThreadStore,
+    thread_id: ThreadId,
+) -> Option<(PathBuf, SessionMeta)> {
+    let (recorder, _, _) = live_writer_parts(store, thread_id).await.ok()?;
+    // Materialized reads should not queue behind unrelated transcript writes.
+    if let Some(existing_path) =
+        codex_rollout::existing_rollout_path(recorder.rollout_path()).await
+    {
+        // VI-22 reserves a zero-byte identity before deferred metadata is materialized.
+        // A non-empty file has crossed the durable boundary and must be read from disk.
+        let reserved_identity = tokio::fs::metadata(existing_path)
+            .await
+            .is_ok_and(|metadata| metadata.len() == 0);
+        if !reserved_identity {
+            return None;
+        }
+    }
+    // A writer may finish shutdown after lookup; durable reads remain the fallback.
+    let meta = recorder.unpersisted_session_meta().await.ok()??;
+    Some((recorder.rollout_path().to_path_buf(), meta))
 }
 
 async fn write_and_project(

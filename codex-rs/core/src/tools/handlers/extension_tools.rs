@@ -200,7 +200,7 @@ async fn to_extension_call<'a>(
     let codex_turn_metadata = invocation
         .turn
         .turn_metadata_state
-        .current_meta_value_for_mcp_request(ExecutionMetadata::from_settings(
+        .current_meta_value_for_extension_request(ExecutionMetadata::from_settings(
             &invocation.step_context.settings,
         ))
         .and_then(|metadata| to_ascii_json_string(&metadata).ok());
@@ -217,6 +217,8 @@ async fn to_extension_call<'a>(
             session: Arc::downgrade(&invocation.session),
             turn: Arc::downgrade(&invocation.turn),
         }),
+        attachment_store: Arc::clone(&invocation.session.services.image_store),
+        ephemeral: invocation.turn.config.ephemeral,
         environments,
         payload: invocation.payload.clone(),
     })
@@ -227,6 +229,7 @@ mod tests {
     use std::sync::Arc;
 
     use codex_extension_items::ExtensionItem;
+    use codex_extension_items::image_generation::GeneratedImageRef;
     use codex_extension_items::image_generation::ImageGenerationItem;
     use codex_extension_items::web_search::WebSearchItem;
     use codex_protocol::items::TurnItem;
@@ -440,6 +443,8 @@ mod tests {
             .map(|environment| environment.cwd().clone())
             .collect::<Vec<_>>();
         let history_item = ResponseItem::Message {
+            status: None,
+            encrypted_content: None,
             id: None,
             role: "user".to_string(),
             content: vec![ContentItem::InputText {
@@ -570,10 +575,13 @@ mod tests {
             id: "call-image".to_string(),
             status: "in_progress".to_string(),
             revised_prompt: None,
-            result: String::new(),
+            image: GeneratedImageRef::Inline {
+                result: String::new(),
+            },
             transparent_background: None,
             failure: None,
             saved_path: None,
+            input_images: Vec::new(),
             imagegen_request_id: None,
             generation_id: None,
         });
@@ -581,10 +589,13 @@ mod tests {
             id: "call-image".to_string(),
             status: "completed".to_string(),
             revised_prompt: Some("A tiny blue square".to_string()),
-            result: "cG5n".to_string(),
+            image: GeneratedImageRef::Inline {
+                result: "cG5n".to_string(),
+            },
             transparent_background: Some(true),
             failure: None,
             saved_path: Some(expected_path.clone()),
+            input_images: Vec::new(),
             imagegen_request_id: None,
             generation_id: None,
         });
@@ -606,10 +617,13 @@ mod tests {
                     call_id: "call-image".to_string(),
                     status: "completed".to_string(),
                     revised_prompt: Some("A tiny blue square".to_string()),
-                    result: "cG5n".to_string(),
+                    image: GeneratedImageRef::Inline {
+                        result: "cG5n".to_string(),
+                    },
                     transparent_background: Some(true),
                     failure: None,
                     saved_path: Some(expected_path.clone()),
+                    input_images: Vec::new(),
                 })],
             },
         )

@@ -5,6 +5,7 @@
 //! computed the error is returned to the caller, and the accumulated live history is never sent
 //! in its place.
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -152,6 +153,28 @@ fn decode_assembled_items(values: Vec<serde_json::Value>) -> Result<Vec<Response
         .collect()
 }
 
+/// Builds `A(S_t, thread)` directly from a rollout path when the owning session is not resident.
+///
+/// This is the path-based half of D3 A10/A13/A20. It has the same NotReady behavior as the live
+/// session entrance and deliberately has no accumulated-history fallback.
+pub(crate) async fn vrs_history_for_path(path: &Path) -> Result<ContextManager, VrsError> {
+    let path = path.to_path_buf();
+    let assembled = loop {
+        match codex_vrs::assemble_with_budget(&path, None) {
+            Err(VrsError::NotReady) => {
+                let wait_path = path.clone();
+                tokio::task::spawn_blocking(move || codex_vrs::wait(&wait_path, 1000))
+                    .await
+                    .map_err(|err| VrsError::Unavailable(format!("vrs wait task: {err}")))??;
+            }
+            other => break other?,
+        }
+    };
+    let mut history = ContextManager::new();
+    history.replace_assembled(decode_assembled_items(assembled.items)?);
+    Ok(history)
+}
+
 /// The prompt input for one model step (design D3 A1/A2, D4, D5).
 ///
 /// Assembles, installs the assembly as the live history, and returns it normalized for the
@@ -163,7 +186,13 @@ pub(crate) async fn vrs_prompt_input(
 ) -> CodexResult<Vec<ResponseItem>> {
     // Reserve instructions, tools and output schema in their actual wire representation.
     // In Responses Lite those fields become input items; the same estimator counts both forms.
-    let empty_prompt = super::turn::build_prompt(Vec::new(), step, base_instructions.clone());
+    let incremental_tools = sess.current_window_uses_incremental_tools(step).await;
+    let empty_prompt = super::turn::build_prompt(
+        Vec::new(),
+        step,
+        base_instructions.clone(),
+        incremental_tools,
+    );
     let overhead = estimate_prompt_tokens(sess, step, &empty_prompt).await?;
     let maximum = request_input_limit(step);
     let budget = maximum

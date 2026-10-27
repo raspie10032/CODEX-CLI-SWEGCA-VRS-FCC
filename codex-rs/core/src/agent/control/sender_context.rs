@@ -1,17 +1,20 @@
 //! Captures genuine sender instructions and assistant context for host-delivered task messages.
 //! Only turn-input admission calls this, before queueing; ordinary tool results and
-//! quoted delegation text cannot establish sender provenance. Lookup stays in this host.
+//! quoted delegation text cannot establish sender provenance. Unloaded senders are read
+//! through the host's authenticated thread store, without resuming their runtime.
 
-use crate::context::ContextualUserFragment;
 use crate::context::GuardianSenderExchange;
 use crate::context::GuardianSenderMessages;
 use codex_guardian_context::GuardianRootMessage;
 use codex_history::RetainedContextEntry;
 use codex_history::RetainedContextOrder;
-use codex_history::SenderUserMessages;
 use codex_protocol::ThreadId;
+use codex_protocol::error::CodexErr;
+use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::models::ResponseItem;
+use codex_thread_store::ReadThreadParams;
+use std::time::Duration;
 
 use super::LocalAgentRuntime;
 
@@ -20,8 +23,7 @@ impl LocalAgentRuntime {
         &self,
         item: &ResponseItem,
         receiver_thread_id: ThreadId,
-        receiver_turn_id: &str,
-    ) -> CodexResult<Option<SenderUserMessages>> {
+    ) -> CodexResult<Option<GuardianSenderMessages>> {
         let ResponseItem::FunctionCallOutput {
             id: Some(id),
             call_id: None,
@@ -36,6 +38,7 @@ impl LocalAgentRuntime {
         if !matches!(
             (namespace.as_str(), name.as_str()),
             ("codex_app" | "codex_tui", "send_message_to_thread")
+                | ("codex_app", "create_thread")
                 | ("cloud_threads", "send_message")
         ) {
             return Ok(None);
@@ -59,14 +62,63 @@ impl LocalAgentRuntime {
         let mut fragment = GuardianSenderMessages {
             source: source_thread_id,
             delivery: id.to_string(),
+            from_storage: false,
             messages: Vec::new(),
         };
         if let Some(source_thread_id) = source_thread_id
             && let Ok(manager) = self.upgrade()
-            && let Ok(sender) = manager.get_thread(source_thread_id).await
         {
-            let history = sender.conversation_history_snapshot().await?;
-            if let Some(context) = history.retained_context() {
+            let context = match manager.get_thread(source_thread_id).await {
+                Ok(sender) => {
+                    let history = sender.conversation_history_snapshot().await?;
+                    history.retained_context().cloned()
+                }
+                Err(_) => {
+                    // The store owns authorization, including cross-worker tenant boundaries.
+                    // Bound path lookup and VRS assembly together so unavailable storage
+                    // cannot stall turn admission.
+                    let context = tokio::time::timeout(Duration::from_secs(/*secs*/ 5), async {
+                        let stored = match manager
+                            .read_stored_thread(ReadThreadParams {
+                                thread_id: source_thread_id,
+                                include_archived: true,
+                                include_history: false,
+                            })
+                            .await
+                        {
+                            Ok(stored) => stored,
+                            Err(error)
+                                if matches!(
+                                    error.details(),
+                                    CodexErrorDetails::ThreadNotFound(_)
+                                ) =>
+                            {
+                                return Ok(None);
+                            }
+                            Err(error) => return Err(error),
+                        };
+                        if stored.thread_id != source_thread_id || stored.source.is_internal() {
+                            return Ok(None);
+                        }
+                        let Some(rollout_path) = stored.rollout_path else {
+                            return Ok(None);
+                        };
+                        let history = crate::session::vrs_input::vrs_history_for_path(
+                            rollout_path.as_path(),
+                        )
+                        .await
+                        .map_err(crate::session::vrs_input::vrs_error_to_codex)?;
+                        Ok::<_, CodexErr>(Some(history.retained_context().clone()))
+                    })
+                    .await
+                    .map_err(|_| CodexErr::Timeout)??;
+                    if context.is_some() {
+                        fragment.from_storage = true;
+                    }
+                    context
+                }
+            };
+            if let Some(context) = context {
                 let mut exchanges = Vec::new();
                 let mut assistant = None;
                 for (order, entry) in context.ordered_entries() {
@@ -101,12 +153,6 @@ impl LocalAgentRuntime {
                 fragment.messages.reverse();
             }
         }
-        let mut snapshot = SenderUserMessages {
-            receiver_turn_id: receiver_turn_id.to_owned(),
-            receiver_message_id: id.to_string(),
-            text: fragment.render(),
-        };
-        snapshot.bound();
-        Ok(Some(snapshot))
+        Ok(Some(fragment))
     }
 }

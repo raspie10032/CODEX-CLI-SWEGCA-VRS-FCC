@@ -476,16 +476,11 @@ async fn namespaced_custom_tool_call_preserves_namespace_through_dispatch_and_re
     );
     let expected_escaped_calls = json!([{
         "name": format!("{namespace}__{tool_name}"),
-        "arguments": {
-            "_codex_executed_tool_call_truncated": {
-                "original_bytes": serde_json::to_vec(&escaped_input)?.len(),
-                "max_bytes": 8 * 1024,
-            },
-        },
+        "arguments": escaped_input,
     }]);
     assert_eq!(
         tool_call_metadata(escaped_request.custom_tool_call_output(escaped_call_id)),
-        json!({"executed_tool_calls": expected_escaped_calls}),
+        json!({"executed_tool_calls": expected_escaped_calls, "tool_calls_complete": true}),
     );
 
     let direct_exec_call_id = "custom-direct-exec";
@@ -663,7 +658,7 @@ async fn sandbox_denied_exec_command_returns_original_output() -> Result<()> {
         "printf {sentinel:?} >&2; printf {content:?} > {path:?}",
         sentinel = format!("{sentinel}\n"),
         content = "sandbox denied",
-        path = &target_path
+        path = target_path
     );
     let args = json!({
         "cmd": command,

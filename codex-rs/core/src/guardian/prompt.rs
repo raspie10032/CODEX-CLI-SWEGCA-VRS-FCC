@@ -138,7 +138,7 @@ pub(crate) async fn build_guardian_prompt_items_with_parent_turn(
                 tool_description.as_deref(),
                 connector_description.as_deref(),
             )
-            .map(|descriptions| descriptions.render())
+            .map(|descriptions| descriptions.render().into_text().unwrap_or_default())
         } else {
             None
         },
@@ -147,8 +147,6 @@ pub(crate) async fn build_guardian_prompt_items_with_parent_turn(
                 has_trigger: trigger.is_some(),
             },
             GuardianApprovalRequest::WriteStdin { .. } => PlannedActionKind::TerminalInput,
-            #[cfg(unix)]
-            GuardianApprovalRequest::Execve { .. } => PlannedActionKind::Command,
             GuardianApprovalRequest::ExecCommand { .. }
             | GuardianApprovalRequest::ApplyPatch { .. }
             | GuardianApprovalRequest::McpToolCall { .. }
@@ -215,8 +213,12 @@ pub(crate) async fn build_guardian_prompt_items_with_parent_turn(
             },
         ),
     };
-    let profile = ContextProfile::synchronous();
-    let mut transcript = profile.render_transcript(transcript_entries, offset);
+    let mut profile = ContextProfile::synchronous();
+    profile.transcript_format = match parent_context {
+        Some(context) => context.turn().config.guardian_transcript_mode,
+        None => session.get_config().await.guardian_transcript_mode,
+    };
+    let mut transcript = profile.prepare_transcript(transcript_entries, offset);
     if transcript_entries.is_empty() {
         transcript.items.push(Budgeted::required(
             codex_guardian_context::TranscriptContent::Text(placeholder.to_owned()),
@@ -236,7 +238,7 @@ pub(crate) fn render_guardian_transcript_entries(
     entries: &[ConversationTranscriptEntry],
 ) -> (Vec<String>, Option<String>) {
     let mut transcript =
-        ContextProfile::synchronous().render_transcript(entries, /*entry_number_offset*/ 0);
+        ContextProfile::synchronous().prepare_transcript(entries, /*entry_number_offset*/ 0);
     if entries.is_empty() {
         transcript.items.push(Budgeted::required(
             codex_guardian_context::TranscriptContent::Text(
@@ -250,6 +252,7 @@ pub(crate) fn render_guardian_transcript_entries(
             .into_iter()
             .map(|item| match item.content {
                 codex_guardian_context::TranscriptContent::Text(text) => text,
+                codex_guardian_context::TranscriptContent::Record(record) => record.to_string(),
                 codex_guardian_context::TranscriptContent::AgentMessage(_) => {
                     panic!("expected text transcript")
                 }

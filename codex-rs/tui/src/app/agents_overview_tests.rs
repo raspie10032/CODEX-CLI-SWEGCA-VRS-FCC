@@ -1,6 +1,7 @@
 #[path = "agents_overview_discovery_tests.rs"]
 mod discovery;
 
+use crate::app::app_server_requests::BufferedServerRequest;
 #[path = "agent_center_tests.rs"]
 mod command_center;
 
@@ -241,7 +242,7 @@ async fn overview_right_preserves_editors_and_offline_state() {
     assert!(rx.try_recv().is_err());
 }
 
-fn overview_thread(
+pub(in crate::app) fn overview_thread(
     thread_id: ThreadId,
     parent_thread_id: Option<ThreadId>,
     name: &str,
@@ -376,6 +377,7 @@ async fn shared_overview_keeps_rows_and_replays_changes_over_stale_reads() -> Re
             ]),
             recent_seed_complete: true,
             discovery: None,
+            pinned_thread_ids: None,
         }),
     );
     retained_thread.name = Some("New name".to_string());
@@ -396,6 +398,7 @@ async fn shared_overview_keeps_rows_and_replays_changes_over_stale_reads() -> Re
             threads: HashMap::from([(retained, None)]),
             recent_seed_complete: true,
             discovery: None,
+            pinned_thread_ids: None,
         }),
     );
     assert_eq!(app.agents_overview.threads, expected);
@@ -445,6 +448,7 @@ async fn shared_overview_keeps_rows_and_replays_changes_over_stale_reads() -> Re
                     last_messages,
                     recent_seed_complete: true,
                     discovery: None,
+                    pinned_thread_ids: None,
                 }),
             );
             assert!(app.agents_overview.last_messages.is_empty());
@@ -569,9 +573,9 @@ async fn shared_overview_seeds_once_and_retains_locally_resumed_history() -> Res
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             let event = app_server.next_event().await.expect("server notification");
-            let is_created = matches!(&event, AppServerEvent::ServerNotification(notification)
+            let is_created = matches!(&event.event, AppServerEvent::ServerNotification(notification)
                 if matches!(notification.as_ref(), ServerNotification::ThreadStarted(started) if started.thread.id == created.to_string()));
-            app.handle_app_server_event(&app_server, event).await;
+            app.handle_backend_event(&app_server, event).await;
             if is_created { break; }
         }
     }).await.expect("creation notification received");
@@ -834,7 +838,10 @@ async fn agents_overview_details_show_available_attention_without_expanding_rows
                 is_blocking: true,
                 auto_resolution_ms: None,
             },
-        }],
+        }]
+        .into_iter()
+        .map(|request| BufferedServerRequest::new(request, &app_server.request_handle()))
+        .collect(),
     );
     let view = app.agents_overview_view(threads.clone(), Some(root));
     app.agents_overview.visible_thread_ids = view.thread_ids();
@@ -1125,7 +1132,7 @@ async fn agents_overview_reasoning_uses_existing_events_and_expires_with_attachm
 }
 
 #[tokio::test]
-async fn worktrees_overview_grouping_requires_feature() {
+async fn worktrees_overview_groups_linked_checkouts() {
     let mut app = make_test_app().await;
     let root = tempfile::tempdir().unwrap();
     let primary = root.path().join("primary");
@@ -1170,32 +1177,24 @@ async fn worktrees_overview_grouping_requires_feature() {
     let display_heading = &headings[0];
     let grouped_heading = format!("{display_heading}  2");
     let width = 160;
-    for enabled in [false, true] {
-        app.config
-            .features
-            .set_enabled(Feature::Worktrees, enabled)
-            .unwrap();
-        let view = app.agents_overview_view(threads.clone(), /*selected_thread_id*/ None);
-        app.chat_widget.show_bottom_pane_view(Box::new(view));
-        let popup = render_bottom_popup(&app.chat_widget, width);
-        assert_eq!(popup.contains(&grouped_heading), enabled, "{popup}");
-        if enabled {
-            let grouping = popup
-                .lines()
-                .map(|line| line.split('│').next().unwrap_or(line).trim_end())
-                .collect::<Vec<_>>()
-                .join("\n")
-                .replace(&headings[1], "/tmp/worktree-root/primary/subdir/child")
-                .replace(display_heading, "/tmp/worktree-root/primary")
-                .replace('\\', "/");
-            insta::with_settings!({snapshot_path => "../snapshots"}, {
-                insta::assert_snapshot!(
-                    "agents_overview_worktree_grouping",
-                    normalize_agent_center_snapshot(grouping)
-                );
-            });
-        }
-    }
+    let view = app.agents_overview_view(threads, /*selected_thread_id*/ None);
+    app.chat_widget.show_bottom_pane_view(Box::new(view));
+    let popup = render_bottom_popup(&app.chat_widget, width);
+    assert!(popup.contains(&grouped_heading), "{popup}");
+    let grouping = popup
+        .lines()
+        .map(|line| line.split('│').next().unwrap_or(line).trim_end())
+        .collect::<Vec<_>>()
+        .join("\n")
+        .replace(&headings[1], "/tmp/worktree-root/primary/subdir/child")
+        .replace(display_heading, "/tmp/worktree-root/primary")
+        .replace('\\', "/");
+    insta::with_settings!({snapshot_path => "../snapshots"}, {
+        insta::assert_snapshot!(
+            "agents_overview_worktree_grouping",
+            normalize_agent_center_snapshot(grouping)
+        );
+    });
 }
 
 #[tokio::test]
@@ -1911,10 +1910,12 @@ async fn overview_selection_applies_user_permissions_only_to_unloaded_threads() 
     // The picker must also abort when a session-only choice violates destination policy.
     std::fs::write(&requirements, "allowed_approval_policies = [\"never\"]\n")?;
     app.harness_overrides.approval_policy = Some(codex_protocol::protocol::AskForApproval::Never);
+    let backend_id = app_server.backend_id();
     Box::pin(app.resume_target_session(
         &mut tui,
         &mut app_server,
         SessionTarget {
+            backend_id,
             path: None,
             thread_id: thread_ids[4],
             cwd: None,
@@ -2264,11 +2265,13 @@ async fn resuming_active_session_closes_command_center() -> Result<()> {
     app.chat_widget.show_bottom_pane_view(Box::new(view));
     let mut tui = crate::tui::test_support::make_test_tui()?;
     let mut server = Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await?;
+    let backend_id = server.backend_id();
     assert!(matches!(
         app.apply_resume_picker_selection(
             &mut tui,
             &mut server,
             SessionSelection::Resume(SessionTarget {
+                backend_id,
                 path: None,
                 thread_id,
                 cwd: None,
@@ -2310,6 +2313,8 @@ async fn resume_picker_round_trip_preserves_each_threads_input() -> Result<()> {
         app.config.codex_home.join("config.toml"),
         "[tui]\nresume_cwd = \"current\"\n",
     )?;
+    let mut server = Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await?;
+    let backend_id = server.backend_id();
     let mut targets = Vec::new();
     for (timestamp, name) in [
         ("2025-01-05T12-00-00", "First task"),
@@ -2325,6 +2330,7 @@ async fn resume_picker_round_trip_preserves_each_threads_input() -> Result<()> {
         )
         .expect("saved rollout");
         targets.push(SessionTarget {
+            backend_id,
             path: Some(app_test_support::rollout_path(
                 app.config.codex_home.as_path(),
                 timestamp,
@@ -2336,7 +2342,6 @@ async fn resume_picker_round_trip_preserves_each_threads_input() -> Result<()> {
         });
     }
     let mut tui = crate::tui::test_support::make_test_tui()?;
-    let mut server = Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await?;
     let mut expected_states = Vec::new();
     for target in targets.iter().chain(&targets) {
         let view = app.agents_overview_view(Vec::new(), /*selected_thread_id*/ None);
@@ -2426,11 +2431,13 @@ async fn command_center_handles_resume_failure_and_success() -> Result<()> {
     app.chat_widget.show_bottom_pane_view(Box::new(view));
     let mut tui = crate::tui::test_support::make_test_tui()?;
     let mut server = Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await?;
+    let backend_id = server.backend_id();
     assert!(matches!(
         Box::pin(app.apply_resume_picker_selection(
             &mut tui,
             &mut server,
             SessionSelection::Resume(SessionTarget {
+                backend_id,
                 path: None,
                 thread_id: ThreadId::new(),
                 cwd: None,
@@ -2455,6 +2462,7 @@ async fn command_center_handles_resume_failure_and_success() -> Result<()> {
             &mut tui,
             &mut server,
             SessionSelection::Resume(SessionTarget {
+                backend_id,
                 path: Some(path),
                 thread_id,
                 cwd: None,
@@ -2544,7 +2552,10 @@ async fn command_center_attach_conflict_opens_read_only_and_retries() -> Result<
                 is_blocking: true,
                 auto_resolution_ms: None,
             },
-        }],
+        }]
+        .into_iter()
+        .map(|request| BufferedServerRequest::new(request, &server.request_handle()))
+        .collect(),
     );
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     app.app_event_tx = AppEventSender::new(tx);
@@ -2697,6 +2708,7 @@ async fn command_center_refresh_failure_is_inline_and_clears_on_success() -> Res
             last_messages: HashMap::new(),
             recent_seed_complete: false,
             discovery: None,
+            pinned_thread_ids: None,
         }),
     ] {
         let request_id = Uuid::new_v4();
@@ -2728,6 +2740,7 @@ async fn command_center_refresh_failure_is_inline_and_clears_on_success() -> Res
             last_messages: HashMap::new(),
             recent_seed_complete: true,
             discovery: None,
+            pinned_thread_ids: None,
         }),
     );
     assert_eq!(render_bottom_popup(&app.chat_widget, /*width*/ 48), before);
@@ -3012,7 +3025,6 @@ async fn overview_grouping_persists_across_config_reloads() -> Result<()> {
 #[tokio::test]
 async fn command_center_new_actions_use_selection_and_leave_metadata_text_alone() {
     let mut app = make_test_app().await;
-    app.config.features.enable(Feature::Worktrees).unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     app.app_event_tx = AppEventSender::new(tx);
     let id = ThreadId::new();
@@ -3023,7 +3035,18 @@ async fn command_center_new_actions_use_selection_and_leave_metadata_text_alone(
         ThreadStatus::Idle,
     );
     target.cwd = test_path_buf("/tmp/checkout/subdir").abs();
+    app.agents_overview.pinned_thread_ids = Some(Vec::new());
     let mut view = app.agents_overview_view(vec![target.clone()], Some(id));
+    view.handle_key_event(KeyCode::Char('p').into());
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(AppEvent::ToggleAgentsOverviewPin {
+            thread_id,
+            pinned: true,
+        }) if thread_id == id
+    ));
+    view.handle_key_event(KeyCode::Char('p').into());
+    assert!(rx.try_recv().is_err());
     for _ in 0..3 {
         view.handle_key_event(KeyCode::Char('n').into());
         assert!(
@@ -3040,13 +3063,13 @@ async fn command_center_new_actions_use_selection_and_leave_metadata_text_alone(
         ));
     }
     view.handle_key_event(KeyCode::Char('r').into());
-    for character in "nwogrxfha".chars() {
+    for character in "nwogrxfhap".chars() {
         view.handle_key_event(KeyCode::Char(character).into());
     }
     assert!(rx.try_recv().is_err());
     view.handle_key_event(KeyCode::Enter.into());
     assert!(
-        matches!(rx.try_recv(), Ok(AppEvent::RenameAgentsOverviewThread { name, .. }) if name.ends_with("nwogrxfha"))
+        matches!(rx.try_recv(), Ok(AppEvent::RenameAgentsOverviewThread { name, .. }) if name.ends_with("nwogrxfhap"))
     );
     let mut empty = app.agents_overview_view(Vec::new(), /*selected_thread_id*/ None);
     empty.handle_key_event(KeyCode::Char('n').into());
@@ -3054,8 +3077,4 @@ async fn command_center_new_actions_use_selection_and_leave_metadata_text_alone(
         rx.try_recv(),
         Ok(AppEvent::NewAgentsOverviewSession { cwd: None })
     ));
-    app.config.features.disable(Feature::Worktrees).unwrap();
-    let mut disabled = app.agents_overview_view(vec![target], Some(id));
-    disabled.handle_key_event(KeyCode::Char('w').into());
-    assert!(rx.try_recv().is_err());
 }

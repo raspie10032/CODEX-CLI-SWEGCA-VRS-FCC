@@ -4,13 +4,14 @@ use crate::context_manager::is_user_turn_boundary;
 use codex_history::TurnAttribution;
 use codex_protocol::protocol::SessionContextWindow;
 use codex_protocol::protocol::ThreadHistoryMode;
+use codex_utils_output_truncation::TruncationPolicy;
 use uuid::Uuid;
 
 // Return value of `Session::reconstruct_history_from_rollout`: the resume/fork hydration metadata
 // derived from the rollout. The model-visible history is not rebuilt here (it comes from VRS).
 #[derive(Debug, PartialEq)]
-pub(super) struct RolloutReconstruction {
-    pub(super) retained_context: codex_history::RetainedContext,
+pub(crate) struct RolloutReconstruction {
+    pub(crate) retained_context: codex_history::RetainedContext,
     pub(super) guardian_history: Option<codex_history::GuardianHistoryCheckpoint>,
     pub(super) last_started_turn_id: Option<String>,
     pub(super) previous_turn_settings: Option<PreviousTurnSettings>,
@@ -188,6 +189,26 @@ impl Session {
         turn_context: &TurnContext,
         rollout_items: &[RolloutItem],
     ) -> RolloutReconstruction {
+        ContextManager::reconstruct_rollout(
+            rollout_items,
+            turn_context.history_mode,
+            ContextManager::for_session(
+                &turn_context.session_source,
+                &turn_context.config.features,
+            ),
+            turn_context.model_info().truncation_policy.into(),
+        )
+    }
+}
+
+impl ContextManager {
+    /// Replays stored history without starting a session or acquiring its writer.
+    pub(crate) fn reconstruct_rollout(
+        rollout_items: &[RolloutItem],
+        history_mode: ThreadHistoryMode,
+        mut history: Self,
+        _truncation_policy: TruncationPolicy,
+    ) -> RolloutReconstruction {
         // Select the compaction and suffix that can affect reconstruction.
         let has_legacy_compaction_without_window_number =
             rollout_items.iter().any(|item| {
@@ -205,7 +226,7 @@ impl Session {
                 _ => None,
             })
         };
-        let input_checkpoint = select_input_compaction(rollout_items, turn_context.history_mode);
+        let input_checkpoint = select_input_compaction(rollout_items, history_mode);
         let replay_items = input_checkpoint.map_or(rollout_items, |checkpoint| checkpoint.suffix);
         let resume_metadata =
             input_checkpoint.and_then(|checkpoint| checkpoint.compacted.resume_metadata.as_ref());
@@ -466,12 +487,8 @@ impl Session {
         )
         .unwrap_or(u64::MAX);
 
-        // The model-visible history is not replayed (design D4); `Compacted` items of rollouts
-        // written before compaction was removed are ignored. Only the retained context is kept.
-        let mut history = ContextManager::for_session(
-            &turn_context.session_source,
-            &turn_context.config.features,
-        );
+        // Model-visible history comes only from VRS (design D4). Keep non-model retained context,
+        // and ignore legacy compaction replacement histories instead of replaying them.
         for item in rollout_items {
             if let RolloutItem::RetainedContext(event) = item {
                 history.record_retained_context(event);

@@ -17,10 +17,6 @@ use crate::keymap::KeymapContext;
 use crate::keymap::ListAction;
 use crate::keymap::RuntimeKeymap;
 use crate::terminal_hyperlinks::HyperlinkLine;
-use crate::terminal_hyperlinks::annotate_web_urls_in_line;
-use crate::terminal_hyperlinks::remap_source_wrapped_line;
-use crate::wrapping::WrappedLine;
-use crate::wrapping::wrap_ranges_trim;
 use codex_protocol::items::AsyncUserInputQuestion;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
@@ -156,18 +152,29 @@ impl AsyncQuestions {
     }
 
     pub(super) fn wrapped_question_lines(&self, width: u16) -> Vec<HyperlinkLine> {
+        let width = usize::from(width.max(1));
         self.current_question()
-            .map(|q| {
-                let source = annotate_web_urls_in_line(q.title.clone().into());
-                let wrapped = wrap_ranges_trim(&q.title, usize::from(width.max(1)))
-                    .into_iter()
-                    .map(|range| WrappedLine {
-                        line: (&q.title[range.clone()]).into(),
-                        range,
-                        prefix_bytes: 0,
-                    })
-                    .collect();
-                remap_source_wrapped_line(&source, wrapped)
+            .map(|question| {
+                crate::markdown_render::render_markdown_lines_with_width_cwd_and_hidden_link_destinations(
+                    &question.title,
+                    Some(width),
+                    /*cwd*/ None,
+                    &crate::markdown_render::hide_web_link_destination,
+                )
+                .into_iter()
+                .flat_map(|line| {
+                    if line.width() <= width {
+                        vec![line]
+                    } else {
+                        // The question layout counts physical rows, so break overwide Markdown
+                        // tokens while preserving their hyperlink destinations.
+                        crate::terminal_hyperlinks::remap_source_wrapped_line(
+                            &line,
+                            crate::wrapping::word_wrap_line_with_source(&line.line, width),
+                        )
+                    }
+                })
+                .collect()
             })
             .unwrap_or_default()
     }
