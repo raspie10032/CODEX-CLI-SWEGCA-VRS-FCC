@@ -35,7 +35,7 @@ The library is already here: [`vrs-lib7/prebuilt/x86_64-linux-gnu/libvrs.a`](vrs
 
 ```bash
 cd codex-rs
-cargo build --release -p codex-cli -p codex-code-mode-host
+cargo build --release -p codex-cli
 ```
 
 A few notes:
@@ -43,6 +43,7 @@ A few notes:
 - The prebuilt archive is for x86_64 and was built with GCC 14.2.0 on Ubuntu 24.04 (glibc 2.39). It needs glibc 2.38 or newer and a `libstdc++` from GCC 13 or newer; CI links it on Ubuntu 24.04. The [prebuilt README](vrs-lib7/prebuilt/x86_64-linux-gnu/README.md) has the details.
 - To link a different `libvrs.a`, set `VRS_LIB_DIR` to the directory that holds it. The library source is `vrs-lib7/vrs_lib.cpp`. The SWEGCA core sources it also needs are not included, only their compiled objects inside the prebuilt archive.
 - Keep `codex-code-mode-host` in the same directory as `codex`. Code Mode is on by default in this base, and `codex` looks for the host next to itself; without it, Code Mode tool calls fail.
+- To build the host too, add `-p codex-code-mode-host`. It links V8 from an archive that only OpenAI publishes for this configuration, so fetch it first: `l3check/ci/fetch_rusty_v8.sh . <dir>` downloads it from the `rusty-v8-v152.2.0` release of openai/codex and checks it against `third_party/v8`, as upstream CI does. Then set `RUSTY_V8_ARCHIVE` and `RUSTY_V8_SRC_BINDING_PATH` to the two files it prints.
 - To use it with the ChatGPT desktop app, point `CODEX_CLI_PATH` at your build. The app picks its Codex binary from that variable.
 
 ## macOS (preview)
