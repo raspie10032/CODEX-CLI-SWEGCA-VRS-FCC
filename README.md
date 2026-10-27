@@ -11,12 +11,12 @@ Every place that builds model input calls that same assembly. That includes the 
 
 ## Where things stand
 
-- **Base:** `rust-v0.162.0-alpha.17.2` (`740e5af`), the Codex version bundled with ChatGPT desktop app 26.1007. The first VRS build was on `rust-v0.162.0-alpha.2` (`74e804dee`, tagged `vrs-base`) and was merged forward.
+- **Base:** `rust-v0.164.0-alpha.11.1` (`6905ece`), the Codex version bundled with ChatGPT desktop app 26.1021. The first VRS build was on `rust-v0.162.0-alpha.2` (`74e804dee`, tagged `vrs-base`) and was merged forward through `rust-v0.162.0-alpha.17.2` (v1.1.0 to v1.1.2).
 - **Incremental tools:** upstream's experimental `incremental_tools` feature records instructions and tool definitions into the history. This fork rebuilds that prefix on every request instead, so the feature is accepted but ignored.
 - **Branch:** `main`, with libvrs round 7 (`vrs-lib7/`). The work was done on a branch named `vrs-int`, which the design records still mention.
-- **Release:** [`fcc-v1.1.2`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.2) has a prebuilt, stripped `codex` for x86_64 Linux.
+- **Release:** [`fcc-v1.1.3`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.3) has a prebuilt, stripped `codex` and `codex-code-mode-host` for x86_64 Linux.
 - **macOS preview:** [`fcc-v1.1.1-macos.1`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.1-macos.1) is a prerelease for Apple Silicon (macOS 14.4 or newer). See [macOS (preview)](#macos-preview) below.
-- **In daily use:** this fork has been the Codex binary of the maintainer's ChatGPT desktop app on Linux since 2026-10-13. It ran on the alpha.2 base with app 26.1002 until 2026-10-15, and since then on this base with app 26.1007.
+- **In daily use:** this fork has been the Codex binary of the maintainer's ChatGPT desktop app on Linux since 2026-10-13. It ran on the alpha.2 base with app 26.1002 until 2026-10-15, on alpha.17.2 with app 26.1007 until 2026-10-27, and since then on this base with app 26.1021.
 - **Gates:** the application smoke gates (S1-S5) pass, with no failed receipts and no compaction events.
 - **CI:** [`fcc-ci`](.github/workflows/fcc-ci.yml) builds and tests on x86_64 Linux with the prebuilt libvrs, then runs one mock-provider turn that must be assembled by VRS. Upstream's Bazel and multi-platform workflows are turned off in this repository: they need OpenAI's own runners and a toolchain the prebuilt library is not built for.
 - **Real use (alpha.2 base):** this branch was measured across 5 threads with 2,577 model requests after it replaced the app's Codex. The long-run figures below are being measured again on the new base.
@@ -29,24 +29,25 @@ Every place that builds model input calls that same assembly. That includes the 
 
 Building from this branch is Linux only (on other systems the store refuses to open). For a Mac, see [macOS (preview)](#macos-preview).
 
-To skip building, download the binary from the [`fcc-v1.1.2` release](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.2). It was built on Ubuntu 24.04 (glibc 2.39) and runs there and on newer distributions.
+To skip building, download the binaries from the [`fcc-v1.1.3` release](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.3). They were built on Ubuntu 24.04 (glibc 2.39) and run there and on newer distributions.
 
 The library is already here: [`vrs-lib7/prebuilt/x86_64-linux-gnu/libvrs.a`](vrs-lib7/prebuilt/x86_64-linux-gnu/) is the exact libvrs round 7 used by the deployed build, with the SWEGCA C++ core compiled in. The Rust build links it by default, so this is all you need:
 
 ```bash
 cd codex-rs
-cargo build --release -p codex-cli
+cargo build --release -p codex-cli -p codex-code-mode-host
 ```
 
 A few notes:
 
 - The prebuilt archive is for x86_64 and was built with GCC 14.2.0 on Ubuntu 24.04 (glibc 2.39). It needs glibc 2.38 or newer and a `libstdc++` from GCC 13 or newer; CI links it on Ubuntu 24.04. The [prebuilt README](vrs-lib7/prebuilt/x86_64-linux-gnu/README.md) has the details.
 - To link a different `libvrs.a`, set `VRS_LIB_DIR` to the directory that holds it. The library source is `vrs-lib7/vrs_lib.cpp`. The SWEGCA core sources it also needs are not included, only their compiled objects inside the prebuilt archive.
+- Keep `codex-code-mode-host` in the same directory as `codex`. Code Mode is on by default in this base, and `codex` looks for the host next to itself; without it, Code Mode tool calls fail.
 - To use it with the ChatGPT desktop app, point `CODEX_CLI_PATH` at your build. The app picks its Codex binary from that variable.
 
 ## macOS (preview)
 
-[`fcc-v1.1.1-macos.1`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.1-macos.1) is a prerelease of v1.1.1 for Apple Silicon, so it does not have the v1.1.2 fixes yet. It needs macOS 14.4 or newer on arm64. There is no Intel Mac build, and the Linux release is still the stable one.
+[`fcc-v1.1.1-macos.1`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.1-macos.1) is a prerelease of v1.1.1 for Apple Silicon, so it does not have the v1.1.2 fixes or the v1.1.3 base yet. It needs macOS 14.4 or newer on arm64. There is no Intel Mac build, and the Linux release is still the stable one.
 
 - **Install:** download `codex-fcc-v1.1.1-macos.1-aarch64-apple-darwin.tar.gz` and `SHA256SUMS` from the release, compare the archive's hash (`shasum -a 256 <archive>`), and extract it. Keep `codex` and `codex-code-mode-host` in the same directory, because Code Mode models need the host. Then run `./codex --version`.
 - **ChatGPT desktop app:** put both files at a stable path, export the absolute path of `codex` as `CODEX_CLI_PATH` in your login shell configuration, then quit the app completely and open it again. This was checked with app 26.1007.71326.
