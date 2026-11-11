@@ -2090,3 +2090,18 @@ L2 끝: 이음매마다 자리를 적었고, 새 자리 둘(host/spawn, `<mcp_to
   - 배포: 앱·터미널은 `~/tmp/codexint_deploy_a17/fcc114/`(22ffe83a0 호스트 빌드, 의존성 셋 이전). 되돌리기 = desktop-backups/*.bak-fcc114-20261111-1304 + `~/tmp/codex_link_before_fcc114.txt` + `launch_fcc113.sh`. 릴리스판으로 바꾸는 것은 사용자 결정.
 - G_114 진척: R1–R7 성립(R5 의 플로팅 화면 확인만 사용자 몫). 홈 배포가 릴리스판이 아닌 것은 1.1.3 과 같은 처리다.
 - 릴리스판으로 교체(11-11 14:28, 사용자 「지금 바로 전환 ㄱ」): `~/tmp/codexint_deploy_a17/fcc114rel/`(codex-fcc-v1.1.4 15d23d06… + 동반 5e5eb476…, 둘 다 실파일), launch_fcc114.sh·desktop 둘 → fcc114rel(백업 desktop-backups/*.bak-fcc114rel-*), 터미널 링크 fcc114rel(이전 = `~/tmp/codex_link_before_fcc114rel.txt`). 앱 하나, app-server·exec-server 모두 fcc114rel, 재기동 뒤 영수증 6/6 assembled. 되돌리기 한 단계 = `launch_fcc114_hostbuild.sh`(22ffe83a0), 두 단계 = `launch_fcc113.sh`.
+
+### 14.5 V114-01 — 도구 호출 뒤 턴이 멈춤 (11-11 15–18시, fcc-v1.1.5)
+
+- 증상(사용자): 1.1.4 부터 도구 사용이 끝난 뒤 후속 행동 없이 무한 대기. 1.1.3 에서는 없었다.
+- 진단판(p114diag, 앱에만): 대기 10 s 넘는 await·턴 task drop·panic 을 `~/.codex/logs_2.sqlite` 에 남김. 17:37:30 재발(스레드 01a1c8ef)에서 잡힘 — panic `core/src/context_manager/history.rs:981` `items_since_last_usage` 「range start index 163 out of range for slice of length 144」, 경로 `context_window_token_status → get_total_token_usage → estimated_unreported_history_tokens`, 뒤이어 「run_turn dropped (panicking=true)」. upstream `tasks/mod.rs` 는 패닉 난 턴 task 를 아무 이벤트 없이 버려 화면이 끝없이 기다린다.
+- 원인(층 L2, G 영향 막음): 0.167 이 들인 사용량 경계 `last_server_reported_usage_item_count` 는 라이브 이력 목록의 칸 번호다. FCC 두 자리가 이 뜻을 어겼다.
+  - (가) `replace_assembled_with_suffix`(D4 라이브 캐시에 VRS 조립본을 끼움)가 목록을 갈면서 경계를 되돌리지 않았다. upstream `replace_annotated` 는 되돌린다.
+  - (나) 요청의 `input_item_count` 로 조립 프롬프트 길이(`prompt_input.len()`)를 넘겼다. 코드 모드 셀 안의 중첩 도구 호출(`to_extension_call → vrs_history → vrs_input`)이 요청 도중 더 짧은 조립본을 끼우면, 응답 끝의 경계가 새 목록 밖을 가리킨다.
+  - 1.1.3(0.164)에는 경계 필드가 없어 같은 길이 엇갈림이 있어도 터지지 않았다.
+- 고침(p114fix `daab66f284`, 8파일 +130/−7):
+  - `ContextManager.usage_list_generation` 신설. 목록을 통째로 가는 세 곳(`remove_first_item`·`replace_annotated`·`replace_assembled_with_suffix`)에서 세대를 올리고 경계를 되돌린다. `reset_version` 은 guardian 이 쓰므로 건드리지 않는다.
+  - 요청은 라이브 이력의 (길이, 세대)를 함께 읽어(`live_history_usage_cut`) 넘기고, `update_token_info_for_list` 는 세대가 바뀌었으면 그 길이를 경계로 쓰지 않고 교체가 정한 경계를 둔다.
+  - 단위 시험 `shorter_assembly_and_stale_usage_count_keep_the_boundary_in_range`: 짧은 조립본으로 갈아도 읽기가 패닉 없이 100, 옛 세대 사용량(120)은 경계를 안 바꿈, 현재 세대 사용량(130)은 뒤에 붙은 항목을 미보고로 어림.
+- 확인: 호스트 릴리스 빌드 577 s, S1 스모크 통과(도구 1회 뒤 후속 답, 압축 0), 11-11 17:57 앱·터미널 교체(`~/tmp/codexint_deploy_a17/fcc114fix/`). 실사용 재발 여부는 지켜본다.
+- 포팅 점검 항목 추가: upstream 이 라이브 이력 칸 번호에 기대는 새 필드(경계·커서·개수)를 들였는지 보고, FCC 의 목록 교체 경로를 그 규칙에 맞춘다.

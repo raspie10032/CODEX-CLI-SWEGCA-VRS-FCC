@@ -14,7 +14,7 @@ Every place that builds model input calls that same assembly. That includes the 
 - **Base:** `rust-v0.167.0-alpha.3.2` (`c40729e`), the Codex version bundled with ChatGPT desktop app 26.1103. The first VRS build was on `rust-v0.162.0-alpha.2` (`74e804dee`, tagged `vrs-base`) and was merged forward through `rust-v0.162.0-alpha.17.2` (v1.1.0 to v1.1.2) and `rust-v0.164.0-alpha.11.1` (v1.1.3).
 - **Incremental tools:** upstream's experimental `incremental_tools` feature records instructions and tool definitions into the history. This fork rebuilds that prefix on every request instead, so the feature is accepted but ignored.
 - **Branch:** `main`, with libvrs round 7 (`vrs-lib7/`). The work was done on a branch named `vrs-int`, which the design records still mention.
-- **Release:** [`fcc-v1.1.4`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.4) has a prebuilt, stripped `codex` and `codex-code-mode-host` for x86_64 Linux.
+- **Release:** [`fcc-v1.1.5`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.5) has a prebuilt, stripped `codex` and `codex-code-mode-host` for x86_64 Linux. It fixes a v1.1.4 bug where a turn could stop after a tool call and wait forever.
 - **macOS preview:** [`fcc-v1.1.2-macos.1`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.2-macos.1) is a prerelease for Apple Silicon (macOS 14.4 or newer). See [macOS (preview)](#macos-preview) below.
 - **In daily use:** this fork has been the Codex binary of the maintainer's ChatGPT desktop app on Linux since 2026-10-13. It ran on the alpha.2 base with app 26.1002 until 2026-10-15, on alpha.17.2 with app 26.1007 until 2026-10-27, on 0.164.0-alpha.11.1 with app 26.1021 until 2026-11-11, and since then on this base with app 26.1103.
 - **Gates:** the application smoke gates (S1-S5) pass, with no failed receipts and no compaction events.
@@ -29,7 +29,7 @@ Every place that builds model input calls that same assembly. That includes the 
 
 Building from this branch is Linux only (on other systems the store refuses to open). For a Mac, see [macOS (preview)](#macos-preview).
 
-To skip building, download the binaries from the [`fcc-v1.1.4` release](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.4). They were built on Ubuntu 24.04 (glibc 2.39) and run there and on newer distributions.
+To skip building, download the binaries from the [`fcc-v1.1.5` release](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.5). They were built on Ubuntu 24.04 (glibc 2.39) and run there and on newer distributions.
 
 The library is already here: [`vrs-lib7/prebuilt/x86_64-linux-gnu/libvrs.a`](vrs-lib7/prebuilt/x86_64-linux-gnu/) is the exact libvrs round 7 used by the deployed build, with the SWEGCA C++ core compiled in. The Rust build links it by default, so this is all you need:
 
@@ -48,7 +48,7 @@ A few notes:
 
 ## macOS (preview)
 
-[`fcc-v1.1.2-macos.1`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.2-macos.1) is a prerelease of v1.1.2 for Apple Silicon, so it does not have the v1.1.3 or v1.1.4 bases yet. It needs macOS 14.4 or newer on arm64. There is no Intel Mac build, and the Linux release is still the stable one.
+[`fcc-v1.1.2-macos.1`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.2-macos.1) is a prerelease of v1.1.2 for Apple Silicon, so it does not have the v1.1.3 or later bases yet. It needs macOS 14.4 or newer on arm64. There is no Intel Mac build, and the Linux release is still the stable one.
 
 - **Install:** download `fcc-v1.1.2-macos.1-aarch64-apple-darwin.tar.gz` and `SHA256SUMS` from the release, compare the archive's hash (`shasum -a 256 <archive>`), and extract it. Keep `codex` and `codex-code-mode-host` together in its `bin` directory, because Code Mode models need the host. Then run `./codex --version`.
 - **ChatGPT desktop app:** export the absolute path of `codex` as `CODEX_CLI_PATH` in your login shell configuration, then quit the app completely and open it again. The override was inspected in app builds 26.1013.31256 and 26.1013.40934.
