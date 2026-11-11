@@ -292,6 +292,7 @@ async fn spawned_subagents_apply_configured_developer_instruction_precedence(
 #[test_case("preserved"; "preserved")]
 #[test_case("filtered"; "filtered")]
 #[tokio::test]
+#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
 async fn compacted_full_history_fork_applies_child_developer_instructions(
     case: &str,
 ) -> Result<()> {

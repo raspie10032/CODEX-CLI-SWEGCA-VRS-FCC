@@ -111,10 +111,6 @@ async fn independent_history_resume_filters_rolled_back_sources(compaction: &str
             if local {
                 config.model_provider.name = "Local compaction test".to_owned();
             }
-            config
-                .features
-                .disable(Feature::GuardianReuseParentCompaction)
-                .expect("retain independent review history");
         })
         .build_with_auto_env(&server)
         .await?;

@@ -1955,3 +1955,128 @@ L1 끝:
 - 실패는 모두 오류로 드러낸다(D5). 새 잠금·대기·장벽을 두지 않는다.
 
 L2 끝: 이음매마다 자리를 적었고, 새 자리 셋과 V9-01 의 처리를 정했다. libvrs·FFI·스토어 배치는 그대로다.
+
+## 14. 새 앱(26.1103)·codex 0.167.0-alpha.3.2 로 이식 — fcc-v1.1.4 (2026-11-11 10시대)
+
+사용자 원문: 「코덱스 버전 업데이트로 fcc도 대응패치 해야함」, 「받아」(새 앱 rpm 받기 승인). 판 이름은 fcc-v1.1.4 로 한다. 10-27 에 「1.1.4」로 불렀던 c1 콜드 데몬 작업은 착수하지 않았으므로 그다음 판으로 미룬다.
+
+조사(읽기만):
+- 공식 저장소의 최신 앱은 chatgpt-26.1103.60933 이다(626,265,493 B, sha256 06e9e277…). 서명 키 3BFA0E4A… 로 확인했고 `~/apps/_dl-26.1103/x` 에 풀었다. 지금 앱(26.1021)은 건드리지 않았다.
+- 동봉 codex 는 0.167.0-alpha.3.2 이다. upstream 태그 `rust-v0.167.0-alpha.3.2` 는 c40729ea 다.
+- 0.164.0-alpha.11.1 은 0.167.0-alpha.3.2 의 조상이 아니다. 우리 main(f721e0cfe)과 0.167 의 merge-base 는 342ed69a 이고, upstream 쪽 커밋은 454개다.
+- 0.164 → 0.167 codex-rs 변화: 파일 2,375개, +136,858/−33,895.
+- 시험 병합(작업 사본 `~/tmp/codex-p114`, 브랜치 p114 ← 0.167)에서 충돌은 80개다. 내용 충돌 UU 58·AA 5, 우리가 지운 압축 파일을 upstream 이 고친 DU 17.
+- 눈에 띄는 새것: `ext/guardian-v3`(새 확장), `core/src/agent/history.rs`(새 파일), `ext/history-notes` 의 이미지 모델 입력 시험. 뜻은 L1 에서 본다.
+
+### 14.0 G_114 와 통과 조건 (실행 전 고정)
+
+G_114: 앱 26.1103 과 터미널 codex 가 upstream 0.167.0-alpha.3.2 위에 VRS 를 얹은 빌드(fcc-v1.1.4)로 돈다. 그 빌드는 §13.0 의 Q1–Q7 을 새 판에 맞춰 그대로 만족한다. libvrs 는 lib7(VX07, `libvrs.a` sha256 c141357f…)를 바꾸지 않는다.
+
+- R1 (= Q1) 압축 경로 0. 새 트리에 압축 경로가 소스로 남지 않는다. 0.167 이 새로 들이거나 바꾼 압축 경로도 대상이다. 감사 목록과 grep 패턴을 적고, 스모크 롤아웃의 압축 사건은 0이다.
+- R2 (= Q2) 입구 하나. 새 트리에서 모델 입력을 짓는 자리를 처음부터 다시 센다(guardian-v3·agent/history·history-notes 포함). 모두 VRS 조립을 부르거나 모델 입력이 아님을 보인다. 빠짐 0, 센 방법과 개수를 적는다.
+- R3 (= Q3) 폴백 0. 조립 실패는 오류로 드러난다. 누적 이력으로 대신 보내지 않는다.
+- R4 (= Q4) 26.1103 이 받는 서버 모델 목록과 동봉 목록에서 압축 문장 0, 깨끗한 문단 보존, Custom 불변(`l3check/release1/run.sh`).
+- R5 (= Q5) 앱 스모크.
+  - `l3check/smoke4` S1–S5 가 실 백엔드에서 모두 통과한다. 실패 영수증 0, 압축 사건 0, S2 가 앞 턴을 기억한다.
+  - 앱 26.1103 을 새 바이너리로 띄워 app-server 가 뜨고 한 턴이 조립된다(영수증 assembled). 동반 `codex-code-mode-host` 가 새 판과 맞다.
+  - 새 앱에도 플로팅 빠른 채팅 끔 패치를 다시 적용한다(사용자 「영구 제거를 원하는건데」).
+- R6 (= Q6) 이식 diff 에 직렬 구조(전역 잠금·순서 보장·단계 대기)가 새로 없다. libvrs 와 조립 정의가 같다. 재기동 뒤 첫 요청이 조립 준비로 5초 넘게 막히지 않는다.
+- R7 (= Q7) 릴리스와 배포.
+  - 이력 신원 noreply, 경로·개인정보 문자열 0, README 기준판 갱신, fcc-ci 통과.
+  - 태그 fcc-v1.1.4. 앱(26.1103 + 새 바이너리)과 터미널을 함께 바꾼다. 교체는 launch 스크립트·바탕화면·autostart 항목까지 하고, `systemctl --user list-units 'app-*chatgpt*'` 로 앱이 하나만 뜨는지 본다. 백업은 autostart 폴더 밖에 둔다(10-28 함정). 되돌리기를 기록한다.
+  - 공개 저장소 push·릴리스와 앱 재기동은 사용자 확인 뒤에 한다.
+
+넣지 않은 것: P6(원판 대조 회귀), I4·I5(장기 실행), I7(앱 서버 메모리, 10-28 사용자 결정으로 관측치만). c1 콜드 libvrs 도 넣지 않는다.
+
+단계 끝 조건(각 단계 들어가기 전):
+- L1: 0.164 → 0.167 변화 가운데 「모델 입력이 무엇인가」·「압축이 무엇인가」·「원문 무손실의 대상(롤아웃)이 무엇인가」의 뜻을 바꾸는 것을 모두 적는다. 있으면 정의를 고치고 손 증명을 단다. 없으면 §3·§11.1·§13.1 정의를 그대로 쓴다고 적는다. 직렬 구조 없음.
+- L2: 우리 이음매(압축 끊음, 조립 입구 A1–A20, 지시문 빼기, D3″ 스위치, §12 포크 자리)마다 새 트리의 자리를 적는다. 새 자리는 처리 방법을 적는다. libvrs·FFI·스토어 배치는 바꾸지 않는다.
+- L3: 충돌 80개를 해결한다. `cargo build --release -p codex-cli` 통과, codex-prompts·models-manager 시험 통과, codex-core·app-server 시험 컴파일. 이음매 대조(seam_check)에서 빠진 VRS 줄 0. 감사 보고 `l3check/port_167/REPORT.md`.
+- L4: R1–R7.
+
+### 14.1 L1 — 뜻이 바뀌는가 (11-11 10시대, 읽기만)
+
+upstream `rust-v0.164.0-alpha.11.1..rust-v0.167.0-alpha.3.2` 를 세 갈래로 읽었다: 롤아웃 기록, 압축 경로, 모델 입력 자리. 근거 file:line 은 0.167 원판 `~/tmp/codex-u167` 기준이다.
+
+**1. 원문 무손실의 대상(롤아웃)은 바뀌지 않는다.**
+- 봉투 `{timestamp, type, payload}`, 경로 규칙, 기록 정책(`rollout/src/policy.rs` `should_persist_response_item`), zstd 정책(`compression.rs` diff 0)이 같다.
+- 새 줄 종류 `dynamic_tools_updated`(`RolloutItem::DynamicToolsUpdated`, f088e0c4f)가 생겼다. `response_item`·`event_msg` 가 아니므로 libvrs 는 읽지 않는다. 이 줄은 세션 설정의 동적 도구 목록(요청 앞부분 `prompt.tools`)을 바꾸는 기록이고, 이력 항목이 아니다(`session/thread_settings.rs` `replace_dynamic_tools`). D3″ 에서 앞부분은 단계 설정에서 새로 붙으므로 S 와 A 의 뜻에 들지 않는다.
+- 선택 키만 늘었다: `SessionMeta.attached_thread`, `CompactionResumeMetadata.dynamic_tools`. `ContentItem::InputAudio` 는 `{audio_url}`|`{file_id}` 로 넓어졌다(2546265e3). 옛 줄은 그대로 읽힌다. libvrs 는 payload 를 그대로 돌려주고 포크가 0.167 `ResponseItem` 으로 푼다.
+- 도구 출력 전문은 롤아웃에 남고 잘림은 live history 에서만 일어난다(그대로).
+- SQLite·thread-store 는 여전히 모델 입력 경로가 읽지 않는다.
+
+**2. 압축의 뜻은 바뀌지 않는다. 새 압축 종류는 없다.**
+- 발동 기준 `session/context_window.rs`·`state/auto_compact_window.rs` diff 0.
+- 압축 파일 목록이 0.164 와 같다. 바뀐 것은 기존 경로의 모양뿐이다: `async_compaction.rs` 입력 준비가 락 밖으로(cb66dbecf), `compact_remote_v2_attempt.rs` 이름 변경(`estimated_tokens_since_last_usage`), `NewContextWindowHandler::new(messages)`(e103bbc06, 호출 `tools/spec_plan.rs:1370`).
+- guardian 부모 압축 재사용 정책이 `ext/guardian-reviewer/src/context_policy.rs:20–56` 으로 옮겨졌고(13b0217567), `session/mod.rs:1929–1940` 에 `reviewer_compaction_hash` 가 새로 생겼다. 압축 재사용이므로 지운다.
+- 새 `core/src/agent/history.rs` 는 `spawn.rs` 의 포크 이력 준비를 옮겨 온 것이다(716b4ec6d). 압축을 실행하지 않고 압축 항목(`Compacted`·`replacement_history`)을 다룰 뿐이다. 포크에는 그런 항목을 쓰는 길이 없으므로 분기는 지우거나 도달 불가로 둔다.
+- 새 비압축 도움 함수 없음(`content_items_to_text`·`is_summary_message` 사용처 수 같음).
+- 감사 grep 패턴(R1): `content_items_to_text|is_summary_message|collect_user_messages|build_compacted_history|insert_initial_context_before_last_real_user_or_summary|start_new_context_window|run_auto_compact|run_inline_auto_compact_task|replace_compacted_history|AutoCompactionDisabled|ContextCompaction|CompactedItem|Compacted\(|Op::Compact|thread/compact|CompactionTrigger|CompactionCheckpoint|GuardianReuseParentCompaction|parent_compaction|reviewer_compaction_hash|NewContextWindow|new_context_window|compact_remote_v2|async_compaction|auto_compact_window|model_post_turn_compact_threshold_percent|retained_tool_output|TokenBudget|PreCompact|PostCompact|estimated_tokens_since_last_usage`.
+
+**3. 모델 입력 — 뜻은 같고, 정규화 하나가 넓어졌고, 새 자리 둘.**
+
+(a) **정규화 N 의 확장: 사라진 파일 이미지 자리표시자.** `ContextManager::for_prompt` 가 async 가 되고 `image_store` 를 받아, 해석되지 않는 `ImageReference::File` 을 텍스트 자리표시자로 바꾼다(`context_manager/image_availability.rs:21` `replace_unresolvable_image_files`, cb66dbecf). 포크의 모델 입력은 이미 N(A(S_t)) 이고 N = `for_prompt` 다(`vrs_input.rs` `normalize_for_prompt`). 그러니 이 치환은 정의를 바꾸지 않고 N 안에 들어온다.
+- 증명. (i) 치환은 항목마다 그 항목의 file_id 해석 결과만으로 정해진다. 항목 사이 순서·이력 길이에 기대지 않는다. (ii) file_id 확인은 서로 다른 id 를 순서 없이 병렬로 한다(`buffer_unordered`, 상한 8). 결과는 집합 `unavailable_file_ids` 이고 합치기는 합집합이라 결합·교환·멱등이다. (iii) S(롤아웃)는 바뀌지 않는다. 바뀌는 것은 요청 사본뿐이다. 그러므로 원문 무손실(I2)은 그대로이고, A 의 출력 집합도 같다. ∎
+- 이 치환은 요청마다 저장소를 다시 묻는다. 비용은 그 요청에 든 서로 다른 file_id 수에 비례하고, 이력 길이 N 에 비례하지 않는다(A 의 출력 크기는 필요가 정한다).
+
+(b) **새 자리 1: `agent/host/spawn.rs:55`** — V2 호스트 스폰이 `prepare_forked_history` 를 부른다. A20 의 두 번째 호출자다. 뜻은 A20 과 같다: 자식 첫 이력 = A(S_t, 부모).
+
+(c) **새 자리 2: `session/mod.rs:1825`** — `InitialHistory::Forked` 에서 `preserve_parent_tool_declarations()`(예측 포크·thread/sample 이 MCP 를 끌 때)가 참이면 `<mcp_tools> MCP tools are unavailable…` developer 조각을 자식 이력에 기록한다. `record_conversation_items` 로 롤아웃에도 들어가므로 S 의 항목이고 A 가 다룬다. 요청 앞부분(도구 정의)이 아니라 상태 알림이라 D3″ 와 어긋나지 않는다. 포크에서는 부모의 도구 선언 항목이 S 에 없으므로(D3″) 「보존할 부모 도구」는 없고, 자식의 도구 목록은 자식 단계 설정(MCP 꺼짐)이 정한다. 알림과 실제 도구 목록이 일치한다.
+
+(d) 뜻이 같은 것:
+- A1·A2: `run_turn` 이 `ContextManager` 를 넘기고 `run_sampling_request` 안에서 `for_prompt` 한다(turn.rs:590·1839–1854). 재시도도 같은 자리다. 포크는 이 자리에서 `vrs_prompt_input` 을 부른다(VA-01 그대로 닫힘).
+- A4·A8·A9·A10·A13·A15, thread_sample, 예측 포크, sender_context, spawn_legacy_subagent: 자리만 옮겼거나 모양이 같다.
+- A14: guardian-v2 의 스냅숏 자리가 `async_scorer/approval.rs:220` 으로 옮겨졌다. `core/guardian/score_authorization.rs:44` 는 버전만 읽는다(모델 입력 아님).
+- 증분 도구 스위치 두 개의 이름·소비자가 같다(소비자 `current_window_uses_incremental_tools`: world_state.rs:67, turn.rs:1824, startup_prewarm.rs:427, guardian/input_budget.rs:167, prompt_debug.rs:119). 새 소비 `world_state.rs:175–177` 은 `incremental_tools` 가 참일 때만 열린다. 새 플래그 `Feature::IncrementalExecTools` 는 소비자가 없다(무관 목록). D3″ 증명(§13.1 (a))이 그대로 성립한다.
+- `ext/guardian-v3`(22줄, 메시지 보드 저장소 열기), `ext/history-notes`(도구 출력으로 이미지를 돌려줌, 프롬프트를 짓지 않음), `tasks/mod.rs`·`turn_input.rs` 변화는 모델 입력 자리가 아니다.
+
+L1 끝:
+- 뜻이 바뀌는 것 없음. 정규화 N 이 넓어진 것(a)은 정의 안에 들어옴을 위에서 보였다. §3·§11.1·§13.1 정의를 그대로 쓴다.
+- 새 자리 둘은 A20(b)과 S 의 항목(c)으로 정했다.
+- 직렬 구조 없음: (a)는 순서 없는 집합 합치기, (b)(c)는 기존 A 호출·기존 기록.
+- G_114 진척: R1–R3 의 뜻이 0.167 에서도 성립하도록 정했다.
+
+### 14.2 L2 — 자리
+
+끝 조건: 우리 이음매마다 0.167 의 자리를 적는다. 새 자리는 처리 방법을 적는다. libvrs·FFI·스토어 배치는 바꾸지 않는다.
+
+- **압축 끊음.**
+  - DU 17개(우리가 지운 압축 파일·시험·스냅숏을 upstream 이 고친 것)는 지운 채로 둔다.
+  - 호출 자리: §13.2 목록 그대로(turn.rs·handlers.rs·mod.rs·codex_thread.rs·thread_processor.rs·thread_sample.rs·spec_plan.rs·review_session.rs·rollout_reconstruction.rs). 더하는 것: `tools/spec_plan.rs:1370` `NewContextWindowHandler::new` 등록 삭제, `session/mod.rs:1929–1940` `reviewer_compaction_hash` 와 `ext/guardian-reviewer/src/context_policy.rs` 의 부모 압축 재사용 끊기(guardian-v2 `parent_compaction` 과 같은 처리), `agent/history.rs` 의 압축 항목 분기는 포크 타입에 맞춰 지우거나 도달 불가로.
+  - 압축 준비 경로 안의 `for_prompt(.., image_store)` 호출은 압축 파일과 함께 사라진다.
+- **D3″.** `step_context.rs:55` `incremental_tools_enabled()`, `world_state.rs:44` `current_window_uses_incremental_tools()` 를 거짓으로 둔다(이력을 읽기 전에). 소비자 다섯은 그 값을 쓴다.
+- **조립 입구.**
+  - A1·A2: `turn.rs` `run_sampling_request` 표본 반복(1839–1854)의 `clone_history()`+`for_prompt` 를 `vrs_prompt_input` 으로. `run_turn` 이 넘기는 `ContextManager`(590)는 조립 결과가 아닌 누적 이력이므로 모델 입력으로 쓰지 않는다.
+  - `vrs_input.rs` `normalize_for_prompt` 는 `for_prompt(input_modalities, image_store).await` 로(14.1 (a)). `image_store` 는 세션 서비스의 것을 넘긴다. `check_prompt_window` 의 추정도 같은 정규화 결과로.
+  - A4 `startup_prewarm.rs:405–419`, A8 `guardian/input_budget.rs:83–85·136–151`, A9 `guardian/request_budget.rs:64–85`, A10·A13 `guardian/review.rs:291`·`review_session.rs:439`·`review_session_setup.rs`, A14 `ext/guardian-v2/src/async_scorer/approval.rs:220`, A15 `realtime_context.rs:66`.
+  - A20: `agent/history.rs:162` `prepare_forked_history` **안쪽**의 부모 항목(228 `load_agent_model_context`)을 `vrs_history()` 로 바꾼다. 안쪽에서 바꾸면 호출자 둘(`control/spawn.rs:741`, 새 `host/spawn.rs:55`)이 함께 덮인다. resume 경로 `control/spawn.rs:295·1025` 의 `load_agent_model_context` 도 A20 길로.
+  - thread_sample.rs:133·335, 예측 포크 thread_processor.rs(§12 V8-01), sender_context.rs:78(올라오지 않은 발신자 → 그 롤아웃 경로로 `vrs_history_for_path`), thread_manager.rs:1360 `spawn_legacy_subagent`(V9-01 처리 그대로).
+  - 새 `<mcp_tools>` 알림(mod.rs:1825)은 그대로 둔다. 기록된 항목이 롤아웃으로 가는지 L4 스모크에서 예측 포크 한 번으로 본다.
+- **동적 도구.** `rollout_reconstruction.rs` 의 `DynamicToolsUpdated` 처리(재개 때 설정 복원)는 upstream 그대로 둔다. 이력 재생이 아니다.
+- **지시문 빼기.** §10 자리 그대로(`prompts/src/model_instructions.rs`, `get_prompt_base_instructions`, `session/session.rs` 출처 추정).
+- **§12(V8) 자리.** `vrs_input.rs` `reference_fork_state`·`insert_ephemeral_vrs_lines`·`release_live_history`, thread_processor.rs 예측 갈래를 그대로 옮긴다.
+- 실패는 모두 오류로 드러낸다(D5). 새 잠금·대기·장벽을 두지 않는다.
+
+L2 끝: 이음매마다 자리를 적었고, 새 자리 둘(host/spawn, `<mcp_tools>`)과 이미지 정규화의 처리를 정했다. libvrs·FFI·스토어 배치는 그대로다. 남은 무관 목록: `Feature::IncrementalExecTools`(소비자 없음).
+
+### 14.3 L3 — 충돌 해결·빌드 (11-11 10:27–13:00)
+
+- 텍스트 해결: 다섯 묶음(가 세션·턴·VRS 입구, 나 guardian·하위 에이전트, 다 app-server·생성 파일·통합 시험, 라 guardian-v2·reviewer, 마 작업공간·설정·공급자) 병렬, 10:27–10:49. 충돌 63 + DU 17. 보고 `~/tmp/p114-work/report_{A..E}.md`.
+- 빌드 단계 F1–F3(코덱스 샌드박스 workspace-write, 오프라인). 보고 `report_F.md`, 감사 `l3check/port_167/REPORT.md`.
+- 환경 결함 둘(코드 아님):
+  - home 시스템 OpenSSL 이 4.0.3(fc45)이라 `openssl-sys 0.9.111` 이 거부한다. 런타임 `libssl.so.3`(openssl3-libs 3.5.9)은 있다. Fedora `openssl3-devel-3.5.9-1.fc45` 를 받아 풀기만 하고(`~/tmp/openssl3-sdk`) `OPENSSL_INCLUDE_DIR`·`OPENSSL_LIB_DIR` 로 가리킨다.
+  - 0.167 은 `v8` 을 git 포크(`seanh-oai/rusty_v8` 350c5a85)로 패치한다. 첫 `cargo fetch` 가 서브모듈까지 받는다(약 8분, 한 번).
+- 감사가 찾은 자리 결함(L2, G 막음): 0.167 새 `thread/guardian/review` 의 `CodexThread::guardian_review` 가 누적 `clone_history()` 를 guardian 모델 입력으로 넘겼다. 14.1 의 자리 목록에서 빠졌던 자리다. `vrs_history()` + `vrs_error_to_codex` 로 고쳤다(D5).
+- 감사가 지운 압축 잔여: `AutoCompactFallbackPrompt`(쓰는 곳 없음), 계측 이름 `estimated_tokens_since_last_usage` → `estimated_unreported_history_tokens`(계산식 같음).
+- L3 끝 조건: 충돌 0, `cargo build --release -p codex-cli` 통과(`codex-cli 0.167.0-alpha.3.2`), prompts 58/58·models-manager 59/59, core·app-server 시험 컴파일, app-server 스키마 일치, Python v2 binding 재생성 결과 = 인덱스, seam_check 빠짐은 자리 이동뿐. 충족.
+
+### 14.4 L4 — R1–R7 (13시대)
+
+- R1 압축 경로 0: 감사 4b(실행 참조 0). release1 임시 롤아웃·smoke 롤아웃 압축 사건 0.
+- R2 입구 하나: 감사 4c. 정상 요청 입구 `vrs_prompt_input` 하나, `build_prompt` 5·`for_prompt` 2·`clone_history` 10·`read_thread(include_history)` 7 전부 분류, 빠짐 0.
+- R3 폴백 0: 감사 4d.
+- R4: `l3check/release1/run.sh` 최종 바이너리(sha 306a88db…) 4/4 PASS, 압축 문장 0, Custom 그대로(`l3check/port_167/release1_fcc114.txt`). 샌드박스 안 실행은 loopback 소켓 EPERM 으로 판정 불가였고 조정자가 다시 돌렸다.
+- R5 앞 절반: smoke4 S1–S5 실 백엔드 6/6. 판정에 내용 검사를 더했다(첫 실행이 판정기로는 통과였는데 동반 `codex-code-mode-host` 가 없어 도구가 모두 실패했다 — 판정기가 답 내용을 보지 않았다): S1 `hello`, S2 앞 턴의 물음·답을 기억, S3/S4 명령 11회·합계 210. 실패 영수증 0·압축 0. 결과 `l3check/port_167/smoke_final/`.
+- R6: 감사 4f(새 동기화 0, `vrs-lib7`·`codex-rs/vrs` diff 0). 첫 조립 1.0–3.8 s(5 s 안).
+- R5 뒷절반(앱 한 턴)·R7(교체·릴리스)은 아래에 이어 적는다.
+- G_114 진척: 터미널 바이너리 수준에서 R1–R4·R6 과 R5 앞 절반 성립.

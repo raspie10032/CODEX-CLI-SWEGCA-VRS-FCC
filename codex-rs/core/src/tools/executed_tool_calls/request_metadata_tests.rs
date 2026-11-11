@@ -398,6 +398,7 @@ async fn recorder_refreshes_without_changing_execution_features_or_claiming_miss
                 arguments: r#"{"value":7}"#.to_string(),
             },
             encrypted_function_args: None,
+            native_call: None,
         };
         let prepared = calls.prepare_direct_call(&call, &ToolCallSource::Direct, &step);
         let expected = ExecutedToolCall::new("test_tool".to_string(), json!({"value": 7}));
@@ -491,6 +492,7 @@ fn executed_tool_call_recorder_bounds_pending_calls_and_preserves_overflow() {
                     input: "".to_string(),
                 },
                 encrypted_function_args: None,
+                native_call: None,
             },
             &ToolCallSource::Direct,
             ToolMode::CodeMode,
@@ -764,6 +766,7 @@ fn tool_call_completeness_survives_waits_without_changing_deltas() {
                             arguments: json!({"cell_id": cell_id.as_str()}).to_string(),
                         },
                         encrypted_function_args: None,
+                        native_call: None,
                     },
                     &ToolCallSource::Direct,
                     ToolMode::CodeModeOnly,
@@ -1031,6 +1034,7 @@ fn completeness_rejects_direct_id_collision_and_late_calls() {
                 arguments: "{}".to_string(),
             },
             encrypted_function_args: None,
+            native_call: None,
         },
         &ToolCallSource::Direct,
         ToolMode::Direct,
@@ -1071,6 +1075,7 @@ fn large_wrapped_arguments_preserve_later_wait_completeness() {
             arguments: arguments.to_string(),
         },
         encrypted_function_args: None,
+        native_call: None,
     });
     recorder.record_nested_tool_call(cell.clone(), "nested".to_string(), call, original_bytes);
     let mut initial = [exec_input("exec"), exec_output("exec")];
@@ -1521,6 +1526,7 @@ fn late_truncated_metadata_with_wrapped_arguments_rejects_ambiguous_outputs() {
         call_id: "other".to_string(),
         payload: ToolPayload::Function { arguments },
         encrypted_function_args: None,
+        native_call: None,
     });
     recorder.record_nested_tool_call(
         cell.clone(),

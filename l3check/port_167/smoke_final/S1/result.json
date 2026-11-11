@@ -1,0 +1,36 @@
+{
+  "exit_code": 0,
+  "timed_out": false,
+  "elapsed_seconds": 7.845,
+  "finished_unix_ms": 1794369679546,
+  "thread_id": "01a1c8c4-5349-7b22-8e5b-9119d0a3fe12",
+  "vrs_receipts": 6,
+  "vrs_failed_receipts": [],
+  "vrs_error_lines": [],
+  "event_errors": [],
+  "final_messages": [
+    "a.txt 내용을 확인하겠습니다.\n",
+    "hello"
+  ],
+  "first_assembly_seconds": 2.709,
+  "first_assembly_us": 531,
+  "request_start_seconds": [
+    2.713,
+    5.427
+  ],
+  "executed_commands": 1,
+  "command_failures": [],
+  "rollouts": [
+    {
+      "path": "~/.codex/sessions/2026/11/11/rollout-2026-11-11T13-01-12-01a1c8c4-5349-7b22-8e5b-9119d0a3fe12.jsonl",
+      "bytes": 84480,
+      "nul_bytes": 0,
+      "final_newline": true,
+      "lines": 24,
+      "parse_errors": [],
+      "ordinals_strictly_increasing": true,
+      "compaction_events": 0,
+      "tool_calls": 1
+    }
+  ]
+}

@@ -29,7 +29,9 @@ use crate::session::turn::build_prompt;
 use crate::session::turn_context::TurnContext;
 
 #[derive(Clone)]
-pub(crate) struct PendingReviewContext(pub ComposedContext);
+pub(crate) struct PendingReviewContext {
+    pub context: ComposedContext,
+}
 
 /// Reject evidence that cannot fit before constructing a reviewer request.
 pub(crate) async fn check_pending(session: &Session, turn: &TurnContext) -> CodexResult<()> {
@@ -45,15 +47,17 @@ pub(crate) async fn check_pending(session: &Session, turn: &TurnContext) -> Code
         codex_protocol::protocol::TruncationPolicy::Bytes(base.text.len()).token_budget();
     let maximum = effective_input_token_limit(turn.model_info(), turn.config.model_context_window)
         .saturating_sub(super::request_budget::INPUT_TOKEN_MARGIN);
-    let mut context = pending.0.clone();
+    let mut context = pending.context.clone();
     let history = session
         .vrs_history()
         .await
         .map_err(crate::session::vrs_input::vrs_error_to_codex)?
-        .for_prompt_annotated(&turn.model_info().input_modalities);
-    context.retain_new_instructions(&history);
-    context
-        .retain_new_agent_messages(&history)
+        .for_prompt_annotated(
+            &turn.model_info().input_modalities,
+            session.services.image_store.as_ref(),
+        )
+        .await;
+    codex_guardian_context::prepare_sync_delivery(&mut context, &history)
         .map_err(|error| CodexErr::InvalidRequest(error.to_string()))?;
     if context.estimated_tokens().saturating_add(minimum_prefix) > maximum {
         context
@@ -97,17 +101,19 @@ pub(crate) async fn finalize(
             "Guardian expects one review input".to_owned(),
         ));
     };
-    let mut context = pending.0.clone();
+    let mut context = pending.context.clone();
     let model = &step.settings.model_info;
     let history = session
         .vrs_history()
         .await
-        .map_err(crate::session::vrs_input::vrs_error_to_codex)?;
-    let history = history.for_prompt_annotated(&model.input_modalities);
+        .map_err(crate::session::vrs_input::vrs_error_to_codex)?
+        .for_prompt_annotated(
+            &model.input_modalities,
+            session.services.image_store.as_ref(),
+        )
+        .await;
     // Use the history that will actually reach the model.
-    context.retain_new_instructions(&history);
-    context
-        .retain_new_agent_messages(&history)
+    codex_guardian_context::prepare_sync_delivery(&mut context, &history)
         .map_err(|error| CodexErr::InvalidRequest(error.to_string()))?;
     let prompt = build_prompt(
         history
@@ -226,14 +232,14 @@ pub(crate) async fn finalize(
             }
         }
         Err(codex_guardian_context::SectionError::UnsupportedDelivery {
-            section: "conversation_transcript",
+            section: "conversation_transcript" | "planned_action",
         }) => {
             *input = context
                 .into_annotated_messages()
                 .into_iter()
                 .map(|mut envelope| {
                     // Preserve the ordinary user-content annotations on each text segment;
-                    // native messages retain the original author, recipient and ciphertext.
+                    // native evidence retains its original identity and ciphertext.
                     if let ResponseItem::Message { role, content, .. } = &envelope.item
                         && role == "user"
                     {

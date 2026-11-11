@@ -6,8 +6,10 @@
 //! thread-owned reviewers still use only the parent model window.
 //! Old text checkpoints can seed that backup from their surviving plaintext instructions.
 //! Token estimates charge item content rather than transport metadata.
+//! Live usage boundaries advance only when a response supplies usable usage.
 //! Oversized instructions keep an incomplete excerpt for bounded root review, including
 //! sources recovered from legacy Guardian checkpoints before their raw history is dropped.
+//! Prompt projections replace unavailable file images without changing retained history.
 
 #[path = "history_user_authorization.rs"]
 mod user_authorization;
@@ -21,8 +23,8 @@ use crate::context::world_state::WorldState;
 use crate::context::world_state::WorldStateSnapshot;
 use crate::context::world_state::WorldStateUpdate;
 use crate::context_manager::normalize;
-use crate::event_mapping::has_non_contextual_dev_message_content;
-use crate::event_mapping::is_contextual_dev_message_content;
+use crate::context_manager::replace_unresolvable_image_files;
+use crate::event_mapping::contextual_dev_fragments;
 use crate::event_mapping::is_contextual_user_message_content;
 use crate::event_mapping::parse_turn_item;
 use crate::guardian::GUARDIAN_MAX_ROOT_MESSAGE_TOKENS;
@@ -31,6 +33,7 @@ use crate::session::turn_context::TurnContext;
 use crate::utils::json::serialized_json_bytes;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use codex_attachment_store::AttachmentStore;
 use codex_context_fragments::set_annotated_content;
 use codex_context_fragments::to_annotated_content;
 use codex_extension_api::ConversationHistorySnapshot;
@@ -47,6 +50,7 @@ use codex_prompts::render_model_instructions;
 use codex_protocol::DEFAULT_FUNCTION_NAMESPACE;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::AgentMessageInputContent;
+use codex_protocol::models::AudioReference;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputBody;
@@ -62,7 +66,7 @@ use codex_protocol::protocol::TokenUsageInfo;
 use codex_protocol::protocol::TurnContextItem;
 use codex_protocol::protocol::WorldStateItem;
 use codex_utils_audio::estimate_audio_token_count;
-use codex_utils_audio::estimate_audio_token_count_uncached;
+use codex_utils_audio::estimate_audio_token_count_without_cache;
 use codex_utils_cache::BlockingLruCache;
 use codex_utils_cache::sha1_digest;
 use codex_utils_output_truncation::TruncationPolicy;
@@ -81,9 +85,13 @@ use std::sync::atomic::Ordering;
 
 use crate::config::ManagedFeatures;
 use crate::context::GuardianContextMode;
-use codex_features::Feature;
 
 static GUARDIAN_REVIEW_CONTEXT_REVISION: AtomicU64 = AtomicU64::new(/*v*/ 1);
+
+// Responses validates uploaded audio against its 20-minute duration limit.
+// File durations are unavailable locally, so budget that maximum at the existing
+// inline estimate of 10 audio tokens per second.
+pub(crate) const FILE_AUDIO_TOKENS_ESTIMATE: usize = 20 * 60 * 10;
 
 fn next_guardian_review_context_revision() -> u64 {
     GUARDIAN_REVIEW_CONTEXT_REVISION.fetch_add(/*val*/ 1, Ordering::Relaxed)
@@ -111,6 +119,11 @@ pub(crate) struct ContextManager {
     /// Process-unique so resumed roots cannot match a worker's cached assistant evidence.
     guardian_review_context_revision: u64,
     token_info: Option<TokenUsageInfo>,
+    /// History items at this index and later are estimated on top of the saved token count.
+    /// Failed responses preserve this index. It is not saved in rollouts.
+    last_server_reported_usage_item_count: usize,
+    /// Index immediately after the latest model output, including failed responses.
+    last_model_output_item_count: Option<usize>,
     /// Reference context snapshot used for diffing and producing model-visible
     /// settings update items.
     ///
@@ -238,9 +251,9 @@ impl ContextManager {
             reset_version: 0,
             user_message_revision: 0,
             guardian_review_context_revision: next_guardian_review_context_revision(),
-            token_info: TokenUsageInfo::new_or_append(
-                &None, &None, /*model_context_window*/ None,
-            ),
+            token_info: None,
+            last_server_reported_usage_item_count: 0,
+            last_model_output_item_count: None,
             reference_context_item: None,
             world_state_baseline: None,
         }
@@ -262,16 +275,13 @@ impl ContextManager {
         &self.retained_context
     }
 
-    pub(crate) fn for_session(source: &SessionSource, features: &ManagedFeatures) -> Self {
-        let independent = !features.enabled(Feature::GuardianReuseParentCompaction);
+    pub(crate) fn for_session(source: &SessionSource, _features: &ManagedFeatures) -> Self {
         Self {
             retain_inherited_user_messages: !source.is_non_root_agent(),
-            guardian_review_mode: if independent {
-                GuardianContextMode::Independent
-            } else {
-                GuardianContextMode::ThreadOwned
-            },
-            review_history: independent.then(TranscriptHistory::default),
+            // VRS supplies the parent model window directly; no compacted-parent policy decides
+            // whether Guardian may use it.
+            guardian_review_mode: GuardianContextMode::ThreadOwned,
+            review_history: None,
             ..Self::new()
         }
     }
@@ -313,64 +323,10 @@ impl ContextManager {
         &mut self,
         retained_context: Option<&RetainedContext>,
         checkpoint: Option<&GuardianHistoryCheckpoint>,
-        reviewer_compaction_hash: Option<&str>,
+        _legacy_checkpoint_hash: Option<&str>,
     ) {
-        // A previously promoted checkpoint may have discarded the only complete transcript.
-        // Unless independent review was explicitly selected, keep requiring parent context;
-        // a compatibility failure must not turn
-        // a partial model window into a legacy fallback. Migrating checkpoints keep a backup
-        // and can expose retained facts independently of which transcript review uses.
-        let requires_parent_context = checkpoint.is_none()
-            && retained_context.is_some_and(|context| {
-                !context.verified_answers_complete()
-                    || context.ordered_entries().any(|(_, entry)| match entry {
-                        RetainedContextEntry::VerifiedAnswer(_) => true,
-                        RetainedContextEntry::UserMessage(message)
-                        | RetainedContextEntry::AssistantMessage(message) => {
-                            let source_role =
-                                if matches!(entry, RetainedContextEntry::UserMessage(_)) {
-                                    "user"
-                                } else {
-                                    "assistant"
-                                };
-                            !self.raw_items().any(|item| {
-                                if item.id().map(codex_protocol::ResponseItemId::as_str)
-                                    != message.message_id.as_deref()
-                                    || item.turn_id().unwrap_or_default() != message.turn_id
-                                {
-                                    return false;
-                                }
-                                let ResponseItem::Message { role, content, .. } = item else {
-                                    return false;
-                                };
-                                if role != source_role || is_guardian_context_message(item) {
-                                    return false;
-                                }
-                                let text = content
-                                    .iter()
-                                    .filter_map(|content| match content {
-                                        ContentItem::InputText { text }
-                                        | ContentItem::OutputText { text, .. } => {
-                                            Some(text.as_str())
-                                        }
-                                        _ => None,
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join("\n");
-                                guardian_truncate_text(&text, GUARDIAN_MAX_ROOT_MESSAGE_TOKENS).0
-                                    == message.text
-                            })
-                        }
-                    })
-            });
-        self.guardian_review_mode = if self.guardian_review_mode == GuardianContextMode::Independent
-        {
-            GuardianContextMode::Independent
-        } else if requires_parent_context {
-            GuardianContextMode::ThreadOwned
-        } else {
-            GuardianContextMode::for_checkpoint(&self.items, reviewer_compaction_hash)
-        };
+        // The live VRS assembly is the only parent model window used by Guardian.
+        self.guardian_review_mode = GuardianContextMode::ThreadOwned;
         self.restore_retained_context(retained_context);
         // Older retained checkpoints cleared oversized instructions. Recover their
         // bounded root excerpts before discarding the legacy source transcript.
@@ -431,6 +387,16 @@ impl ContextManager {
     }
 
     pub(crate) fn set_token_info(&mut self, info: Option<TokenUsageInfo>) {
+        self.token_info = info;
+    }
+
+    /// Install a context count together with the history it covers.
+    pub(crate) fn set_token_info_with_boundary(
+        &mut self,
+        info: Option<TokenUsageInfo>,
+        covered_item_count: usize,
+    ) {
+        self.last_server_reported_usage_item_count = covered_item_count;
         self.token_info = info;
     }
 
@@ -587,6 +553,9 @@ impl ContextManager {
         if let Some(source) = &source {
             processed.metadata.get_or_insert_default().retained_source = Some(source.clone());
         }
+        if is_model_generated_item(&processed.item) {
+            self.last_model_output_item_count = Some(self.items.len() + 1);
+        }
         Arc::make_mut(&mut self.items).push(processed);
         source
     }
@@ -594,19 +563,33 @@ impl ContextManager {
     /// Returns the history prepared for sending to the model. This applies a proper
     /// normalization and drops un-suited items. Unsupported image and audio content
     /// is stripped from messages and tool outputs according to `input_modalities`.
-    pub(crate) fn for_prompt(self, input_modalities: &[InputModality]) -> Vec<ResponseItem> {
-        self.for_prompt_annotated(input_modalities)
+    /// Unavailable file images are replaced with text placeholders.
+    pub(crate) async fn for_prompt(
+        self,
+        input_modalities: &[InputModality],
+        image_store: &dyn AttachmentStore,
+    ) -> Vec<ResponseItem> {
+        self.for_prompt_annotated(input_modalities, image_store)
+            .await
             .into_iter()
             .map(ResponseItemEnvelope::into_item)
             .collect()
     }
 
     /// Returns normalized history envelopes for internal consumers that must retain metadata.
-    pub(crate) fn for_prompt_annotated(
+    pub(crate) async fn for_prompt_annotated(
         mut self,
         input_modalities: &[InputModality],
+        image_store: &dyn AttachmentStore,
     ) -> Vec<ResponseItemEnvelope> {
         self.normalize_history(input_modalities);
+        replace_unresolvable_image_files(
+            Arc::make_mut(&mut self.items)
+                .iter_mut()
+                .map(|envelope| &mut envelope.item),
+            image_store,
+        )
+        .await;
         Arc::unwrap_or_clone(self.items)
     }
 
@@ -686,6 +669,7 @@ impl ContextManager {
             // its corresponding counterpart to keep the invariants intact without
             // running a full normalization pass.
             normalize::remove_corresponding_for(items, &removed.item);
+            self.reset_last_usage_boundary();
             self.world_state_baseline = None;
         }
     }
@@ -792,6 +776,7 @@ impl ContextManager {
             );
         }
         self.items = Arc::new(items);
+        self.reset_last_usage_boundary();
         self.history_version = self.history_version.saturating_add(1);
         self.reset_version = self.history_version;
         self.world_state_baseline = None;
@@ -926,12 +911,40 @@ impl ContextManager {
         &mut self,
         usage: &TokenUsage,
         model_context_window: Option<i64>,
+        includes_reasoning: bool,
+        input_item_count: usize,
     ) {
-        self.token_info = TokenUsageInfo::new_or_append(
+        let info = TokenUsageInfo::new_or_append(
             &self.token_info,
-            &Some(usage.clone()),
+            usage,
+            includes_reasoning,
             model_context_window,
         );
+        let covered_item_count = self
+            .last_model_output_item_count
+            .unwrap_or(0)
+            .max(input_item_count);
+        tracing::debug!(
+            target: "codex_core::history_item_count",
+            history_items = self.items.len(),
+            input_items = input_item_count,
+            covered_items = covered_item_count,
+            unreported_items = self.items.len().saturating_sub(covered_item_count),
+            "context history item counts"
+        );
+        self.set_token_info_with_boundary(Some(info), covered_item_count);
+    }
+
+    /// Restored or rewritten history keeps the existing last-model-output approximation.
+    fn reset_last_usage_boundary(&mut self) {
+        self.last_model_output_item_count = self
+            .items
+            .iter()
+            .rposition(|envelope| is_model_generated_item(&envelope.item))
+            .map(|index| index + 1);
+        self.last_server_reported_usage_item_count = self
+            .last_model_output_item_count
+            .unwrap_or(self.items.len());
     }
 
     fn get_non_last_reasoning_items_tokens(&self) -> i64 {
@@ -946,7 +959,8 @@ impl ContextManager {
 
         self.items
             .iter()
-            .take(last_user_index)
+            // Reasoning after the usage boundary is already included in the tail estimate.
+            .take(last_user_index.min(self.last_server_reported_usage_item_count))
             .filter(|envelope| {
                 matches!(
                     &envelope.item,
@@ -960,42 +974,37 @@ impl ContextManager {
             .fold(0i64, i64::saturating_add)
     }
 
-    // These are local items added after the most recent model-emitted item.
-    // They are not reflected in `last_token_usage.total_tokens`.
-    fn items_after_last_model_generated_item(
+    // Keep failed or usage-less output in the estimate until a usable count covers it.
+    fn items_since_last_usage(
         &self,
     ) -> impl Clone + ExactSizeIterator<Item = &ResponseItem> + DoubleEndedIterator {
-        let start = self
-            .items
+        self.items[self.last_server_reported_usage_item_count..]
             .iter()
-            .rposition(|envelope| is_model_generated_item(&envelope.item))
-            .map_or(self.items.len(), |index| index.saturating_add(1));
-        self.items[start..].iter().map(|envelope| &envelope.item)
+            .map(|envelope| &envelope.item)
     }
 
-    /// When true, the server already accounted for past reasoning tokens and
-    /// the client should not re-estimate them.
-    pub(crate) fn get_total_token_usage(&self, server_reasoning_included: bool) -> i64 {
+    pub(crate) fn get_total_token_usage(&self) -> i64 {
         let last_tokens = self
             .token_info
             .as_ref()
             .map(|info| info.last_token_usage.total_tokens)
             .unwrap_or(0);
-        let items_after_last_model_generated_tokens = self
-            .items_after_last_model_generated_item()
-            .map(estimate_item_token_count)
-            .fold(0i64, i64::saturating_add);
-        if server_reasoning_included {
-            last_tokens.saturating_add(items_after_last_model_generated_tokens)
+        let unreported_tokens = self.estimated_unreported_history_tokens();
+        if self
+            .token_info
+            .as_ref()
+            .is_some_and(|info| info.last_usage_includes_reasoning == Some(true))
+        {
+            last_tokens.saturating_add(unreported_tokens)
         } else {
             last_tokens
                 .saturating_add(self.get_non_last_reasoning_items_tokens())
-                .saturating_add(items_after_last_model_generated_tokens)
+                .saturating_add(unreported_tokens)
         }
     }
 
-    pub(crate) fn estimated_tokens_after_last_model_generated_item(&self) -> i64 {
-        self.items_after_last_model_generated_item()
+    pub(crate) fn estimated_unreported_history_tokens(&self) -> i64 {
+        self.items_since_last_usage()
             .map(estimate_item_token_count)
             .fold(0i64, i64::saturating_add)
     }
@@ -1004,7 +1013,7 @@ impl ContextManager {
     /// 1. every call (function/custom) has a corresponding output entry
     /// 2. every output has a corresponding call entry or names an external tool event
     /// 3. unsupported image and audio content is stripped from messages and tool outputs
-    fn normalize_history(&mut self, input_modalities: &[InputModality]) {
+    pub(crate) fn normalize_history(&mut self, input_modalities: &[InputModality]) {
         let items = Arc::make_mut(&mut self.items);
 
         // all function/tool calls must have a corresponding output
@@ -1018,6 +1027,11 @@ impl ContextManager {
 
         // strip audio when model does not support it
         normalize::strip_audio_when_unsupported(input_modalities, items);
+
+        self.last_model_output_item_count = items
+            .iter()
+            .rposition(|envelope| is_model_generated_item(&envelope.item))
+            .map(|index| index + 1);
     }
 
     /// Walk backward from a rollback cut and trim contiguous pre-turn context-update items.
@@ -1045,10 +1059,23 @@ impl ContextManager {
     ) -> usize {
         while cut_idx > first_instruction_turn_idx {
             match &snapshot[cut_idx - 1].item {
-                ResponseItem::Message { role, content, .. }
-                    if role == "developer" && is_contextual_dev_message_content(content) =>
-                {
-                    if has_non_contextual_dev_message_content(content) {
+                ResponseItem::Message {
+                    role,
+                    content,
+                    internal_chat_message_metadata_passthrough,
+                    ..
+                } if role == "developer" => {
+                    let kinds = internal_chat_message_metadata_passthrough
+                        .as_ref()
+                        .and_then(|metadata| metadata.content_item_kinds.as_deref())
+                        .unwrap_or_default();
+                    let contextual_count = contextual_dev_fragments(content, kinds)
+                        .filter(|matched| *matched)
+                        .count();
+                    if contextual_count == 0 {
+                        break;
+                    }
+                    if contextual_count < content.len() {
                         // Mixed `build_initial_context` bundles are not reconstructible from
                         // steady-state diffs once trimmed, so the next real turn must fully
                         // reinject context instead of diffing against a stale baseline.
@@ -1170,7 +1197,7 @@ fn estimate_response_item_model_visible_bytes_with_policy(
                 ContentItem::InputImage { image, detail } => {
                     estimate_image_reference_bytes_with_policy(image, *detail, cache)
                 }
-                ContentItem::InputAudio { audio_url } => estimate_audio_bytes(audio_url, cache),
+                ContentItem::InputAudio { audio } => estimate_audio_reference_bytes(audio, cache),
             })
             .fold(0i64, i64::saturating_add),
         ResponseItem::AgentMessage {
@@ -1396,9 +1423,20 @@ fn estimate_image_reference_bytes_with_policy(
 fn estimate_audio_bytes(audio_url: &str, cache: MediaEstimateCache) -> i64 {
     let tokens = match cache {
         MediaEstimateCache::Use => estimate_audio_token_count(audio_url),
-        MediaEstimateCache::Bypass => estimate_audio_token_count_uncached(audio_url),
+        MediaEstimateCache::Bypass => estimate_audio_token_count_without_cache(audio_url),
     };
     i64::try_from(approx_bytes_for_tokens(tokens)).unwrap_or(i64::MAX)
+}
+
+/// Audio estimate for callers that only have the reference. Uploaded file durations are not
+/// available locally, so file references use the maximum duration accepted by Responses.
+fn estimate_audio_reference_bytes(audio: &AudioReference, cache: MediaEstimateCache) -> i64 {
+    match audio {
+        AudioReference::Inline { audio_url } => estimate_audio_bytes(audio_url, cache),
+        AudioReference::File { .. } => {
+            i64::try_from(approx_bytes_for_tokens(FILE_AUDIO_TOKENS_ESTIMATE)).unwrap_or(i64::MAX)
+        }
+    }
 }
 
 fn estimate_function_output_bytes(

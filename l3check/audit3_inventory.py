@@ -12,7 +12,7 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / 'l3check'
+OUT = ROOT / 'l3check/port_167'
 
 
 def git(*args):
@@ -54,6 +54,12 @@ notes = {
         'Failed-review raw items serialize to bounded opt-in diagnostic JSON: '
         'ext/guardian-reviewer/src/feedback.rs:85,105,118 -> feedback/src/guardian.rs:94. '
         'The sink stores feedback records; no prompt/model dispatch consumes this copy.'),
+    ('guardian/review_session_setup.rs', 'bind_thread'): (
+        'guardian_transcript_version_metadata', False,
+        'Reads only ContextManager::history_version into GuardianReviewState at '
+        'review_session_setup.rs:151-152. The field is bookkeeping for admitted reviewer '
+        'transcript state and is later overwritten at review_session.rs:551; no ResponseItem '
+        'or copied history is passed to a model request.'),
     ('prompt_debug.rs', 'build_prompt_input_from_session'): (
         'debug_api_projection', False,
         'Projects H into build_prompt then returns prompt.input to the debug API; '
@@ -76,6 +82,11 @@ notes = {
         'No response-item payload is forwarded, but future memory-extraction eligibility '
         'changes (memories.rs:241 enabled filter). D3 excludes A17/A19 finished-rollout '
         'extraction at design:126; this is indirect model-work influence, not zero influence.'),
+    ('session/mod.rs', 'recompute_token_usage'): (
+        'dead_ui_token_usage_estimate', False,
+        'Computes only an estimated TokenUsage value and emits token-count state/events. The '
+        'compiler reports the method dead in production; its two in-tree callers are unit tests '
+        'at session/tests.rs:3556,3588. No response items are dispatched to a model.'),
     ('session/mod.rs', 'clone_history'): (
         'forwarding_helper', None,
         'Forwards to state/session.rs:171-172 (self.history.clone) under the existing Session '
@@ -154,8 +165,8 @@ for label, pattern in lock_patterns.items():
             synchronization[label].append({'file': path, 'line': line,
                                            'text': source.splitlines()[line - 1].strip()})
 
-library = Path('$WORK/vrsint/libvrs.a')
-lib_source = Path('$WORK/vrsint/vrs_lib.cpp')
+library = ROOT / 'vrs-lib7/prebuilt/x86_64-linux-gnu/libvrs.a'
+lib_source = ROOT / 'vrs-lib7/vrs_lib.cpp'
 lib_text = lib_source.read_text(encoding='utf-8')
 library_hash = digest(library)
 lib_source_hash = hashlib.sha256(lib_text.encode('utf-8')).hexdigest()
@@ -186,7 +197,9 @@ lib_findings = {
     'all_yield_occurrences_not_all_are_request_waits': c_hits(r'std::this_thread::yield'),
     'session_pointer_waits': c_function_waits('get_sess'),
     'uw_hazard_slot_waits': c_function_waits('uw_slot'),
-    'snapshot_hazard_slot_waits': c_function_waits('haz_slot'),
+    'snapshot_hazard_slot_waits': c_hits(
+        r'if \(hz_used\[i\].*compare_exchange_strong'
+    ),
     'restore_busy_waits_separate_from_request_path': c_function_waits('run_task'),
     'per_session_owner': c_hits(r'void owner_loop|bool drain\(|ss\.busy\.compare_exchange_strong'),
     'insert_enqueues': c_hits(r'ss->inbox\.compare_exchange_weak'),
@@ -202,6 +215,10 @@ lib_findings = {
 
 def saved_probe(filename, comparison_hash):
     path = OUT / filename
+    if not path.exists():
+        return {'file': str(path.relative_to(ROOT)), 'missing': True,
+                'recorded_library_matches_current_archive': False,
+                'reexecuted_by_inventory': False}
     result = json.loads(path.read_text(encoding='utf-8'))
     return {'file': str(path.relative_to(ROOT)), 'file_sha256': digest(path),
             'recorded_result': result,

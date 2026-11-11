@@ -1,0 +1,34 @@
+{
+  "exit_code": 0,
+  "timed_out": false,
+  "elapsed_seconds": 4.804,
+  "finished_unix_ms": 1794369764601,
+  "thread_id": "01a1c8c5-ab2b-7d70-ac41-f072c3118d08",
+  "vrs_receipts": 2,
+  "vrs_failed_receipts": [],
+  "vrs_error_lines": [],
+  "event_errors": [],
+  "final_messages": [
+    "hello"
+  ],
+  "first_assembly_seconds": 2.098,
+  "first_assembly_us": 744,
+  "request_start_seconds": [
+    2.101
+  ],
+  "executed_commands": 0,
+  "command_failures": [],
+  "rollouts": [
+    {
+      "path": "~/.codex/sessions/2026/11/11/rollout-2026-11-11T13-02-40-01a1c8c5-ab2b-7d70-ac41-f072c3118d08.jsonl",
+      "bytes": 67367,
+      "nul_bytes": 0,
+      "final_newline": true,
+      "lines": 17,
+      "parse_errors": [],
+      "ordinals_strictly_increasing": true,
+      "compaction_events": 0,
+      "tool_calls": 0
+    }
+  ]
+}

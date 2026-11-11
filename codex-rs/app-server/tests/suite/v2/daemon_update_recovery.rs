@@ -53,6 +53,7 @@ async fn managed_restart_resumes_loaded_threads_and_goal_without_client() -> Res
     let mut client = connect_daemon_client(
         &socket_path,
         InitializeCapabilities {
+            required_human_approval: false,
             experimental_api: true,
             extensions: Some(std::collections::HashMap::from([(
                 "io.modelcontextprotocol/ui".into(),
@@ -132,6 +133,7 @@ async fn managed_restart_resumes_loaded_threads_and_goal_without_client() -> Res
     let mut reconnected = connect_daemon_client(
         &socket_path,
         InitializeCapabilities {
+            required_human_approval: false,
             experimental_api: true,
             extensions: Some(std::collections::HashMap::from([(
                 "io.modelcontextprotocol/ui".into(),
@@ -467,15 +469,14 @@ async fn assert_still_running(server: &mut Child, message: &str) {
 #[test_case::test_case("legacy_snapshot")]
 #[test_case::test_case("completed")]
 #[test_case::test_case("canceled")]
-#[test_case::test_case("compacting")]
 #[tokio::test]
 async fn managed_shutdown_records_interrupted_turn(outcome: &str) -> Result<()> {
     let home = TempDir::new()?;
     let (release, gate) = oneshot::channel();
-    let (release_compaction, compaction_gate) = oneshot::channel();
+    let (release_continuation, continuation_gate) = oneshot::channel();
     let (mock, _completions) = start_streaming_sse_server(vec![
         vec![stream_chunk(Some(gate), "Original")?],
-        vec![stream_chunk(Some(compaction_gate), "Compacted")?],
+        vec![stream_chunk(Some(continuation_gate), "Continued")?],
     ])
     .await;
     create_config_toml(home.path(), mock.uri(), "never")?;
@@ -542,16 +543,6 @@ async fn managed_shutdown_records_interrupted_turn(outcome: &str) -> Result<()> 
             )
             .await?;
         }
-        "compacting" => {
-            request(
-                &mut client,
-                /*id*/ 4,
-                "thread/compact/start",
-                json!({"threadId":id}),
-            )
-            .await?;
-            wait_for_requests(&mock, /*count*/ 2).await?;
-        }
         "running"
         | "plan"
         | "read_only"
@@ -568,7 +559,7 @@ async fn managed_shutdown_records_interrupted_turn(outcome: &str) -> Result<()> 
         }
     })
     .await?;
-    let interrupted = !matches!(outcome, "completed" | "canceled" | "compacting");
+    let interrupted = !matches!(outcome, "completed" | "canceled");
     let expected = if interrupted {
         [(
             id.clone(),
@@ -704,7 +695,7 @@ async fn managed_shutdown_records_interrupted_turn(outcome: &str) -> Result<()> 
         .map(|turn| turn["status"].clone())
         .collect();
     assert_eq!(statuses, vec![json!("interrupted"), json!("inProgress")]);
-    release_compaction
+    release_continuation
         .send(())
         .expect("continuation is waiting");
     timeout(DEFAULT_READ_TIMEOUT, async {

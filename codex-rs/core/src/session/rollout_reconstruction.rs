@@ -1,6 +1,7 @@
 use super::*;
 use crate::context::world_state::WorldStateSnapshot;
 use crate::context_manager::is_user_turn_boundary;
+use codex_history::CompactedItem;
 use codex_history::TurnAttribution;
 use codex_protocol::protocol::SessionContextWindow;
 use codex_protocol::protocol::ThreadHistoryMode;
@@ -240,7 +241,8 @@ impl ContextManager {
             .rev()
             .filter_map(|item| match item {
                 RolloutItem::EventMsg(EventMsg::TurnStarted(event)) => Some(event.turn_id.as_str()),
-                RolloutItem::SessionMeta(_)
+                RolloutItem::DynamicToolsUpdated { .. }
+                | RolloutItem::SessionMeta(_)
                 | RolloutItem::ResponseItem(_)
                 | RolloutItem::InterAgentCommunication(_)
                 | RolloutItem::InterAgentCommunicationMetadata { .. }
@@ -437,6 +439,7 @@ impl ContextManager {
                     active_segment.counts_as_user_turn = true;
                 }
                 RolloutItem::EventMsg(_)
+                | RolloutItem::DynamicToolsUpdated { .. }
                 | RolloutItem::SessionMeta(_)
                 | RolloutItem::RealtimeItem(_)
                 | RolloutItem::RetainedContext(_)
@@ -519,7 +522,8 @@ impl ContextManager {
                     };
                     baseline.apply_merge_patch(&world_state.state);
                 }
-                RolloutItem::SessionMeta(_)
+                RolloutItem::DynamicToolsUpdated { .. }
+                | RolloutItem::SessionMeta(_)
                 | RolloutItem::ResponseItem(_)
                 | RolloutItem::InterAgentCommunication(_)
                 | RolloutItem::InterAgentCommunicationMetadata { .. }

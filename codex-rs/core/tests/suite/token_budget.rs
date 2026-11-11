@@ -5,11 +5,9 @@ use codex_core::StartThreadOptions;
 use codex_core::TurnInputRequest;
 use codex_core::config::Config;
 use codex_core::config::TokenBudgetConfig;
-use codex_extension_api::ExtensionRegistryBuilder;
 use codex_features::Feature;
 use codex_login::CodexAuth;
 use codex_model_provider_info::built_in_model_providers;
-use codex_protocol::config_types::AutoCompactTokenLimitScope;
 use codex_protocol::items::TurnItem;
 use codex_protocol::mcp::McpServerConnectionStatus;
 use codex_protocol::models::ContentItemMetadata;
@@ -28,18 +26,13 @@ use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::protocol::ThreadSettingsOverrides;
 use codex_protocol::user_input::UserInput;
-use codex_skills_extension::SkillsExtensionConfig;
-use codex_skills_extension::install;
 use core_test_support::PathBufExt;
 use core_test_support::assert_regex_match;
-use core_test_support::context_snapshot;
-use core_test_support::context_snapshot::ContextSnapshotOptions;
 use core_test_support::hooks::trust_discovered_hooks;
 use core_test_support::responses::ResponsesRequest;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_completed_with_tokens;
-use core_test_support::responses::ev_exec_command_call;
 use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_response_created;
 use core_test_support::responses::mount_sse_once;
@@ -241,7 +234,6 @@ async fn token_budget_context_is_only_emitted_with_full_context() -> Result<()> 
 
     Ok(())
 }
-
 #[test_case("features.token_budget.enabled = true"; "token_budget")]
 #[test_case("features.context_management.experimental_mode = true"; "experimental_mode")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -293,6 +285,7 @@ async fn token_budget_guidance_precedes_standalone_context_window(
     assert!(request.has_content_kinds(&[
         "token_budget.context_window_guidance",
         "permissions.instructions",
+        "tools.deferred_namespaces",
     ]));
     assert!(request.has_content_kinds(&["token_budget.context_window"; 3]));
     let developer_texts = request.message_input_texts("developer");
@@ -1365,113 +1358,6 @@ async fn token_budget_mid_turn_auto_compaction_resets_before_active_follow_up(
     assert_ne!(
         follow_up_window_id, initial_window_id,
         "mid-turn token-budget auto-compaction should reset the context window"
-    );
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "D7/I1: compaction and context-window reset execution were removed"]
-async fn new_context_tool_skips_auto_compact_fallback() -> Result<()> {
-    skip_if_no_network!(Ok(()));
-
-    let server = start_mock_server().await;
-    let call_id = "new-window-call";
-    let continue_call_id = "continue-call";
-    let continue_args = json!({
-        "plan": [
-            {"step": "Continue in the new context window", "status": "in_progress"}
-        ],
-    })
-    .to_string();
-    let responses = mount_sse_sequence(
-        &server,
-        vec![
-            sse(vec![
-                ev_response_created("resp-1"),
-                ev_function_call(call_id, "new_context", "{}"),
-                ev_completed_with_tokens("resp-1", /*total_tokens*/ 9_500),
-            ]),
-            sse(vec![
-                ev_response_created("resp-2"),
-                ev_function_call(continue_call_id, "update_plan", &continue_args),
-                ev_completed("resp-2"),
-            ]),
-            sse(vec![
-                ev_response_created("resp-3"),
-                ev_assistant_message("msg-3", "done"),
-                ev_completed("resp-3"),
-            ]),
-        ],
-    )
-    .await;
-    let mut extensions = ExtensionRegistryBuilder::<Config>::new();
-    install(&mut extensions, |config: &Config| SkillsExtensionConfig {
-        include_instructions: config.include_skill_instructions,
-        max_context_tokens: config.skill_max_context_tokens,
-        bundled_skills_enabled: config.bundled_skills_enabled(),
-        cloud_skill_enabled: config.cloud_skill_enabled,
-        shadow_selection_enabled: config.features.enabled(Feature::SkillSearch),
-    });
-    let test = test_codex()
-        .with_extensions(Arc::new(extensions.build()))
-        .with_config(|config| {
-            config.update_plan_enabled = true;
-            config.model_context_window = Some(10_000);
-            config.token_budget = Some(TokenBudgetConfig {
-                auto_compact_fallback_prompt: Some(AUTO_COMPACT_FALLBACK_PROMPT.to_string()),
-                auto_compact_fallback_buffer_tokens: Some(4_000),
-                ..TokenBudgetConfig::default()
-            });
-            config
-                .features
-                .enable(Feature::TokenBudget)
-                .expect("test config should allow token budget");
-        })
-        .build(&server)
-        .await?;
-
-    test.submit_turn("request new context window").await?;
-
-    let requests = responses.requests();
-    assert_eq!(requests.len(), 3);
-    assert!(!requests[1].body_contains_text(AUTO_COMPACT_FALLBACK_PROMPT));
-    assert!(
-        tool_names(&requests[0])
-            .iter()
-            .any(|name| name == "new_context"),
-        "new_context should be exposed when token budget is enabled"
-    );
-    let initial_token_budget = token_budget_contexts(&requests[0]);
-    assert_eq!(initial_token_budget.len(), 1);
-    let (initial_first_window_id, _, initial_window_id) =
-        token_budget_window_ids(&initial_token_budget[0], "/root");
-    let new_window_token_budget = token_budget_contexts(&requests[2]);
-    assert_eq!(new_window_token_budget.len(), 1);
-    let (new_first_window_id, new_previous_window_id, new_window_id) =
-        token_budget_window_ids(&new_window_token_budget[0], "/root");
-    assert_eq!(new_first_window_id, initial_first_window_id);
-    assert_eq!(
-        new_previous_window_id.as_deref(),
-        Some(initial_window_id.as_str())
-    );
-    assert_ne!(new_window_id, initial_window_id);
-    assert!(
-        !requests[2].body_contains_text("request new context window"),
-        "new_context should drop the prior window history before continuing the turn"
-    );
-    assert_eq!(
-        requests[2].function_call_output_text(continue_call_id),
-        Some("Plan updated".to_string())
-    );
-    let snapshot = context_snapshot::format_labeled_requests_snapshot(
-        "New context window tool installs fresh full context before the next follow-up request.",
-        &[("Final Follow-Up Request", &requests[2])],
-        &ContextSnapshotOptions::default().rewrite_known_segments(),
-    );
-    insta::assert_snapshot!(
-        "token_budget_new_context_window_tool_full_context",
-        snapshot
     );
 
     Ok(())

@@ -51,6 +51,8 @@ async fn guardian_checkpoint_preserves_assembled_originals_without_compaction(
                 ..Default::default()
             },
             Some(32_000),
+            /*includes_reasoning*/ true,
+            /*input_item_count*/ 0,
         );
     }
     let expected = session.vrs_history().await.unwrap();

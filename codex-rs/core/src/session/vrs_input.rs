@@ -210,7 +210,9 @@ pub(crate) async fn vrs_prompt_input(
     Ok(normalize_for_prompt(
         items,
         &step.settings.model_info.input_modalities,
-    ))
+        sess.services.image_store.as_ref(),
+    )
+    .await)
 }
 
 /// Admission of the completed request, including normalized items and all request overhead.
@@ -257,13 +259,14 @@ async fn estimate_prompt_tokens(
     Ok(crate::guardian::estimate_request_tokens(&request))
 }
 
-fn normalize_for_prompt(
+async fn normalize_for_prompt(
     items: Vec<ResponseItem>,
     input_modalities: &[InputModality],
+    image_store: &dyn codex_attachment_store::AttachmentStore,
 ) -> Vec<ResponseItem> {
     let mut assembled = ContextManager::new();
     assembled.replace_assembled(items);
-    assembled.for_prompt(input_modalities)
+    assembled.for_prompt(input_modalities, image_store).await
 }
 
 impl Session {
@@ -452,7 +455,7 @@ mod tests {
         model.context_window = Some(window);
         model.max_context_window = Some(window);
         model.effective_context_window_percent = 100;
-        model.used_fallback_model_metadata = false;
+        model.origin = codex_protocol::openai_models::ModelOrigin::Provider;
         model.use_responses_lite = lite;
     }
 
@@ -486,7 +489,12 @@ mod tests {
             .unwrap();
         assert_eq!(
             original,
-            super::normalize_for_prompt(vec![item], &large.settings.model_info.input_modalities)
+            super::normalize_for_prompt(
+                vec![item],
+                &large.settings.model_info.input_modalities,
+                session.services.image_store.as_ref(),
+            )
+            .await
         );
         assert!(matches!(
             super::vrs_prompt_input(&session, &small, &base).await,

@@ -183,6 +183,13 @@ impl SampleTask {
             .features
             .enable(Feature::ReasoningEffortOverride)
             .map_err(|error| invalid_request(error.to_string()))?;
+        if let Some(interrupt_on_cancel) = params.interrupt_on_cancel {
+            options
+                .config
+                .features
+                .set_enabled(Feature::InterruptOnCancel, interrupt_on_cancel)
+                .map_err(|error| invalid_request(error.to_string()))?;
+        }
         if params.disable_mcp
             && model.use_responses_lite
             && parent_history
@@ -198,7 +205,12 @@ impl SampleTask {
             model.supports_reasoning_effort_updates && options.config.model_provider.is_openai()
         });
         options.session_source = Some(SessionSource::Custom("thread_sample".to_string()));
-        options.thread_source = Some(ThreadSource::Feature("thread_sample".to_string()));
+        options.thread_source = Some(
+            params
+                .thread_source
+                .map(Into::into)
+                .unwrap_or_else(|| ThreadSource::Feature("thread_sample".to_string())),
+        );
         options.parent_trace = trace.clone();
         if cancellation.is_cancelled() {
             return Err(internal_error("sample canceled"));

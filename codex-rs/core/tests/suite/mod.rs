@@ -43,6 +43,7 @@ mod additional_context;
 #[path = "agent_control_tests.rs"]
 mod agent_control;
 mod agent_execution;
+mod agent_message_wake;
 mod agent_websocket;
 mod agents_md;
 mod app_tool_exposure;
@@ -94,7 +95,9 @@ mod guardian_cached_score;
 #[path = "guardian_checkpoint_migration_tests.rs"]
 mod guardian_checkpoint_migration;
 // Uses the same command-approval harness as guardian_review below.
+mod builtin_model_catalog;
 mod canonical_plugin_connectors;
+mod critical_path_runtime;
 mod gateway_auth;
 mod guardian_connector_trust;
 #[cfg(not(target_os = "windows"))]
