@@ -288,6 +288,7 @@ async fn turn_completion_metrics_follow_model_switch(scenario: UsageScenario) {
                     crate::session::TokenUsageContext::Sampling {
                         includes_reasoning: false,
                         input_item_count: 0,
+                        input_list_generation: None,
                     },
                 )
                 .await

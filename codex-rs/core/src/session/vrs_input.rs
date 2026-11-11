@@ -283,6 +283,12 @@ impl Session {
             .map_err(recording_unavailable)
     }
 
+    /// The live history's (length, usage generation) for the usage of a request whose input was
+    /// just assembled. Usage indexes this list, never the assembled prompt (V114-01).
+    pub(crate) async fn live_history_usage_cut(&self) -> (usize, u64) {
+        self.state.lock().await.history.usage_cut()
+    }
+
     /// Installs the stored assembly as the live history of a resumed or forked thread (design D4).
     ///
     /// When the store cannot assemble yet the history stays empty. Model input never reads it:

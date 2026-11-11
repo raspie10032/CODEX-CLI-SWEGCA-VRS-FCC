@@ -410,6 +410,9 @@ pub(crate) enum TokenUsageContext {
         includes_reasoning: bool,
         /// Input history length before the response, including requests with no output items.
         input_item_count: usize,
+        /// The live list generation `input_item_count` was read on (`ContextManager::usage_cut`).
+        /// `None` means the current list.
+        input_list_generation: Option<u64>,
     },
     SpendingOnly,
 }
@@ -4983,6 +4986,7 @@ impl Session {
                 TokenUsageContext::Sampling {
                     includes_reasoning,
                     input_item_count: 0,
+                    input_list_generation: None,
                 },
             )
             .await;
@@ -5048,12 +5052,14 @@ impl Session {
                     TokenUsageContext::Sampling {
                         includes_reasoning,
                         input_item_count,
+                        input_list_generation,
                     } => {
                         state.update_token_info_from_usage(
                             token_usage,
                             turn_context.model_context_window(),
                             includes_reasoning,
                             input_item_count,
+                            input_list_generation,
                         );
                         state.token_info()
                     }

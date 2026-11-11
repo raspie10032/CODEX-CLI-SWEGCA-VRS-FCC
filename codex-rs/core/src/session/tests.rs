@@ -3591,7 +3591,7 @@ async fn recompute_token_usage_updates_model_context_window() {
     assert_eq!(actual.model_context_window, Some(128_000));
 }
 
-#[test_case(crate::session::TokenUsageContext::Sampling { includes_reasoning: false, input_item_count: 0 }; "sampling")]
+#[test_case(crate::session::TokenUsageContext::Sampling { includes_reasoning: false, input_item_count: 0, input_list_generation: None }; "sampling")]
 #[test_case(crate::session::TokenUsageContext::SpendingOnly; "spending_only")]
 #[tokio::test]
 async fn record_token_usage_info_notifies_extension_contributors(
@@ -3681,6 +3681,7 @@ async fn record_token_usage_info_notifies_extension_contributors(
             crate::session::TokenUsageContext::Sampling {
                 includes_reasoning: true,
                 input_item_count: 0,
+                input_list_generation: None,
             },
         )
         .await

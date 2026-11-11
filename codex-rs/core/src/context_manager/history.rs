@@ -122,6 +122,9 @@ pub(crate) struct ContextManager {
     /// History items at this index and later are estimated on top of the saved token count.
     /// Failed responses preserve this index. It is not saved in rollouts.
     last_server_reported_usage_item_count: usize,
+    /// Bumped whenever the item list is replaced wholesale, so a usage count taken on an
+    /// earlier list is never applied as an index into the current one.
+    usage_list_generation: u64,
     /// Index immediately after the latest model output, including failed responses.
     last_model_output_item_count: Option<usize>,
     /// Reference context snapshot used for diffing and producing model-visible
@@ -253,6 +256,7 @@ impl ContextManager {
             guardian_review_context_revision: next_guardian_review_context_revision(),
             token_info: None,
             last_server_reported_usage_item_count: 0,
+            usage_list_generation: 0,
             last_model_output_item_count: None,
             reference_context_item: None,
             world_state_baseline: None,
@@ -624,6 +628,11 @@ impl ContextManager {
         self.history_version
     }
 
+    /// The live list's length and usage generation, read together for a request's usage.
+    pub(crate) fn usage_cut(&self) -> (usize, u64) {
+        (self.items.len(), self.usage_list_generation)
+    }
+
     // Estimate token usage using byte-based heuristics from the truncation helpers.
     // This is a coarse lower bound, not a tokenizer-accurate count.
     pub(crate) fn estimate_token_count(&self, turn_context: &TurnContext) -> Option<i64> {
@@ -669,6 +678,7 @@ impl ContextManager {
             // its corresponding counterpart to keep the invariants intact without
             // running a full normalization pass.
             normalize::remove_corresponding_for(items, &removed.item);
+            self.usage_list_generation = self.usage_list_generation.wrapping_add(1);
             self.reset_last_usage_boundary();
             self.world_state_baseline = None;
         }
@@ -752,6 +762,10 @@ impl ContextManager {
             return;
         }
         self.items = Arc::new(items);
+        // The usage boundary indexed the previous list. Recompute it as upstream does for any
+        // rewritten history (V114-01), without touching reset_version, which guardian uses.
+        self.usage_list_generation = self.usage_list_generation.wrapping_add(1);
+        self.reset_last_usage_boundary();
         // Guardian must use the same assembly in every review mode. A compatibility
         // transcript from an earlier window must never replace the assembled items.
         self.review_history = None;
@@ -776,6 +790,7 @@ impl ContextManager {
             );
         }
         self.items = Arc::new(items);
+        self.usage_list_generation = self.usage_list_generation.wrapping_add(1);
         self.reset_last_usage_boundary();
         self.history_version = self.history_version.saturating_add(1);
         self.reset_version = self.history_version;
@@ -914,16 +929,42 @@ impl ContextManager {
         includes_reasoning: bool,
         input_item_count: usize,
     ) {
+        self.update_token_info_for_list(
+            usage,
+            model_context_window,
+            includes_reasoning,
+            input_item_count,
+            /*input_list_generation*/ None,
+        );
+    }
+
+    /// `input_item_count` indexes the list of generation `input_list_generation` (from
+    /// `usage_cut`) as it was when the request was sent. If the list has been replaced since
+    /// (in this fork a newer VRS assembly can be installed while a request is in flight), the
+    /// count does not index the current items and the boundary set by the replacement is kept.
+    pub(crate) fn update_token_info_for_list(
+        &mut self,
+        usage: &TokenUsage,
+        model_context_window: Option<i64>,
+        includes_reasoning: bool,
+        input_item_count: usize,
+        input_list_generation: Option<u64>,
+    ) {
         let info = TokenUsageInfo::new_or_append(
             &self.token_info,
             usage,
             includes_reasoning,
             model_context_window,
         );
-        let covered_item_count = self
-            .last_model_output_item_count
-            .unwrap_or(0)
-            .max(input_item_count);
+        let covered_item_count = match input_list_generation {
+            Some(generation) if generation != self.usage_list_generation => {
+                self.last_server_reported_usage_item_count
+            }
+            _ => self
+                .last_model_output_item_count
+                .unwrap_or(0)
+                .max(input_item_count),
+        };
         tracing::debug!(
             target: "codex_core::history_item_count",
             history_items = self.items.len(),

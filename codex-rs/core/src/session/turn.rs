@@ -1322,7 +1322,7 @@ async fn run_sampling_request(
         .instrument(trace_span!("run_turn.prepare_sampling_request_input"))
         .await?;
         let mut prompt_input = prompt_input;
-        let input_item_count = prompt_input.len();
+        let (input_item_count, input_list_generation) = sess.live_history_usage_cut().await;
         sess.services
             .executed_tool_calls
             .attach_to_prompt(&mut prompt_input, &mut executed_tool_calls_by_output);
@@ -1360,6 +1360,7 @@ async fn run_sampling_request(
             Arc::clone(&turn_diff_tracker),
             prompt,
             input_item_count,
+            input_list_generation,
             cancellation_token.child_token(),
             &mut draining_for_mailbox,
         )
@@ -2213,6 +2214,7 @@ async fn try_run_sampling_request(
     turn_diff_tracker: SharedTurnDiffTracker,
     prompt: Prompt,
     input_item_count: usize,
+    input_list_generation: u64,
     cancellation_token: CancellationToken,
     draining_for_mailbox: &mut bool,
 ) -> CodexResult<SamplingRequestResult> {
@@ -2837,6 +2839,7 @@ async fn try_run_sampling_request(
                         super::TokenUsageContext::Sampling {
                             includes_reasoning,
                             input_item_count,
+                            input_list_generation: Some(input_list_generation),
                         },
                     )
                     .await;

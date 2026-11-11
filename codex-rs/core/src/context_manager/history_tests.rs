@@ -3890,3 +3890,66 @@ fn text_only_items_count_decoded_content() {
 
     assert_eq!(estimated, "Hello, \"world\"!\nこんにちは".len() as i64);
 }
+
+/// V114-01: replacing the list with a shorter VRS assembly must not leave the usage boundary
+/// past its end, and a usage count measured on the replaced list must not become the boundary
+/// of the new one. Before the fix the next total-usage read sliced past the end and panicked.
+#[test]
+fn shorter_assembly_and_stale_usage_count_keep_the_boundary_in_range() {
+    let mut history = create_history_with_items(
+        (0..6)
+            .map(|index| user_msg(&format!("request item {index}")))
+            .collect(),
+    );
+    history.update_token_info(
+        &TokenUsage {
+            total_tokens: 100,
+            ..Default::default()
+        },
+        /*model_context_window*/ None,
+        /*includes_reasoning*/ true,
+        /*input_item_count*/ 6,
+    );
+    let (input_item_count, input_list_generation) = history.usage_cut();
+    assert_eq!(input_item_count, 6);
+
+    // A newer, shorter assembly replaces the live list (as a nested tool call does).
+    history.replace_assembled(vec![user_msg("assembled 0"), user_msg("assembled 1")]);
+    let (current_count, current_generation) = history.usage_cut();
+    assert_eq!(current_count, 2);
+    assert_ne!(current_generation, input_list_generation);
+    // (a) The replacement resets the boundary; before the fix this read panicked.
+    assert_eq!(history.get_total_token_usage(), 100);
+
+    // (b) Usage of the request sent on the replaced list keeps the replacement's boundary.
+    history.update_token_info_for_list(
+        &TokenUsage {
+            total_tokens: 120,
+            ..Default::default()
+        },
+        /*model_context_window*/ None,
+        /*includes_reasoning*/ true,
+        input_item_count,
+        Some(input_list_generation),
+    );
+    assert_eq!(history.get_total_token_usage(), 120);
+
+    // A count taken on the current list still sets the boundary: items appended after it
+    // stay estimated as unreported.
+    let appended = user_msg("appended after the request");
+    history.record_items([&appended], TruncationPolicy::Tokens(10_000));
+    history.update_token_info_for_list(
+        &TokenUsage {
+            total_tokens: 130,
+            ..Default::default()
+        },
+        /*model_context_window*/ None,
+        /*includes_reasoning*/ true,
+        current_count,
+        Some(current_generation),
+    );
+    assert_eq!(
+        history.get_total_token_usage(),
+        130 + estimate_item_token_count(&appended)
+    );
+}

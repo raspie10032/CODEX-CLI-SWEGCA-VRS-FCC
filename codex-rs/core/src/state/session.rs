@@ -329,12 +329,14 @@ impl SessionState {
         model_context_window: Option<i64>,
         includes_reasoning: bool,
         input_item_count: usize,
+        input_list_generation: Option<u64>,
     ) {
-        self.history.update_token_info(
+        self.history.update_token_info_for_list(
             usage,
             model_context_window,
             includes_reasoning,
             input_item_count,
+            input_list_generation,
         );
     }
 
