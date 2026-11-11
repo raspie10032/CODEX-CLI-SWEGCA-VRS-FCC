@@ -2,8 +2,8 @@
 //! Model-visible parent and reviewer history is assembled by VRS; summaries are not reused.
 
 use super::*;
-use codex_guardian_reviewer::ReviewDeadline;
 use codex_features::Feature;
+use codex_guardian_reviewer::ReviewDeadline;
 use codex_guardian_reviewer::ReviewerPool;
 use codex_guardian_reviewer::ReviewerRequest;
 use codex_protocol::protocol::TurnEnvironmentSelection;

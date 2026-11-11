@@ -8,8 +8,8 @@ use codex_guardian_reviewer::prompt_cache_key_override_for_review_session;
 use codex_models_manager::model_info::model_info_from_slug;
 use codex_prompts::GuardianPolicyInstructions;
 use codex_prompts::ResolvedModelMessages;
-use codex_protocol::TranscriptFormat;
 use codex_protocol::ThreadId;
+use codex_protocol::TranscriptFormat;
 use codex_protocol::openai_models::AutoReviewMessages;
 use codex_protocol::openai_models::ModelMessages;
 use codex_protocol::protocol::AgentStatus;
@@ -322,7 +322,6 @@ async fn guardian_review_session_config_change_invalidates_cached_session() {
         ),),
         "changing the effective Node REPL policy must invalidate reviewer history"
     );
-
 }
 
 #[tokio::test]

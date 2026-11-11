@@ -52,9 +52,7 @@ impl GuardianReviewState {
         kind: GuardianReviewSessionKind,
         snapshot: Option<GuardianReviewForkSnapshot>,
     ) -> (Self, Option<InitialHistory>) {
-        let mut conversation = snapshot
-            .map(ConversationState::from)
-            .unwrap_or_default();
+        let mut conversation = snapshot.map(ConversationState::from).unwrap_or_default();
         let history = match kind {
             GuardianReviewSessionKind::EphemeralForked => conversation.take_history(),
             // Replacement trunks keep the checkpoint if their first review is invalidated.

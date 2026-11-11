@@ -200,7 +200,6 @@ async fn guardian_history_survives_restart_and_user_fork(
     Ok(())
 }
 
-
 #[test_case(TranscriptFormat::Line; "line transcript")]
 #[test_case(TranscriptFormat::Json; "json transcript")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

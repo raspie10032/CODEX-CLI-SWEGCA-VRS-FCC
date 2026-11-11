@@ -1,7 +1,7 @@
 //! Loads stored agent context and prepares the history a child inherits when it forks.
 
-use crate::agent::types::SpawnAgentOptions;
 use crate::agent::types::SpawnAgentForkMode;
+use crate::agent::types::SpawnAgentOptions;
 use crate::config::Config;
 use crate::context::BaseInstructionsFragment;
 use crate::context::ContextualUserFragment;
@@ -320,24 +320,24 @@ pub(super) async fn prepare_forked_history(
         }
     }
 
-    let multi_agent_v2_usage_hint_texts_to_filter: Vec<String> =
-        if multi_agent_version == MultiAgentVersion::V2
-            && let Some(parent_thread) = &parent_thread
-        {
-            let parent_config = parent_thread.session.get_config().await;
-            let parent_usage_hints = resolve_usage_hints(
-                &parent_config.multi_agent_v2,
-                ResolvedModelMessages::bundled().multi_agent(),
-                !parent_config.update_plan_enabled,
-            );
-            [parent_usage_hints.root, parent_usage_hints.subagent]
-                .into_iter()
-                .flatten()
-                .map(|instructions| instructions.render().into_text().unwrap_or_default())
-                .collect()
-        } else {
-            Vec::new()
-        };
+    let multi_agent_v2_usage_hint_texts_to_filter: Vec<String> = if multi_agent_version
+        == MultiAgentVersion::V2
+        && let Some(parent_thread) = &parent_thread
+    {
+        let parent_config = parent_thread.session.get_config().await;
+        let parent_usage_hints = resolve_usage_hints(
+            &parent_config.multi_agent_v2,
+            ResolvedModelMessages::bundled().multi_agent(),
+            !parent_config.update_plan_enabled,
+        );
+        [parent_usage_hints.root, parent_usage_hints.subagent]
+            .into_iter()
+            .flatten()
+            .map(|instructions| instructions.render().into_text().unwrap_or_default())
+            .collect()
+    } else {
+        Vec::new()
+    };
     let preserve_context_baselines = matches!(fork_mode, SpawnAgentForkMode::FullHistory);
     let mut replaced_parent_developer_instructions = false;
     let preserve_fork_prefix = multi_agent_version == MultiAgentVersion::V2
@@ -494,7 +494,11 @@ pub(super) async fn prepare_forked_history(
         && !replaced_parent_developer_instructions
         && !subagent_developer_instructions.is_empty()
         && let Some(parent_thread) = &parent_thread
-        && parent_thread.session.reference_context_item().await.is_some()
+        && parent_thread
+            .session
+            .reference_context_item()
+            .await
+            .is_some()
     {
         let developer_message = ContextualUserFragment::into(DeveloperInstructions::new(
             subagent_developer_instructions,

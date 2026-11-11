@@ -2302,9 +2302,7 @@ async fn try_run_sampling_request(
         .features
         .enabled(Feature::GuardianApproval)
     {
-        Some(
-            crate::guardian::ScoreAuthorization::for_session(&sess, &Default::default()).await?,
-        )
+        Some(crate::guardian::ScoreAuthorization::for_session(&sess, &Default::default()).await?)
     } else {
         None
     };

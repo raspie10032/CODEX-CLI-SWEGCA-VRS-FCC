@@ -365,9 +365,7 @@ impl TurnProfileState {
 
     fn extend_path(&self, path: CriticalPath, previous: Instant, now: Instant) -> CriticalPath {
         match self.active_phase {
-            Some(TurnProfilePhase::Sampling) => {
-                path.work(previous, now, WorkKind::Inference)
-            }
+            Some(TurnProfilePhase::Sampling) => path.work(previous, now, WorkKind::Inference),
             Some(TurnProfilePhase::ToolBlocking) => {
                 let dependency = self
                     .tool_dependency
