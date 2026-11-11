@@ -2080,3 +2080,13 @@ L2 끝: 이음매마다 자리를 적었고, 새 자리 둘(host/spawn, `<mcp_to
 - R6: 감사 4f(새 동기화 0, `vrs-lib7`·`codex-rs/vrs` diff 0). 첫 조립 1.0–3.8 s(5 s 안).
 - R5 뒷절반(앱 한 턴)·R7(교체·릴리스)은 아래에 이어 적는다.
 - G_114 진척: 터미널 바이너리 수준에서 R1–R4·R6 과 R5 앞 절반 성립.
+- R5 뒷절반: 13:04 앱 26.1103 + 22ffe83a0 호스트 빌드로 교체(app-server·exec-server 모두 새 바이너리, 앱 하나). 13:47 앱 턴(스레드 01a1c8ef) 영수증 37/37 assembled, 압축 0, 코드 모드 exec 6회 모두 완료. 플로팅 끔 패치는 `webview/assets/async/*.js` 함수 K 의 `x=b&&!v` → `x=false`(화면 확인은 사용자 몫).
+- R7 (11-11 14시대, 사용자 「앱 확인 뒤 릴리스」):
+  - 로컬 사전 점검에서 CI 를 막을 것 둘을 먼저 찾았다. 이식 파일 7개 포맷, 0.167 뒤에 나온 RustSec 11건.
+  - 의존성: OpenSSL 0.10.82(upstream 7761f0a), SQLite 3.54·libsqlite3-sys 0.39.1(upstream 2728f99, 충돌 3 — 우리 0.167 git 핀을 두고 sqlx 핀만 더함, MODULE.bazel.lock 은 우리 것), pin-utils 예외(upstream 2be3dd3), tokio 1.53.3(RUSTSEC-2026-0386, upstream main 미처리).
+  - main = 3e363ee40(f721e0cfe 위 빨리 감기), fcc-ci 42963697699 잡 6/6 success(15분, Cargo.lock 이 바뀌어 캐시 없음).
+  - 릴리스 바이너리: 깨끗한 클론을 Ubuntu 24.04 컨테이너에서(10분 43초), codex sha 15d23d06…, 동반 5e5eb476…, 홈 경로·개인 문자열 0, 컨테이너 스모크 PASS, Fedora release1 4/4, codex-state 244 통과, 실 백엔드 S1–S5 6/6(내용 검사, 조립 149 실패 0, 압축 0; `~/tmp/p114-work/smoke/rel`).
+  - 태그 fcc-v1.1.4(3e363ee40), 릴리스 Latest, 묶음 146,633,849 B sha256 ffa6a658…(tar 소유자 0/0), 받아서 해시 확인.
+  - 배포: 앱·터미널은 `~/tmp/codexint_deploy_a17/fcc114/`(22ffe83a0 호스트 빌드, 의존성 셋 이전). 되돌리기 = desktop-backups/*.bak-fcc114-20261111-1304 + `~/tmp/codex_link_before_fcc114.txt` + `launch_fcc113.sh`. 릴리스판으로 바꾸는 것은 사용자 결정.
+- G_114 진척: R1–R7 성립(R5 의 플로팅 화면 확인만 사용자 몫). 홈 배포가 릴리스판이 아닌 것은 1.1.3 과 같은 처리다.
+- 릴리스판으로 교체(11-11 14:28, 사용자 「지금 바로 전환 ㄱ」): `~/tmp/codexint_deploy_a17/fcc114rel/`(codex-fcc-v1.1.4 15d23d06… + 동반 5e5eb476…, 둘 다 실파일), launch_fcc114.sh·desktop 둘 → fcc114rel(백업 desktop-backups/*.bak-fcc114rel-*), 터미널 링크 fcc114rel(이전 = `~/tmp/codex_link_before_fcc114rel.txt`). 앱 하나, app-server·exec-server 모두 fcc114rel, 재기동 뒤 영수증 6/6 assembled. 되돌리기 한 단계 = `launch_fcc114_hostbuild.sh`(22ffe83a0), 두 단계 = `launch_fcc113.sh`.
