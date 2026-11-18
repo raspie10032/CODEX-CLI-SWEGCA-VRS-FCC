@@ -9,8 +9,10 @@ use std::collections::BTreeMap;
 use codex_features::Feature;
 use codex_guardian_context::ComposedContext;
 use codex_guardian_context::HistoryTruncation;
+use codex_guardian_context::PreparedElasticContext;
 use codex_guardian_context::RequestBudget;
 use codex_guardian_context::effective_input_token_limit;
+use codex_history::ResponseItemEnvelope;
 use codex_protocol::config_types::ReasoningSummary;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
@@ -31,6 +33,48 @@ use crate::session::turn_context::TurnContext;
 #[derive(Clone)]
 pub(crate) struct PendingReviewContext {
     pub context: ComposedContext,
+    pub elastic: Option<codex_guardian_context::ElasticBudgetConfig>,
+}
+
+/// Delivery preparation finishes before either budget policy selects evidence.
+pub(super) enum PreparedReviewContext<'a> {
+    Fixed(ComposedContext),
+    Elastic(PreparedElasticContext<'a>),
+}
+
+impl<'a> PreparedReviewContext<'a> {
+    pub(super) fn prepare(
+        mut context: ComposedContext,
+        elastic: Option<&'a codex_guardian_context::ElasticBudgetConfig>,
+        history: &[ResponseItemEnvelope],
+    ) -> Result<Self, codex_guardian_context::SectionError> {
+        match elastic {
+            Some(config) => Ok(Self::Elastic(
+                context
+                    .prepare_elastic_entries(config)?
+                    .prepare_sync_delivery(history)?,
+            )),
+            None => {
+                codex_guardian_context::prepare_sync_delivery(&mut context, history)?;
+                Ok(Self::Fixed(context))
+            }
+        }
+    }
+
+    pub(super) fn enforce_budget(
+        self,
+        budget: RequestBudget,
+        history_truncation: HistoryTruncation,
+    ) -> Result<ComposedContext, codex_guardian_context::SectionError> {
+        let notice = GuardianBudgetOmission
+            .render()
+            .into_text()
+            .unwrap_or_default();
+        match self {
+            Self::Fixed(context) => context.enforce_budget(budget, notice, history_truncation),
+            Self::Elastic(context) => context.enforce_budget(budget, notice),
+        }
+    }
 }
 
 /// Reject evidence that cannot fit before constructing a reviewer request.
@@ -47,7 +91,7 @@ pub(crate) async fn check_pending(session: &Session, turn: &TurnContext) -> Code
         codex_protocol::protocol::TruncationPolicy::Bytes(base.text.len()).token_budget();
     let maximum = effective_input_token_limit(turn.model_info(), turn.config.model_context_window)
         .saturating_sub(super::request_budget::INPUT_TOKEN_MARGIN);
-    let mut context = pending.context.clone();
+    let context = pending.context.clone();
     let history = session
         .vrs_history()
         .await
@@ -57,19 +101,19 @@ pub(crate) async fn check_pending(session: &Session, turn: &TurnContext) -> Code
             session.services.image_store.as_ref(),
         )
         .await;
-    codex_guardian_context::prepare_sync_delivery(&mut context, &history)
+    let context = PreparedReviewContext::prepare(context, pending.elastic.as_ref(), &history)
         .map_err(|error| CodexErr::InvalidRequest(error.to_string()))?;
-    if context.estimated_tokens().saturating_add(minimum_prefix) > maximum {
+    let context_tokens = match &context {
+        PreparedReviewContext::Fixed(context) => context.estimated_tokens(),
+        PreparedReviewContext::Elastic(context) => context.estimated_tokens(),
+    };
+    if context_tokens.saturating_add(minimum_prefix) > maximum {
         context
             .enforce_budget(
                 RequestBudget {
                     max_input_tokens: maximum,
                     existing_context_tokens: minimum_prefix,
                 },
-                GuardianBudgetOmission
-                    .render()
-                    .into_text()
-                    .unwrap_or_default(),
                 HistoryTruncation::Allow,
             )
             .map_err(|_error| {
@@ -101,7 +145,7 @@ pub(crate) async fn finalize(
             "Guardian expects one review input".to_owned(),
         ));
     };
-    let mut context = pending.context.clone();
+    let context = pending.context.clone();
     let model = &step.settings.model_info;
     let history = session
         .vrs_history()
@@ -113,7 +157,7 @@ pub(crate) async fn finalize(
         )
         .await;
     // Use the history that will actually reach the model.
-    codex_guardian_context::prepare_sync_delivery(&mut context, &history)
+    let context = PreparedReviewContext::prepare(context, pending.elastic.as_ref(), &history)
         .map_err(|error| CodexErr::InvalidRequest(error.to_string()))?;
     let prompt = build_prompt(
         history
@@ -154,7 +198,10 @@ pub(crate) async fn finalize(
             usize::try_from(estimate_item_token_count(&reminder)).unwrap_or(usize::MAX),
         );
     }
-    if let Some(reminder) = session
+    if matches!(
+        &session.agent_runtime,
+        crate::agent::host::AgentRuntimeServices::Controller
+    ) && let Some(reminder) = session
         .services
         .agent_control
         .pending_budget_reminder(session.thread_id(), &session.current_window_id().await)
@@ -182,14 +229,7 @@ pub(crate) async fn finalize(
         ),
     };
     let mut context = context
-        .enforce_budget(
-            budget,
-            GuardianBudgetOmission
-                .render()
-                .into_text()
-                .unwrap_or_default(),
-            history_truncation,
-        )
+        .enforce_budget(budget, history_truncation)
         .map_err(|error| {
             session
                 .services

@@ -12,7 +12,8 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / 'l3check/port_167'
+OUT = ROOT / 'l3check/port_169'
+OUT.mkdir(parents=True, exist_ok=True)
 
 
 def git(*args):
@@ -92,6 +93,12 @@ notes = {
         'Forwards to state/session.rs:171-172 (self.history.clone) under the existing Session '
         'mutex. It has no independent sink; consumers are all other rows in this inventory, '
         'including explicitly identified metadata/control paths.'),
+    ('session/turn.rs', 'run_sampling_request'): (
+        'live_audio_metadata_control', True,
+        'Runs after build_prompt and reads only retained_context.accepted_file_audio to compute '
+        'submitted/pending audio metadata. It does not rebuild, replace, or append prompt.input; '
+        'the sampling request receives the already VRS-assembled prompt. This is live control '
+        'metadata, not a second model-input construction path.'),
     ('tools/context.rs', 'originating_call'): (
         'tool_origin_control', True,
         'Extracts only matching call item ID plus current window ID, never ResponseItem text. '

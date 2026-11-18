@@ -4,9 +4,9 @@ use crate::session::tests::make_session_and_context;
 use codex_history::InitialHistory;
 use codex_history::RolloutItem;
 use codex_protocol::models::ResponseItem;
-use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::TokenUsage;
+use codex_protocol_test_support::uuid_v7_item_id_generator_for_test;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 use test_case::test_case;
@@ -85,8 +85,10 @@ async fn guardian_checkpoint_preserves_assembled_originals_without_compaction(
     let (fork, _) = make_session_and_context().await;
     fork.state.lock().await.session_configuration.history_mode = history_mode;
     fork.state.lock().await.history = ContextManager::for_session(
-        &SessionSource::default(),
+        /*root_capabilities_restricted*/ false,
         &crate::config::ManagedFeatures::from(codex_features::Features::with_defaults()),
+        codex_guardian_context::ContextBudgeting::Fixed,
+        uuid_v7_item_id_generator_for_test(),
     );
     fork.record_initial_history(InitialHistory::Forked(items))
         .await;

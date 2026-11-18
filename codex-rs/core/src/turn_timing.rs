@@ -24,7 +24,23 @@ use codex_utils_critical_path::WorkKind;
 // Reuse the finalized analytics counters instead of counting sampled child spans.
 // Recovery can complete the same turn ID again, so consumers must retain the
 // completion event's trace and timestamp rather than deduplicating by turn alone.
-pub(crate) fn record_turn_profile_trace(thread_id: ThreadId, turn_id: &str, profile: &TurnProfile) {
+pub(crate) fn record_terminal_turn_profile(
+    thread_id: ThreadId,
+    turn: &TurnContext,
+    profile: &TurnProfile,
+) {
+    if !matches!(
+        profile.critical_path,
+        codex_analytics::TurnCriticalPath::Disabled
+    ) {
+        turn.turn_timing_state
+            .critical_path_metrics
+            .get_or_init(|| {
+                report::record_turn_profile_metrics(turn, profile);
+            });
+    }
+    let times = profile.critical_path.durations();
+    let turn_id = turn.sub_id.as_str();
     tracing::event!(
         name: "codex.turn_profile",
         target: "codex_otel.trace_safe",
@@ -32,6 +48,14 @@ pub(crate) fn record_turn_profile_trace(thread_id: ThreadId, turn_id: &str, prof
         event.name = "codex.turn_profile",
         conversation.id = %thread_id,
         turn_id,
+        critical_path_status = profile.critical_path.status(),
+        critical_path_duration_ms = times.map(|t| t.duration_ms),
+        critical_path_inference_ms = times.map(|t| t.inference_ms),
+        critical_path_tools_ms = times.map(|t| t.tools_ms),
+        critical_path_auto_review_ms = times.map(|t| t.auto_review_ms),
+        critical_path_user_wait_ms = times.map(|t| t.user_wait_ms),
+        critical_path_overhead_ms = times.map(|t| t.overhead_ms),
+        critical_path_unknown_ms = times.map(|t| t.unknown_ms),
         sampling_request_count = profile.sampling_request_count,
         sampling_retry_count = profile.sampling_retry_count,
     );
@@ -66,10 +90,12 @@ pub(crate) struct TurnTimingState {
     pub(crate) direct_tool_timings: DirectToolTimings,
     state: Mutex<TurnTimingStateInner>,
     profile: StdMutex<TurnProfileState>,
+    critical_path_metrics: std::sync::OnceLock<()>,
 }
 
 #[derive(Debug, Default)]
 struct TurnTimingStateInner {
+    review_execution: Option<codex_direct_tool_timing::ReviewExecution>,
     started_at: Option<Instant>,
     started_at_unix_secs: Option<i64>,
     completed_at: Option<(Instant, i64)>,
@@ -89,6 +115,7 @@ struct TurnProfileState {
     seen_sampling: bool,
     before_first_sampling: Duration,
     sampling: Duration,
+    compaction: Duration,
     between_sampling_overhead: Duration,
     tool_blocking: Duration,
     pending_idle_after_sampling: Duration,
@@ -137,9 +164,19 @@ impl TurnTimingState {
         }
     }
 
+    pub(crate) async fn observe_review_execution(
+        &self,
+        execution: codex_direct_tool_timing::ReviewExecution,
+    ) {
+        self.state.lock().await.review_execution = Some(execution);
+    }
+
     pub(crate) async fn mark_turn_started(&self, started_at: Instant) -> i64 {
         let started_at_unix_ms = now_unix_timestamp_ms();
         let mut state = self.state.lock().await;
+        if let Some(execution) = &state.review_execution {
+            execution.started(started_at);
+        }
         state.started_at = Some(started_at);
         state.completed_at = None;
         state.started_at_unix_secs = Some(started_at_unix_ms / 1000);
@@ -184,6 +221,9 @@ impl TurnTimingState {
             )
             .unwrap_or(i64::MAX)
         });
+        if let (Some(execution), Some(started_at)) = (&state.review_execution, state.started_at) {
+            execution.completed(started_at, completed_at_instant);
+        }
         let profile = self.profile_state().complete(completed_at_instant);
         (Some(completed_at), duration_ms, profile)
     }
@@ -365,7 +405,7 @@ impl TurnProfileState {
 
     fn extend_path(&self, path: CriticalPath, previous: Instant, now: Instant) -> CriticalPath {
         match self.active_phase {
-            Some(TurnProfilePhase::Sampling) => path.work(previous, now, WorkKind::Inference),
+            Some(TurnProfilePhase::Sampling) => path.work(previous, now, WorkKind::Sampling),
             Some(TurnProfilePhase::ToolBlocking) => {
                 let dependency = self
                     .tool_dependency
@@ -393,8 +433,7 @@ impl TurnProfileState {
             critical_path: report::completed_critical_path(self, now),
             before_first_sampling_ms: duration_to_u64_ms(self.before_first_sampling),
             sampling_ms: duration_to_u64_ms(self.sampling),
-            // Kept in the analytics schema for compatibility; this build never compacts.
-            compaction_ms: 0,
+            compaction_ms: duration_to_u64_ms(self.compaction),
             between_sampling_overhead_ms: duration_to_u64_ms(self.between_sampling_overhead),
             tool_blocking_ms: duration_to_u64_ms(self.tool_blocking),
             after_last_sampling_ms: duration_to_u64_ms(after_last_sampling),
@@ -516,6 +555,7 @@ fn response_item_records_turn_ttft(item: &ResponseItem) -> bool {
 }
 
 mod report;
+pub(crate) mod review_execution;
 
 #[cfg(test)]
 #[path = "turn_timing_tests.rs"]

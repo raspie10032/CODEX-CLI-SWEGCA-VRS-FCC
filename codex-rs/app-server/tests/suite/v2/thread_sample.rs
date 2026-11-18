@@ -38,6 +38,8 @@ use core_test_support::context_snapshot::ContextSnapshotOptions;
 use core_test_support::responses;
 use core_test_support::skip_if_host_windows;
 use core_test_support::skip_if_remote;
+use core_test_support::streaming_sse::StreamingSseChunk;
+use core_test_support::streaming_sse::start_streaming_sse_server;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
@@ -46,6 +48,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 use test_case::test_case;
+use test_case::test_matrix;
 use tokio::sync::Notify;
 use tokio::time::timeout;
 use wiremock::ResponseTemplate;
@@ -174,12 +177,14 @@ async fn prediction_fork(client: &mut TestAppServer, parent: &str) -> Result<Str
     Ok(fork.thread.id)
 }
 
-#[test_case(TurnStatus::Completed; "completed parent")]
-#[test_case(TurnStatus::Failed; "failed parent")]
-#[test_case(TurnStatus::Interrupted; "interrupted parent")]
+#[test_matrix(
+    [TurnStatus::Completed, TurnStatus::Failed, TurnStatus::Interrupted],
+    [false, true]
+)]
 #[tokio::test]
 async fn sample_preserves_context_and_keeps_source_unchanged(
     parent_status: TurnStatus,
+    allow_in_progress_turn: bool,
 ) -> Result<()> {
     let server = responses::start_mock_server().await;
     let mut parent_responses = vec![responses::sse(vec![
@@ -288,6 +293,7 @@ async fn sample_preserves_context_and_keeps_source_unchanged(
         ThreadSampleParams {
             thread_id: parent.thread.id.clone(),
             expected_turn_id: completed.turn.id.clone(),
+            allow_in_progress_turn,
             prompt: "Continue identically".to_string(),
             effort: Some(ReasoningEffort::Medium),
             interrupt_on_cancel: Some(true),
@@ -351,6 +357,13 @@ async fn sample_preserves_context_and_keeps_source_unchanged(
         );
     }
     let prediction = &requests[sample_index];
+    let sample_input = prediction.input();
+    assert_eq!(marker_count(&sample_input, "<thread_snapshot>"), 0);
+    assert_eq!(
+        marker_count(&sample_input, "<turn_aborted>"),
+        usize::from(parent_status == TurnStatus::Interrupted),
+        "only the parent's real interruption marker should be inherited"
+    );
     assert_eq!(
         comparable_request(prediction.body_json()),
         comparable_request(requests[sample_index + 1].body_json())
@@ -387,6 +400,166 @@ async fn sample_preserves_context_and_keeps_source_unchanged(
             .expect("parent turn metadata"),
     )?;
     assert!(parent_metadata.get("generation_trigger").is_none());
+    Ok(())
+}
+
+fn marker_count(input: &[Value], marker: &str) -> usize {
+    input
+        .iter()
+        .filter_map(|item| item["content"].as_array())
+        .flatten()
+        .filter_map(|part| part["text"].as_str())
+        .map(|text| text.matches(marker).count())
+        .sum()
+}
+
+fn assert_open_sample_input(input: &[Value]) {
+    assert_eq!(
+        (
+            marker_count(input, "<thread_snapshot>"),
+            marker_count(input, "<turn_aborted>"),
+        ),
+        (1, 0),
+        "expected one snapshot note and no interruption marker"
+    );
+    let [.., note, prompt] = input else {
+        panic!("expected the snapshot note immediately before the sample prompt");
+    };
+    assert_eq!(note["role"], "developer");
+    let content = note["content"].as_array().expect("developer content");
+    assert_eq!(
+        content.last().expect("snapshot note")["text"],
+        concat!(
+            "<thread_snapshot>\n",
+            "This snapshot is a copy of the source thread’s history taken while its turn was still running. ",
+            "Making the copy did not stop the source turn. ",
+            "A tool call that was pending at capture may appear as \"aborted\" in this copy.\n",
+            "</thread_snapshot>"
+        )
+    );
+    assert_eq!(prompt["role"], "user");
+    assert_eq!(prompt["content"][0]["text"], "Predict");
+}
+
+#[tokio::test]
+async fn sample_in_progress_turn_uses_captured_history() -> Result<()> {
+    let (release_sample, sample_gate) = tokio::sync::oneshot::channel();
+    let child_request_index = 1;
+    let streams = vec![
+        vec![StreamingSseChunk {
+            gate: None,
+            body: responses::sse(vec![
+                responses::ev_function_call("pending-call", "parent_tool", "{}"),
+                responses::ev_completed("parent"),
+            ]),
+        }],
+        vec![StreamingSseChunk {
+            gate: Some(sample_gate),
+            body: responses::sse(vec![
+                responses::ev_assistant_message("prediction", "Continue"),
+                responses::ev_completed("sample"),
+            ]),
+        }],
+        vec![StreamingSseChunk {
+            gate: None,
+            body: responses::sse(vec![responses::ev_completed("parent-done")]),
+        }],
+    ];
+    let (server, _) = start_streaming_sse_server(streams).await;
+    let home = TempDir::new()?;
+    MockResponsesConfig::new(server.uri()).write(home.path())?;
+    let mut client = TestAppServer::builder()
+        .with_codex_home(home.path())
+        .build_initialized_with_timeout(WAIT)
+        .await?;
+    let parent = client
+        .start_thread(ThreadStartParams {
+            history_mode: Some(ThreadHistoryMode::Paginated),
+            dynamic_tools: Some(vec![DynamicToolSpec::Function(DynamicToolFunctionSpec {
+                name: "parent_tool".to_string(),
+                description: "Wait for the client.".to_string(),
+                input_schema: json!({"type":"object","properties":{}}),
+                defer_loading: false,
+            })]),
+            ..Default::default()
+        })
+        .await?
+        .thread
+        .id;
+    let start = client
+        .send_turn_start_request(TurnStartParams {
+            thread_id: parent.clone(),
+            input: input("Initial turn"),
+            ..Default::default()
+        })
+        .await?;
+    let started: TurnStartResponse = timeout(WAIT, client.read_response(start)).await??;
+    let ServerRequest::DynamicToolCall { request_id, .. } =
+        timeout(WAIT, client.read_stream_until_request_message()).await??
+    else {
+        anyhow::bail!("expected the parent's pending tool call");
+    };
+    let sample_id = client
+        .send_raw_request(
+            "thread/sample",
+            Some(json!({
+                "threadId": parent, "expectedTurnId": started.turn.id,
+                "allowInProgressTurn": true, "prompt": "Predict"
+            })),
+        )
+        .await?;
+    timeout(WAIT, server.wait_for_request_count(child_request_index + 1)).await?;
+    // Finish the parent after the child has captured the pending call.
+    client
+        .send_response(
+            request_id,
+            json!({
+                "contentItems": [{"type":"inputText","text":"parent tool result"}],
+                "success": true
+            }),
+        )
+        .await?;
+    let completed: TurnCompletedNotification =
+        timeout(WAIT, client.read_notification("turn/completed")).await??;
+    assert_eq!(completed.turn.id, started.turn.id);
+    assert_eq!(completed.turn.status, TurnStatus::Completed);
+
+    let requests = server
+        .requests()
+        .await
+        .iter()
+        .map(|request| serde_json::from_slice::<Value>(request))
+        .collect::<serde_json::Result<Vec<_>>>()?;
+    assert_eq!(requests.len(), 3);
+    let child = &requests[child_request_index];
+    let follow_up = &requests[child_request_index + 1];
+    let child_input = child["input"].as_array().expect("sample input");
+    let parent_input = follow_up["input"].as_array().expect("parent input");
+    assert_eq!(marker_count(parent_input, "<thread_snapshot>"), 0);
+    assert_eq!(marker_count(parent_input, "<turn_aborted>"), 0);
+    for (input, expected_output) in [
+        (parent_input, "parent tool result"),
+        (child_input, "aborted"),
+    ] {
+        let call = input
+            .iter()
+            .position(|item| item["type"] == "function_call" && item["call_id"] == "pending-call")
+            .expect("captured call");
+        assert_eq!(input[call]["name"], "parent_tool");
+        let output = input
+            .iter()
+            .position(|item| {
+                item["type"] == "function_call_output" && item["call_id"] == "pending-call"
+            })
+            .expect("paired output");
+        assert!(call < output);
+        assert_eq!(input[output]["output"], expected_output);
+    }
+    assert_open_sample_input(child_input);
+    release_sample.send(()).expect("sample stream waiting");
+    let response: ThreadSampleResponse = timeout(WAIT, client.read_response(sample_id)).await??;
+    assert_eq!(response.source_turn_id, started.turn.id);
+    assert_eq!(response.text.as_deref(), Some("Continue"));
     Ok(())
 }
 

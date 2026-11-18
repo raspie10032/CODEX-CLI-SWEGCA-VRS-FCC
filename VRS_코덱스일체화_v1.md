@@ -2111,3 +2111,107 @@ L2 끝: 이음매마다 자리를 적었고, 새 자리 둘(host/spawn, `<mcp_to
   - 태그 fcc-v1.1.5(fac71e1b4), Latest, 묶음 146,680,494 B sha256 e3d92239…(tar 소유자 0/0), 받아서 해시 확인.
   - codex-core 단위 시험: 새 경계 시험 통과, history·token usage 묶음은 고침 전 116 통과 → 뒤 117 통과, 같은 7 실패. 7개(guardian 옛 리뷰가 reviewer_compaction_hash 로 Legacy 를 고르길 기대)와 포크 시험 2개(압축 이력·incremental tools 기대)는 1.1.4 이식 때 압축 재사용을 끊고 시험을 정리하지 않은 것(층 L3, G 무관). fcc-ci 는 codex-core 시험을 돌리지 않아 못 잡았다. 압축이 없으면 성립할 수 없는 기대값이라 정리하지 않고 알려진 실패로 둔다(사용자 「저건 어차피 압축 관련이라 안해도 될듯」). 릴리스 노트 Known 도 그렇게 고쳤다.
   - 홈 앱·터미널은 호스트 빌드 fcc114fix(daab66f284, 동작 같음). 릴리스판으로 바꾸는 것은 사용자 결정.
+
+## 15. 새 앱(26.1111)·codex 0.169.0-alpha.11.1 로 이식 — fcc-v1.1.6 (2026-11-18 15시대)
+
+사용자(11-18): 「리눅스 챗지피티앱 업데이트 있는지 확인하고 fcc 적용 해서 업데이트 해줘」, 「fcc 버전도 올려야하면 올리고」.
+
+- 새 앱: 공식 rpm 저장소 chatgpt-26.1111.71025(630,702,033 B, sha256 1e0a98c8…, OpenAI 키 4A3B4A566C4660E4 서명 OK), `~/apps/_dl-26.1111/x` 에 풂. 동봉 codex 0.169.0-alpha.11.1 = upstream `rust-v0.169.0-alpha.11.1`(226fa88979).
+- 기준: fcc-v1.1.5 다음 커밋 5c598e577(0.167.0-alpha.3.2 + V114-01). upstream 차이 커밋 471, 파일 2,574. 시험 병합 충돌 68 = UU 53 + DU 15. 작업 사본 `~/tmp/codex-p116`(브랜치 p116), 원판 `~/tmp/codex-u169`, 작업 폴더 `~/tmp/p116-work`.
+- 지금 홈 앱은 26.1103 의 수정판 `~/apps/chatgpt-26.1103-lazy-history-details`(11-11 저녁 앱 안 codex 세션이 만든 webview 패치: 대화를 열 때 최근 쪽만 읽고 나머지는 필요할 때, 작업 폴더 `~/Documents/Codex/2026-11-11/new-chat/work`)에 fcc114fix 를 얹어 돈다.
+
+### 15.0 G_116 와 통과 조건 (실행 전 고정)
+
+G_116: 앱 26.1111 과 터미널 codex 가 upstream 0.169.0-alpha.11.1 위에 VRS 를 얹은 빌드(fcc-v1.1.6)로 돈다. 그 빌드는 §14.0 의 R1–R7 을 새 판에 맞춰 그대로 만족하고, 지금 앱이 가진 앱 쪽 수정도 새 앱에서 같은 동작으로 유지된다. libvrs 는 lib7(VX07)을 바꾸지 않는다.
+
+- T1 (= R1) 압축 경로 0. 0.169 가 새로 들이거나 바꾼 압축 경로(`compact_pending_input.rs`·`compact_remote_v2_media.rs`·`compact_remote_history.rs`·`compact_remote_v2_installation.rs`·`context_window_id` 등)도 대상이다. 감사 목록·grep 패턴을 적고, 스모크 롤아웃의 압축 사건 0.
+- T2 (= R2) 입구 하나. 새 트리에서 모델 입력을 짓는 자리를 처음부터 다시 센다. 모두 VRS 조립을 부르거나 모델 입력이 아님을 보인다. 빠짐 0.
+- T3 (= R3) 폴백 0. 조립 실패는 오류로 드러난다.
+- T4 (= R4) 서버·동봉 모델 목록에서 압축 문장 0, 깨끗한 문단 보존, Custom 불변(`l3check/release1/run.sh`).
+- T5 (= R5) 앱 스모크: `smoke_s1s5.sh` S1–S5 실 백엔드 통과(내용 검사, 실패 영수증 0, 압축 0). 앱 26.1111 을 새 바이너리로 띄워 한 턴이 조립되고 코드 모드 도구가 돈다. 동반 `codex-code-mode-host` 가 새 판과 맞다.
+- T6 (= R6) 이식 diff 에 직렬 구조가 새로 없다. libvrs·조립 정의가 같다. V114-01(사용량 경계는 라이브 이력 칸 번호, 목록 교체 때 세대·경계 되돌림)이 새 트리에서도 성립한다. 0.169 가 라이브 이력 칸 번호에 기대는 새 필드를 들였으면 같은 규칙에 맞춘다(§14.5 포팅 점검 항목).
+- T7 (= R7) 릴리스와 배포: 신원 noreply, 경로·개인정보 문자열 0, README 기준판, fcc-ci 6/6, 태그 fcc-v1.1.6·릴리스. 앱과 터미널을 함께 바꾸고 launch 스크립트·바탕화면·autostart 까지, 앱 하나만 뜸, 백업은 autostart 밖, `daemon-reload` 뒤 재기동, 되돌리기 기록.
+- T8 (새) 앱 쪽 수정 유지: 26.1111 에 (a) 플로팅 빠른 채팅 끔, (b) lazy-history(대화를 열면 최근 쪽 첫 페이지만 읽고 위로 올리면 더 읽음, 이어 보내기·마지막 턴 고치기 때 재개), (c) 그 위 details 패치를 다시 적용한다. 바뀐 파일은 `node --check`, asar 무결성 값 갱신·재검사, 실제 앱에서 긴 스레드를 열어 첫 페이지만 읽는지(rpc 기록)와 한 턴이 정상인지 본다. 원본 app.asar 는 백업.
+
+넣지 않은 것: 원판 대조 회귀, 장기 실행, 앱 서버 메모리(관측치만), c1 콜드 libvrs, codex-core 의 압축 기대 시험 9개(알려진 실패, 11-11 사용자 결정).
+
+단계 끝 조건(각 단계 들어가기 전):
+- L1: 0.167 → 0.169 변화 가운데 「모델 입력이 무엇인가」·「압축이 무엇인가」·「원문 무손실의 대상(롤아웃)이 무엇인가」·「사용량 경계가 무엇을 가리키나」의 뜻을 바꾸는 것을 모두 적는다. 있으면 정의를 고치고 손 증명을 단다. 없으면 기존 정의를 그대로 쓴다고 적는다. 직렬 구조 없음.
+- L2: 우리 이음매(압축 끊음, 조립 입구 A1–A20, 지시문 빼기, D3″, §12 포크 자리, V114-01 자리)마다 새 트리의 자리를 적고, 새 자리는 처리 방법을 적는다. libvrs·FFI·스토어 배치는 바꾸지 않는다. 앱 패치는 26.1111 의 대응 자리(파일·치환 문자열)를 적는다.
+- L3: 충돌 68개 해결, `cargo build --release -p codex-cli -p codex-code-mode-host` 통과, codex-prompts·models-manager·vrs 시험 통과, codex-core 시험 컴파일(알려진 9개 말고 새 실패 0), 이음매 대조에서 빠진 VRS 줄 0, 감사 보고 `l3check/port_169/REPORT.md`. 앱 패치 빌드 스크립트가 26.1111 asar 를 만들고 검사를 통과.
+- L4: T1–T8.
+
+### 15.1 L1 — 뜻이 바뀌는가 (11-18 15–16시, 읽기만)
+
+upstream `rust-v0.167.0-alpha.3.2..rust-v0.169.0-alpha.11.1` 을 다섯 갈래로 읽었다: 롤아웃, 압축, 모델 입력 자리, 사용량 경계, 도구 호출 길(사용자 「이번에도 그 도구호출길이 바뀐거 있나 잘 보고」). 근거 file:line 은 0.169 원판 `~/tmp/codex-u169` 기준. 갈래별 전문은 `~/tmp/p116-work/L1_{rollout,compaction,model_input,usage_boundary,toolpath}.md`.
+
+**1. 롤아웃(원문 무손실의 대상)은 바뀌지 않는다.**
+- 봉투, `RolloutItem` 13종·`ResponseItem` 17종 등 변형 목록, 기록 정책 `rollout/src/policy.rs`·zstd `compression.rs`(diff 0), 경로 규칙이 같다. 새 줄 종류 없음.
+- 선택 키만 늘었다: `response_item` 의 형제 키 `metadata`(`history_sequence`·`sampled_through_sequence`·`additional_context_tool_output`·`compaction_without_file_error_sources`·`native_search_fallback_used`), `session_meta.account_scoped`, `turn_context.direct_only_tool_namespaces`, `agent_message.moderation`, `turn_complete.error.rejected_audio_file_ids`, 도구 출력 오디오 `{audio_url}`|`{file_id}`. 옛 줄은 그대로 읽힌다.
+- 도구 출력 잘림은 live history 에서만(`history.rs:620`), 롤아웃에는 원본(그대로).
+
+**2. 압축의 뜻은 바뀌지 않는다. 새 압축 종류·RPC·훅·발동 기준 없음.**
+- `session/context_window.rs` diff 0, `state/auto_compact_window.rs` 는 타입(`ContextWindowId`)만. 압축 파일 밖에서 압축 기계를 부르는 자리 집합이 0.167 과 같다.
+- 새 압축 전용 코드: `compact_pending_input.rs`, `compact_remote_v2_media.rs`(+시험), `session/compaction_replay_tests.rs`, `WorldState::full_context_excluded_section_ids`, `history_rejected_audio.rs` 의 체크포인트 함수들, `turn_timing` 의 `WorkKind::Compaction`, `CompactionPrefix`·`turn_state_with_auth_owner`. 모두 끊는 대상이다(15.2).
+- 거짓 양성: `context/world_state/compact_permissions.rs`(권한 접두어 렌더링), `ContextWindowId`(창 id 전반에 쓰임), `file_audio`.
+
+**3. 모델 입력 — 새 자리 없음, 정규화 하나가 넓어짐.**
+
+(a) **정규화 N 의 확장: 거절된 업로드 오디오.** 0.169 `for_prompt_annotated` 끝에서 `project_file_audio_for_prompt`(`history.rs:737·743`, `history_rejected_audio.rs:307`)가 「Responses 가 거절한 오디오 file_id 집합」에 든 `InputAudio{file_id}` 를 요청 사본에서 빼고, 비게 된 user 메시지는 통째로 뺀다. 집합은 재개 때 롤아웃의 `turn_complete.error.rejected_audio_file_ids`(와 옛 `compacted.resume_metadata`)의 합집합으로 복원되고(`rollout_reconstruction.rs:221–236`), 라이브에서는 오류가 날 때 더한다(`session/mod.rs:2730`).
+- 정의. 롤아웃 S 의 turn_complete 줄 집합을 TC(S) 라 하고 R(S) = ⋃_{t∈TC(S)} ids(t). 모델 입력 = N_{R(S_t)}(A(S_t)). N_R 은 항목 x 마다 x 의 오디오 파트 중 file_id ∈ R 인 것을 빼고, user 메시지가 비면 그 항목을 뺀다.
+- 증명. (i) R(S ∪ S′) = R(S) ∪ R(S′): 합집합이므로 결합·교환·멱등, 줄의 순서·도착 차례에 기대지 않는다. (ii) N_R(x) 는 x 와 R 만으로 정해진다(국소). 이력 길이·순서에 기대지 않는다. (iii) S 는 바뀌지 않는다(요청 사본만). 그러므로 I2(원문 무손실)와 A 의 출력 집합은 그대로다. (iv) upstream 라이브 집합 R_live 와 같다: R_live 에 들어가는 id 는 모두 같은 턴의 TurnComplete 오류로 롤아웃에 영속된다(policy.rs: TurnComplete 영속). 재개 때 upstream 도 R(S) 로 복원한다. 따라서 R_live = R(S_t). ∎
+- 포크 빈틈: `vrs_input.rs normalize_for_prompt` 와 `vrs_history_for_path` 가 빈 `ContextManager` 에서 시작해 R = ∅ 이다. 오디오 거절이 난 스레드에서 같은 파일을 다시 실어 같은 오류가 되풀이될 수 있다. 층 L2, G 영향 늦춤(오디오 파일 입력이 없는 스레드는 출력이 같다). 15.2 에서 자리를 정한다.
+
+(b) **새 모델 입력 자리 없음.** 두 트리에서 `for_prompt`·`clone_history`·`raw_items`·`build_prompt`·`Prompt {`·`conversation_history_snapshot`·`load_agent_model_context`·`prepare_forked_history`·`InitialHistory::` 등을 파일별로 세어 개수가 달라진 파일을 모두 열었다. A1·A2(`turn.rs:1941–1953`), A4(`startup_prewarm.rs:406`), A8·A9, A10·A13, A14(`ext/guardian-v2/.../approval.rs:226`), A15, A20(`agent/history.rs:162`), thread_sample, 예측 포크, sender_context, V9-01 이 그대로 대응하고 위치·인자만 바뀌었다.
+
+(c) **D3″ 는 그대로 성립하나 스위치 정의가 넓어졌다.** `StepContext::incremental_tools_feature()`(`step_context.rs:61–74`)가 Responses Lite 외에 Bedrock·GCP 도 켠다. 소비자는 같은 다섯이다. 새로 `Feature::IncrementalExecTools`(기본 꺼짐)가 소비자를 얻었다: `tools/spec_plan.rs:1123–1139` 가 이것이 켜지면 exec 도구 설명에서 중첩 도구 정의를 빼고 `exec_definitions` 로 넘겨 `world_state.rs:216–217` 의 증분 섹션이 전달한다. D3″ 가 증분 도구를 거짓으로 두면 그 섹션이 안 생겨 정의가 모델에 닿지 않는다. 그러므로 `incremental_exec_enabled` 도 D3″ 스위치에 묶는다(정의 변경 아님, D3″ 의 적용 범위를 새 소비자에 넓힘).
+
+(d) **하네스 순번은 정의에 넣지 않는다.** `history_sequence`·`sampled_through_sequence`(`context_manager/sampling.rs`)는 envelope.metadata 로 모델에 가지 않는다. 쓰는 곳은 (i) `pending_mail_sequence` — `compact.rs`·`compact_remote_v2.rs` 뿐(압축, 지움), (ii) `normalize.rs:21–32 ensure_call_outputs_present` 의 `may_be_unfinished` — 빠진 출력 「aborted」 합성은 늘 하고, 복원분이면 `error_or_panic` 을 건너뛸 뿐(릴리스는 error 로그). 모델 입력의 뜻을 바꾸지 않는다. 직렬 카운터이므로 정의에 들이지도 않는다.
+
+**4. 사용량 경계 — 뜻 그대로, V114-01 의 뿌리도 그대로.**
+- 경계 `last_server_reported_usage_item_count` 를 쓰는 슬라이스(`history.rs:1144`)에 클램프·세대가 없고, 응답 때 요청 길이를 `.max()` 로 넣는 식(`history.rs:1071–1096`)도 같다. upstream 은 고치지 않았다. §14.5 정의(경계는 라이브 이력 칸 번호, 목록 통째 교체마다 세대+1·경계 되돌림, 요청은 (라이브 길이, 세대)를 함께 기록)를 그대로 쓴다.
+- 새 외부 호출 `reset_last_usage_boundary()`(`pub(crate)`, guardian 재표집 `turn.rs:3067–3070`)는 현재 목록 기준 재계산이라 범위를 벗어날 수 없고 세대 규칙과 어긋나지 않는다.
+- 칸 번호·길이에 기대는 새 상태는 없다. 새 상태는 순번(3(d)), file_id 집합, `retained_context` 의 `AcceptedFileAudio` 사건뿐이다.
+
+**5. 도구 호출 길 — V114-01 같은 새 위험 없음.**
+- `tools/handlers/extension_tools.rs to_extension_call` 은 0.169 도 `clone_history()` 그대로다(포크는 `vrs_history()`). 도구 길의 이력 접근은 (i) 출력 기록, (ii) `to_extension_call`, (iii) `notify_tool_start` 의 라이브 스냅숏뿐이고 0.169 는 어느 것도 늘리지 않았다. 새 기록 자리도 없다(포크 `record_vrs_history` 세 자리와 1:1).
+- 0.169 에서 `items` 를 갈거나 줄이는 자리(`remove_first_item`·`replace_annotated`·`replace_compacted`)는 앞 셋이 이미 경계를 되돌린다. 새 교체 자리 없음.
+- 빈도만 바뀐 것: 코드 모드 중첩 호출 상한 1,024 → 4,096(`code-mode-protocol host/mod.rs:13`), 도구 실행은 동시 제한 없음. `to_extension_call → vrs_history()` 가 한 요청 안에서 더 자주·동시에 불릴 수 있다. 뜻은 같고, 설치는 `cut.generation <= last_installed_assembly` 를 거절하며 세대 규칙이 경계를 지킨다.
+- 새 라이브 읽기 `turn.rs:1986–2006`(요청 직전 `clone_history()` → `retained_context().accepted_file_audio`, 체크포인트)는 모델 입력이 아니다. 라이브 캐시를 그대로 읽는다(`vrs_history()` 로 바꾸면 요청마다 설치가 하나 늘어 V114-01 창이 넓어진다).
+- FCC 교체 `replace_assembled_with_suffix` 는 `retained_context`·`rejected_audio_file_ids`·`file_audio_durations`·`sampling` 을 지우지 않는다(지우는 쪽은 upstream `replace_annotated`). 그러니 요청 도중 설치가 `AcceptedFileAudio` 증거를 지우지 않는다. 병합 때 FCC 교체를 `replace_annotated` 모양으로 맞추지 않는다.
+- 패닉 턴 무알림은 0.169 도 그대로(`tasks/mod.rs:478` `tokio::spawn`+`AbortOnDropHandle`, `catch_unwind` 없음). 포크에도 안전망은 없다. upstream 동작이고 G_116 의 T 에 들지 않으므로 무관 목록에 둔다.
+
+L1 끝:
+- 뜻이 바뀌는 것: 정규화 N 이 거절 오디오 집합으로 넓어진 것(3(a)) 하나이며 정의 안에 들어옴을 증명했다. D3″ 는 새 소비자(3(c))에 적용 범위를 넓힌다. §3·§11.1·§13.1·§14.1·§14.5 정의를 그대로 쓴다.
+- 직렬 구조 없음: R 은 순서 없는 합집합, N_R 은 항목별 국소 치환, 순번은 정의에 들이지 않았다.
+- 무관 목록: 패닉 턴 무알림(upstream), Guardian v3·`read_original_history`(기본 꺼짐), 순번의 `error_or_panic` 디버그 패닉(릴리스는 로그; 시험은 릴리스로).
+- G_116 진척: T1–T3·T6 의 뜻이 0.169 에서도 성립하도록 정했다. 거절 오디오 빈틈(늦춤)을 L2 로 넘긴다.
+
+### 15.2 L2 — 자리
+
+끝 조건: 이음매마다 0.169 의 자리, 새 자리의 처리. libvrs·FFI·스토어 배치는 바꾸지 않는다. 직렬 구조를 새로 들이지 않는다.
+
+- **압축 끊음.**
+  - DU 15개는 지운 채로 둔다. 병합이 자동으로 들인 새 압축 파일을 지운다: `core/src/compact_pending_input.rs`(+`lib.rs:40 mod`), `compact_remote_v2_media.rs`·`_budget_tests.rs`, `session/compaction_replay_tests.rs`(+`session/tests.rs` 의 mod 줄), 압축 스냅숏(`…audio_file__{measured,uploaded}_audio_compaction_and_cold_resume`, `…host_budget_context_after_compaction`, `…survives_mid_turn_compaction`, app-server `thread_sample__sample_compacted_parent_with_pending_tool_call` 은 시험째).
+  - `context/world_state/mod.rs:579 full_context_excluded_section_ids`(호출자 압축 설치뿐)와 `session/mod.rs` Prefix 설치 갈래의 `reset_world_state_sections`: 지운다.
+  - `turn_timing.rs:407–412`: `Sampling => WorkKind::Sampling` 만 받고 `Compaction` 갈래는 뺀다. `compaction_ms` 등 분석 필드는 upstream 그대로(0).
+  - `history_rejected_audio.rs` 의 압축 전용(`checkpoint_input_has_no_file_error_sources`·`clear_checkpoint`·`opaque_content`·`unavailable_file_audio`·`project_compaction_audio`): 호출자가 없어지면 지운다. `turn.rs:1995–2005` 의 `clear_checkpoints` 는 빈 반복자로(S 에 압축 항목 없음). `project_file_audio`·`pending_audio_confirmation`·`RejectedAudioFileIds`·`SubmittedFileAudio` 는 남긴다(3(a)).
+  - `state/auto_compact_window.rs`·`state/session.rs`·`session/session.rs`·`agent/control/runtime.rs`: `ContextWindowId`·생성기·`new_initial(window_id)`·`ids()` 는 upstream 대로, `advance_*`·`start_new_context_window`·`*_request`·`claim_auto_compact_fallback` 은 우리 판대로 삭제.
+  - `thread-store/src/local/paginated_fork.rs`·`preview_before_compaction`: upstream 채택(FCC 롤아웃에선 늘 None).
+  - `session/mod.rs:485 CompactionPrefix`, `client.rs:1661 turn_state_with_auth_owner`(호출자 `async_compaction::maybe_start` 뿐): 지운다. `AuthOwner` 자체는 upstream 대로.
+  - 나머지 갈래째 지울 자리는 §14.2 목록과 같고 줄만 옮겼다(turn.rs 압축 갈래, handlers.rs:333·801, session/mod.rs 2021–2048·4800–4945·5440–5505, codex_thread.rs:495, spec_plan.rs `NewContextWindowHandler`, guardian 부모 압축 재사용, `tasks/compact.rs`).
+  - R1 감사 grep 패턴에 더한다: `compact_pending_input|pending_mail_sequence|is_retained_pending_mail|insert_summary|compact_remote_v2_media|compaction_replay_tests|AsyncCompactionRootOnly|async_compaction_root_only|full_context_excluded_section_ids|reset_world_state_sections|turn_state_with_auth_owner|CompactionPrefix|compaction_without_file_error_sources|checkpoint_input_has_no_file_error_sources|clear_checkpoint|project_compaction_audio|unavailable_file_audio|TurnProfilePhase::Compaction|WorkKind::Compaction|MAX_RETAINED_AGENT_MESSAGE_TOKENS|truncate_retained_messages_for_remote_compaction|compact_retained_tool_outputs`. 제외(압축 아님): `compact_permissions`, `file_audio`·`FileAudioDurations`·`rejected_audio_file_ids`, `ContextWindowId`·`auto_compact_window_ids`, `compaction_ms`, `preview_before_compaction`.
+- **D3″.** `step_context.rs:61–74 incremental_tools_feature()`·`world_state.rs:60–72 current_window_uses_incremental_tools()` 를 거짓으로(이력을 읽기 전에). `tools/spec_plan.rs:1123` `incremental_exec_enabled` 에 같은 스위치를 AND 한다(3(c)). `IncrementalToolsHint` → `IncrementalToolsUpdate` 이름 변경(`agent/history.rs:323`).
+- **조립 입구.**
+  - A1·A2 `turn.rs:1941–1953`: upstream `initial_input`/`first_attempt` 경로(1931–1941)는 쓰지 않고 매 시도 `vrs_prompt_input`. `sampled_through_sequence` 는 `None`(소비자가 압축뿐, 3(d)).
+  - A4 `startup_prewarm.rs:406`, A8 `guardian/input_budget.rs`(새 `PreparedReviewContext`/elastic 인자), A9 `request_budget.rs`, A10·A13, A14 `ext/guardian-v2/.../approval.rs:226`, A15, A20 `agent/history.rs:162`(호출자 `control/spawn.rs:800`·`host/spawn.rs:55`), thread_sample, 예측 포크, sender_context, `spawn_legacy_subagent`: 우리 처리 그대로, 새 위치로.
+  - `ContextManager::new()` → `new(item_id_generator)`(`Default` 는 시험 전용): `vrs_input.rs` 의 두 생성(173·267)과 `state/session.rs:123` 에 세션 생성기를 넘긴다.
+  - **거절 오디오(3(a)).** `normalize_for_prompt` 는 라이브 `state.history` 의 `rejected_audio_file_ids()`(와 `file_audio_durations`)를 옮긴 매니저에서 `for_prompt` 한다 — 라이브 집합 = R(S_t)(3(a)(iv)). `vrs_history()` 는 라이브 복사본이라 이미 같은 집합을 갖는다. 경로로 여는 `vrs_history_for_path` 는 그 롤아웃을 이미 읽으므로 같은 읽기에서 `turn_complete` 의 거절 id 를 합집합으로 모은다(롤아웃 재생 `rollout_reconstruction.rs:221–236` 과 같은 식). 롤아웃을 한 번 더 훑지 않는다.
+- **V114-01 자리.** `history.rs` 의 `remove_first_item`(864)·`replace_annotated`(894)·`replace_compacted`(936)와 포크 `replace_assembled_with_suffix` 에서 `usage_list_generation`+1·경계 되돌림. `replace_annotated` 의 `sampling = SamplingProgress::restore(&mut items)` 는 유지. 세대 증가는 `reset_last_usage_boundary` 안에 넣지 않는다(응답 뒤에도 불림). `update_token_info_for_list(.., input_list_generation)` 와 `TokenUsageContext::Sampling.input_list_generation` 은 새 `Completed` 갈래(재시도 `SpendingOnly`)에 얹는다. `turn.rs:1943` 은 `live_history_usage_cut()`. 포크의 private `reset_last_usage_boundary` 는 upstream `pub(crate)` 판으로 합친다.
+- **기록 길.** `session/mod.rs:3849`(u169 4138–4146): `pending_audio_duration_ids.extend(file_audio::file_ids(&items))` 를 `record_vrs_history` 앞에 유지. `mod.rs:4294` `note_recorded_items(&items)`. `retained_context.rs:~100–130`: 포크의 `persist_rollout_items`+`record_vrs_history`+`check_vrs_recording` 쪽 + `assign_missing_response_item_id`.
+- **도구 길.** `turn.rs:1986–2006` 라이브 `clone_history()` 유지(5). `extension_tools.rs`: upstream `web.run` 예약 가드(66–80)를 `to_extension_call` 앞에 얹고 `vrs_history()` 유지. FCC 교체는 `retained_context` 등을 지우지 않는 지금 모양을 지킨다.
+- **지시문 빼기·§12(V8) 자리.** §14.2 와 같다.
+- **확인할 것(L3·L4).** `SearchOwner::restore`(`session.rs:1197`)가 재개 때 보는 `native_search_fallback_used` 메타가 포크 재개 경로(InitialHistory 를 롤아웃에서 짓는가)에서 살아 있는지. 포크 `check_prompt_window` 추정이 `file_audio_durations` 를 받는지.
+- 실패는 모두 오류로 드러낸다(D5). 새 잠금·대기·장벽 없음.
+
+L2 끝(코덱스): 이음매마다 0.169 자리를 적었고 새 자리(압축 A1–A7, IncrementalExecTools, 생성기 인자, 거절 오디오, 기록 길의 오디오 길이, web.run 예약)의 처리를 정했다. libvrs·FFI·스토어 배치는 그대로다. 앱 패치 자리는 `~/tmp/p116-work/app_patch/REPORT.md` 로 따로 적는다.

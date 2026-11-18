@@ -1,6 +1,7 @@
 //! Exercises reviewer history safety at cancellation and budget boundaries.
 
 use super::*;
+use codex_guardian_context::ContextBudgeting;
 use codex_guardian_context::ContextPresentation;
 use codex_guardian_context::ContextProfile;
 use codex_guardian_context::PlannedAction;
@@ -48,6 +49,7 @@ async fn finalization_exports_loss_totals_only_for_accepted_input(window: i64) {
     context.truncations = [(256, 100), (64, 40), (16, 0)]
         .into_iter()
         .map(|(original_bytes, retained_bytes)| TruncationObservation {
+            source: None,
             component: "conversation_transcript",
             original_bytes,
             retained_bytes,
@@ -61,7 +63,10 @@ async fn finalization_exports_loss_totals_only_for_accepted_input(window: i64) {
     session
         .services
         .thread_extension_data
-        .insert(PendingReviewContext { context });
+        .insert(PendingReviewContext {
+            context,
+            elastic: None,
+        });
     assert_eq!(
         finalize(&session, &step, &mut input, HistoryTruncation::Preserve)
             .await
@@ -157,16 +162,17 @@ fn required_context(text: String) -> ComposedContext {
         /*node_repl*/ None,
     )
     .expect("collect required context");
-    let transcript = ContextProfile::synchronous()
-        .prepare_transcript(context.transcript_entries(), /*entry_number_offset*/ 0);
-    context
-        .compose(
-            ContextPresentation::SyncFull {
-                session_id: "test-parent",
-            },
-            transcript,
-        )
-        .expect("compose required context")
+    codex_guardian_context::prepare_context(
+        std::borrow::Cow::Owned(context),
+        &ContextProfile::synchronous(),
+        /*entry_number_offset*/ 0,
+        ContextPresentation::SyncFull {
+            session_id: "test-parent",
+        },
+        codex_guardian_context::ContextBudgeting::Fixed,
+        &[],
+    )
+    .expect("prepare required context")
 }
 
 #[tokio::test]
@@ -177,7 +183,10 @@ async fn cancelled_startup_does_not_record_unselected_review_evidence() {
     session
         .services
         .thread_extension_data
-        .insert(PendingReviewContext { context });
+        .insert(PendingReviewContext {
+            context,
+            elastic: None,
+        });
     session
         .set_session_startup_prewarm(
             crate::session::startup_prewarm::SessionStartupPrewarmHandle::new(
@@ -234,7 +243,10 @@ async fn feasibility_rejects_required_evidence_inside_the_reserved_margin() {
     session
         .services
         .thread_extension_data
-        .insert(PendingReviewContext { context });
+        .insert(PendingReviewContext {
+            context,
+            elastic: None,
+        });
 
     assert!(check_pending(&session, &turn).await.is_err());
 }
@@ -257,7 +269,10 @@ async fn finalization_overflow_marks_the_reviewer_exhausted() {
     session
         .services
         .thread_extension_data
-        .insert(PendingReviewContext { context });
+        .insert(PendingReviewContext {
+            context,
+            elastic: None,
+        });
 
     assert!(
         finalize(&session, &step, &mut input, HistoryTruncation::Preserve)

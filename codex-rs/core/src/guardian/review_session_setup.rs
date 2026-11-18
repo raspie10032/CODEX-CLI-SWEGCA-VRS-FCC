@@ -229,19 +229,16 @@ impl ReviewerRequest for PreparedReview {
         } else {
             None
         };
-        record_failed_review(&session.session, &self.params, &result.outcome).await;
         let checkpoint = if let Some(items) = checkpoint_items {
             Some((items, session.state.lock().await))
         } else {
             None
         };
         // All checkpoint capture and lock acquisition must precede validation. No await
-        // may follow a valid allow before publication; new guidance during capture must
-        // invalidate the attempt without overwriting the last committed review.
-        if let GuardianReviewSessionOutcome::Completed(Ok(Some(message))) = &result.outcome
-            && codex_guardian_reviewer::parse_guardian_assessment(message).is_ok_and(|assessment| {
-                assessment.outcome == super::super::GuardianAssessmentOutcome::Allow
-            })
+        // may follow a valid assessment before publication; new guidance during capture
+        // invalidates either verdict without overwriting the last committed review.
+        if let GuardianReviewSessionOutcome::Completed(Ok(Some(response))) = &result.outcome
+            && response.assessment().is_ok()
             && let Some(authorization) = &self.params.authorization
             && let Some(invalidation) = authorization
                 .invalidation(
@@ -266,6 +263,7 @@ impl ReviewerRequest for PreparedReview {
         if let Some((items, mut state)) = checkpoint {
             state.commit_snapshot(items);
         }
+        record_failed_review(&session.session, &self.params, &result.outcome).await;
         result
     }
 }

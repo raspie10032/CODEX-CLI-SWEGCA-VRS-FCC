@@ -4,6 +4,7 @@
 //! baseline while it is retained.
 //! Fixed-effort workers always use their selected request-level effort.
 //! Unsupported models use selected request effort without rewriting saved updates.
+//! A provider catalog can retire a request pin that is invalid for a new step.
 
 use super::session::Session;
 use super::step_context::StepContext;
@@ -13,6 +14,7 @@ use codex_history::CodexHarnessMetadata;
 use codex_history::ResponseItemEnvelope;
 use codex_protocol::models::ConfigurationReasoning;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::openai_models::ModelOrigin;
 use codex_protocol::openai_models::ReasoningEffort;
 
 impl Session {
@@ -90,6 +92,19 @@ impl Session {
         }
         let effort = self.effort_for_configuration_update(settings);
         let mut state = self.state.lock().await;
+        if let Some(pinned) = state.reasoning_effort_pin.get(&settings.model_info.slug) {
+            let model = &settings.model_info;
+            let disallowed = model.origin == ModelOrigin::Provider
+                && !model.supported_reasoning_levels.is_empty()
+                && !model
+                    .supported_reasoning_levels
+                    .iter()
+                    .any(|preset| model.resolve_reasoning_effort(preset.effort.clone()) == pinned);
+            if disallowed {
+                // Check the step's captured metadata, so a refresh cannot change a running step.
+                state.reasoning_effort_pin = ReasoningEffortPin::Unset;
+            }
+        }
         let Some(effort) = effort else {
             state.reasoning_effort_pin = ReasoningEffortPin::Unset;
             return selected_effort;

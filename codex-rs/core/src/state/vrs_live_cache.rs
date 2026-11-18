@@ -176,7 +176,7 @@ mod tests {
 
     fn message(text: &str) -> ResponseItem {
         ResponseItem::Message {
-            id: Some(ResponseItemId::new("msg")),
+            id: Some(ResponseItemId::with_suffix("msg", uuid::Uuid::now_v7())),
             role: "user".to_string(),
             content: vec![ContentItem::InputText {
                 text: text.to_string(),
@@ -209,7 +209,7 @@ mod tests {
     #[test]
     fn post_snapshot_record_survives_install_then_retires_at_next_cut() {
         let mut cache = VrsLiveCache::default();
-        let mut history = ContextManager::new();
+        let mut history = ContextManager::default();
         let before = message("before snapshot");
         let after = message("after snapshot");
         record(&mut cache, &mut history, &before).finish(true);
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn pre_snapshot_pending_record_survives_publication_during_assembly() {
         let mut cache = VrsLiveCache::default();
-        let mut history = ContextManager::new();
+        let mut history = ContextManager::default();
         let pending = message("accepted locally but not yet in S");
         let publication = record(&mut cache, &mut history, &pending);
         let cut = cache.begin_assembly().unwrap();
@@ -248,7 +248,7 @@ mod tests {
     #[test]
     fn newer_equal_assembly_supersedes_older_completion_without_changing_history_version() {
         let mut cache = VrsLiveCache::default();
-        let mut history = ContextManager::new();
+        let mut history = ContextManager::default();
         let current = message("newer S");
         record(&mut cache, &mut history, &current).finish(true);
         let initial = cache.begin_assembly().unwrap();
@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn continuously_overlapping_records_do_not_pin_completed_history() {
         let mut cache = VrsLiveCache::default();
-        let mut history = ContextManager::new();
+        let mut history = ContextManager::default();
         let mut latest = message("initial");
         record(&mut cache, &mut history, &latest).finish(true);
         for index in 0..256 {
@@ -288,7 +288,7 @@ mod tests {
     #[test]
     fn overlapping_identity_keeps_assembled_representation_and_original_provenance() {
         let mut cache = VrsLiveCache::default();
-        let mut history = ContextManager::new();
+        let mut history = ContextManager::default();
         let mut original = ResponseItemEnvelope {
             item: message("full original record"),
             metadata: Some(CodexHarnessMetadata {
@@ -321,7 +321,7 @@ mod tests {
     #[test]
     fn identical_idless_records_retain_ambiguous_overlap_until_publication_is_covered() {
         let mut cache = VrsLiveCache::default();
-        let mut history = ContextManager::new();
+        let mut history = ContextManager::default();
         let mut item = message("the same content from two distinct records");
         item.set_id(None);
         record(&mut cache, &mut history, &item).finish(true);
@@ -355,7 +355,7 @@ mod tests {
     fn failed_or_cancelled_publication_remains_visible_to_d5_after_reset() {
         for published in [Some(false), None] {
             let mut cache = VrsLiveCache::default();
-            let mut history = ContextManager::new();
+            let mut history = ContextManager::default();
             let publication = record(&mut cache, &mut history, &message("pending"));
             if let Some(published) = published {
                 publication.finish(published);
@@ -371,7 +371,7 @@ mod tests {
     #[test]
     fn destructive_reset_supersedes_inflight_refresh_without_replaying_old_payloads() {
         let mut cache = VrsLiveCache::default();
-        let mut history = ContextManager::new();
+        let mut history = ContextManager::default();
         let publication = record(&mut cache, &mut history, &message("old record"));
         let old_cut = cache.begin_assembly().unwrap();
         cache.reset();

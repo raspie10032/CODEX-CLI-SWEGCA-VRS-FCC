@@ -5,8 +5,10 @@
 //! computed the error is returned to the caller, and the accumulated live history is never sent
 //! in its place.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 
 use codex_history::RolloutItem;
@@ -15,6 +17,7 @@ use codex_protocol::error::Result as CodexResult;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::InputModality;
+use codex_protocol::protocol::EventMsg;
 use codex_vrs::VrsError;
 use tracing::info;
 use tracing::warn;
@@ -170,9 +173,44 @@ pub(crate) async fn vrs_history_for_path(path: &Path) -> Result<ContextManager, 
             other => break other?,
         }
     };
-    let mut history = ContextManager::new();
+    let rejected_audio_file_ids = rejected_audio_file_ids_for_path(&path).await?;
+    let mut history = ContextManager::new(Session::new_item_id_generator());
+    history.restore_rejected_audio_file_ids(rejected_audio_file_ids);
     history.replace_assembled(decode_assembled_items(assembled.items)?);
     Ok(history)
+}
+
+/// Restores the durable live rejection set while reading the rollout exactly once.
+async fn rejected_audio_file_ids_for_path(path: &Path) -> Result<BTreeSet<String>, VrsError> {
+    let mut lines = codex_rollout::open_rollout_line_reader(path)
+        .await
+        .map_err(|err| {
+            VrsError::Unavailable(format!("failed to read rollout audio facts: {err}"))
+        })?;
+    let mut rejected = BTreeSet::new();
+    while let Some(line) = lines.next_line().await.map_err(|err| {
+        VrsError::Unavailable(format!("failed to read rollout audio facts: {err}"))
+    })? {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let rollout_line = match codex_rollout::parse_rollout_line(&line) {
+            Ok(line) => line,
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    "skipping malformed rollout line while restoring rejected audio"
+                );
+                continue;
+            }
+        };
+        if let RolloutItem::EventMsg(EventMsg::TurnComplete(completed)) = rollout_line.item
+            && let Some(error) = completed.error
+        {
+            rejected.extend(error.rejected_audio_file_ids);
+        }
+    }
+    Ok(rejected)
 }
 
 /// The prompt input for one model step (design D3 A1/A2, D4, D5).
@@ -207,7 +245,16 @@ pub(crate) async fn vrs_prompt_input(
             "VRS assembled an empty model input; the request was not sent".to_string(),
         ));
     }
+    let mut assembled = ContextManager::new(Arc::clone(&sess.item_id_generator));
+    {
+        let state = sess.state.lock().await;
+        assembled.restore_rejected_audio_file_ids(Arc::unwrap_or_clone(
+            state.history.rejected_audio_file_ids(),
+        ));
+        assembled.file_audio_durations = Arc::clone(&state.history.file_audio_durations);
+    }
     Ok(normalize_for_prompt(
+        assembled,
         items,
         &step.settings.model_info.input_modalities,
         sess.services.image_store.as_ref(),
@@ -260,11 +307,11 @@ async fn estimate_prompt_tokens(
 }
 
 async fn normalize_for_prompt(
+    mut assembled: ContextManager,
     items: Vec<ResponseItem>,
     input_modalities: &[InputModality],
     image_store: &dyn codex_attachment_store::AttachmentStore,
 ) -> Vec<ResponseItem> {
-    let mut assembled = ContextManager::new();
     assembled.replace_assembled(items);
     assembled.for_prompt(input_modalities, image_store).await
 }
@@ -407,7 +454,30 @@ impl Session {
 #[cfg(test)]
 mod tests {
     use super::decode_assembled_items;
+    use codex_protocol::models::AudioReference;
+    use codex_protocol::models::ContentItem;
+    use codex_protocol::models::ResponseItem;
     use serde_json::json;
+
+    fn file_audio(file_id: &str) -> ContentItem {
+        ContentItem::InputAudio {
+            audio: AudioReference::File {
+                file_id: file_id.to_string(),
+            },
+        }
+    }
+
+    fn message(role: &str, content: Vec<ContentItem>) -> ResponseItem {
+        ResponseItem::Message {
+            id: None,
+            role: role.to_string(),
+            content,
+            status: None,
+            phase: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+        }
+    }
 
     #[test]
     fn malformed_assembly_does_not_keep_the_valid_prefix() {
@@ -433,6 +503,156 @@ mod tests {
                 .is_err()
             );
         }
+    }
+
+    #[tokio::test]
+    async fn normalize_for_prompt_projects_live_rejected_audio() {
+        use codex_attachment_store::InlineAttachmentStore;
+        use codex_protocol::openai_models::InputModality;
+        use std::collections::BTreeSet;
+
+        let mixed = message(
+            "user",
+            vec![
+                ContentItem::InputText {
+                    text: "keep this text".to_string(),
+                },
+                file_audio("file_rejected"),
+                file_audio("file_kept"),
+            ],
+        );
+        let rejected_only = message("user", vec![file_audio("file_rejected")]);
+        let unchanged = message(
+            "assistant",
+            vec![ContentItem::OutputText {
+                text: "unchanged answer".to_string(),
+                annotations: None,
+                logprobs: None,
+            }],
+        );
+        let expected_mixed = message(
+            "user",
+            vec![
+                ContentItem::InputText {
+                    text: "keep this text".to_string(),
+                },
+                file_audio("file_kept"),
+            ],
+        );
+        let mut history = crate::context_manager::ContextManager::new(
+            crate::session::session::Session::new_item_id_generator(),
+        );
+        history.restore_rejected_audio_file_ids(BTreeSet::from(["file_rejected".to_string()]));
+
+        let mut normalized = super::normalize_for_prompt(
+            history,
+            vec![mixed, rejected_only, unchanged.clone()],
+            &[InputModality::Text, InputModality::Audio],
+            &InlineAttachmentStore,
+        )
+        .await;
+        for item in &mut normalized {
+            if let ResponseItem::Message {
+                internal_chat_message_metadata_passthrough,
+                ..
+            } = item
+            {
+                *internal_chat_message_metadata_passthrough = None;
+            }
+        }
+        assert_eq!(normalized, vec![expected_mixed, unchanged]);
+    }
+
+    #[tokio::test]
+    async fn path_history_restores_rejected_audio_from_turn_complete() {
+        use codex_attachment_store::InlineAttachmentStore;
+        use codex_history::RolloutItem;
+        use codex_protocol::openai_models::InputModality;
+        use codex_protocol::protocol::ErrorEvent;
+        use codex_protocol::protocol::EventMsg;
+        use codex_protocol::protocol::TurnCompleteEvent;
+
+        let rejected_only = message("user", vec![file_audio("file_rejected")]);
+        let later_rejected_only = message("user", vec![file_audio("file_later_rejected")]);
+        let unchanged = message(
+            "assistant",
+            vec![ContentItem::OutputText {
+                text: "surviving answer".to_string(),
+                annotations: None,
+                logprobs: None,
+            }],
+        );
+        let items = vec![
+            RolloutItem::ResponseItem(rejected_only.into()),
+            RolloutItem::ResponseItem(later_rejected_only.into()),
+            RolloutItem::ResponseItem(unchanged.clone().into()),
+            RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+                root_turn_id: None,
+                turn_id: "turn-audio-rejection".to_string(),
+                last_agent_message: None,
+                error: Some(ErrorEvent {
+                    message: "invalid recording".to_string(),
+                    codex_error_info: None,
+                    rejected_audio_file_ids: vec!["file_rejected".to_string()],
+                    misalignment: None,
+                }),
+                started_at: None,
+                completed_at: None,
+                duration_ms: None,
+                time_to_first_token_ms: None,
+            })),
+            RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+                root_turn_id: None,
+                turn_id: "turn-later-audio-rejection".to_string(),
+                last_agent_message: None,
+                error: Some(ErrorEvent {
+                    message: "second invalid recording".to_string(),
+                    codex_error_info: None,
+                    rejected_audio_file_ids: vec!["file_later_rejected".to_string()],
+                    misalignment: None,
+                }),
+                started_at: None,
+                completed_at: None,
+                duration_ms: None,
+                time_to_first_token_ms: None,
+            })),
+        ];
+        let file = tempfile::NamedTempFile::new().expect("rollout file");
+        let path = file.path().to_path_buf();
+        let mut encoded = Vec::new();
+        let mut lines = Vec::new();
+        for (ordinal, item) in items.iter().enumerate() {
+            let line = codex_rollout::encode_rollout_line(item, Some(ordinal as u64))
+                .expect("encode rollout line")
+                .into_bytes();
+            let offset = encoded.len() as u64;
+            encoded.extend_from_slice(&line);
+            lines.push((offset, line));
+        }
+        std::fs::write(&path, encoded).expect("write rollout file");
+        for (offset, line) in lines {
+            codex_vrs::insert(&path, offset, &line).expect("insert rollout line into VRS");
+        }
+
+        let history = super::vrs_history_for_path(&path)
+            .await
+            .expect("assemble path history");
+        let mut normalized = history
+            .for_prompt(
+                &[InputModality::Text, InputModality::Audio],
+                &InlineAttachmentStore,
+            )
+            .await;
+        for item in &mut normalized {
+            if let ResponseItem::Message {
+                internal_chat_message_metadata_passthrough,
+                ..
+            } = item
+            {
+                *internal_chat_message_metadata_passthrough = None;
+            }
+        }
+        assert_eq!(normalized, vec![unchanged]);
     }
 
     #[tokio::test]
@@ -496,6 +716,9 @@ mod tests {
         assert_eq!(
             original,
             super::normalize_for_prompt(
+                crate::context_manager::ContextManager::new(
+                    Arc::clone(&session.item_id_generator,)
+                ),
                 vec![item],
                 &large.settings.model_info.input_modalities,
                 session.services.image_store.as_ref(),
