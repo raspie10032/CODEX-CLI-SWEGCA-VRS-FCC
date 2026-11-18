@@ -2215,3 +2215,57 @@ L1 끝:
 - 실패는 모두 오류로 드러낸다(D5). 새 잠금·대기·장벽 없음.
 
 L2 끝(코덱스): 이음매마다 0.169 자리를 적었고 새 자리(압축 A1–A7, IncrementalExecTools, 생성기 인자, 거절 오디오, 기록 길의 오디오 길이, web.run 예약)의 처리를 정했다. libvrs·FFI·스토어 배치는 그대로다. 앱 패치 자리는 `~/tmp/p116-work/app_patch/REPORT.md` 로 따로 적는다.
+
+### 15.3 L3·L4 결과 (11-18 16–18시)
+
+끝 조건(§15.0): 빌드, 시험, 감사, 실 백엔드 스모크, 릴리스, 앱 교체, 교체 뒤 앱 턴에서 조립 실패 0·압축 0.
+
+- **L3 빌드.** 첫 `cargo check` 오류 9개는 모두 병합 자리의 구현 결함(L3, 막음)이었다. 고친 것: `reasoning_effort.rs` 의 `RequestEffortUsage` 잔재, `ErrorEvent.rejected_audio_file_ids`, `with_creator(.., account_scoped)`, `with_initial_window_id` 의 `ContextWindowId` 타입, `startup_prewarm.rs` 인자. 그 뒤 `codex-cli`·`codex-code-mode-host` 가 빌드됐다.
+- **L3 결함 V116-01 (L3, 막음).** 첫 호스트 빌드(16:11)의 `vrs_prompt_input` 은 거절 오디오 사영 N_R 을 빼먹었다. §15.2 「조립 입구·거절 오디오」를 구현하지 않은 것이다. 이 빌드의 스모크는 오디오가 없어 드러나지 않았고, 시험 위임(F2)이 찾았다.
+  - 고침: 라이브는 `sess.state.history.rejected_audio_file_ids()` 와 `file_audio_durations` 를 옮긴 매니저에서 사영한다. 경로로 여는 저장 스레드는 `rejected_audio_file_ids_for_path` 로 그 롤아웃의 `turn_complete` 거절 id 를 합집합으로 모은다. `ContextManager::new(Session::new_item_id_generator())` 다음 `restore_rejected_audio_file_ids` 를 부른다.
+  - 같은 위임에서 함께 고친 것: `spec_plan.rs` 의 D3″ AND(§15.2), `world_state/mod.rs`·`history_rejected_audio.rs` 의 압축 잔재, `utils/critical-path`.
+- **L2 와 다른 점(받아들임).** §15.2 는 「롤아웃을 한 번 더 훑지 않는다」였지만, `rejected_audio_file_ids_for_path` 는 롤아웃을 따로 한 번 읽는다. 호출자 네 곳(`agent/history.rs:183·299`, `thread_manager.rs:1529`, `sender_context.rs:111`)이 모두 ThreadNotFound 갈래, 곧 메모리에 없는 저장 스레드를 처음 여는 자리다. 그래서 재개와 같은 한 번 비용이고 이벤트마다 자라지 않는다. 라이브 길은 읽지 않는다.
+- **시험.**
+  - prompts·models·vrs 127 통과.
+  - `codex-core` 릴리스 필터 124 통과. 실패 7개는 v1.1.4 부터의 guardian 시험이고 고치지 않는다.
+  - 새 시험: 라이브 거절 오디오, 경로로 연 저장 스레드(여러 턴의 id), v1.1.5 사용량 경계. 집중 시험 7/7.
+  - `codex-core`·`codex-app-server` 시험 컴파일. 생성물(app-server 스키마·파이썬 바인딩·config 스키마) 4/4·9/9·3/3.
+- **감사.** `l3check/port_169/REPORT.md` 결과:
+  - T1: 압축 호환 줄 52, 실행되는 것 0.
+  - T2·T3·T6(V114-01) 통과.
+  - 안티그래비티 독립 집계(`ag_T2.md`)가 같은 수를 냈다.
+- **푸시 전 검사.**
+  - cargo-deny: 병합이 tokio·quinn 을 upstream 잠금으로 되돌려 권고가 걸렸다. tokio 1.53.3, rustix 1.1.6, quinn-proto 0.11.19, quinn-udp 0.5.16·0.6.3, libz-sys 1.1.33, zip 9.0.5 로 올렸다.
+  - deny 예외: 고친 판이 없는 hickory 15건과 chrono 1건은 upstream main(24e236514b)의 예외를 그대로 들였다. 쓰지 않게 된 0418 예외는 뺐다.
+  - fmt 를 맞췄다. 고아 시나리오 시험 파일 3개를 지웠다.
+- **커밋·CI.**
+  - 병합 커밋 68704b437 을 main 에 푸시했다.
+  - fcc-ci 6개 가운데 5개가 통과했다. blob-size-policy 는 검사 전에 `openai/fence` 준비 단계가 Permission denied 로 시작하지 못했다. 다시 돌려도 같았다.
+  - 워크플로는 v1.1.5(통과)와 같고, 큰 파일은 더하지 않았다. CI 설정은 건드리지 않고 릴리스 노트에 적었다(사용자 「ㅇㅇ」).
+- **릴리스 빌드.**
+  - 깨끗한 클론 `codex-fresh` 를 Ubuntu 24.04 컨테이너에서 785 s 에 빌드했다. 요구: GLIBCXX 3.4.31, GLIBC 2.39.
+  - 컨테이너 안 CI 스모크 PASS, `l3check/release1` 4/4·압축 0, 개인 경로 문자열 0.
+  - 실 백엔드 S1–S5(S4 는 두 스레드 동시) ALL PASS. 조립 실패·압축·손상 기록 모두 0이었다.
+- **릴리스.** `fcc-v1.1.6` 은 68704b437 위의 가벼운 태그이고 Latest 다. 크기: tar.gz 152,233,848 B, codex 323,359,264 B, host 72,994,144 B.
+- **앱 교체 (18:37).**
+  - 앱 `~/apps/chatgpt-26.1111-fcc/ChatGPT` 한 개, CLI `~/tmp/codexint_deploy_a17/fcc116/codex-fcc-v1.1.6` 옆에 `codex-code-mode-host` 를 두었다.
+  - 터미널 `~/.local/bin/codex` 도 1.1.6 을 가리킨다.
+  - 바탕화면 항목 원본과 옛 링크는 `~/tmp/p116-work/desktop_bak/` 에 있다.
+  - 되돌리기: 원본 항목과 링크를 되돌리고, `systemctl --user daemon-reload` 뒤 재시작한다.
+- **L4 (앱 실사용, 18:37–18:50).**
+  - 스레드 셋, 영수증 448줄이 모두 `assembled` 다. 실패 0, 조립 시간 중앙값 1.6 ms, 최대 7.1 ms.
+  - 롤아웃 셋 모두 압축 0, 오류 0.
+- **무관 목록.** V116-02(L3, 무관): `CODEX_VRS_LOG` 영수증 줄이 동시에 쓰는 프로세스끼리 섞인다(누적 516줄, 마지막 섞임은 11-18 14:10, v1.1.5 시절). `receipt()` 가 `writeln!` 으로 버퍼 없는 파일에 여러 번 나눠 쓰기 때문이다. 진단 로그일 뿐 모델 입력과 무관하고, 집계는 깨진 줄을 건너뛴다.
+- **실수 한 줄.** 원격 `pgrep`/`pkill -f` 가 제 ssh 명령줄에 맞아 대기 무한·자기 종료·거짓 개수가 났다. 앞으로 `grep "[x]…"` 꼴로 쓴다.
+
+- **릴리스 확인.** 다시 받은 묶음의 sha256 이 낸 것과 같다(`b2e6d633…`).
+
+G_116 진척: 앱 26.1111 과 터미널이 fcc-v1.1.6 으로 돌고, 조립 실패 0·압축 0 이다. T1–T6 은 통과했다. T7 은 fcc-ci 6/6 조건을 채우지 못했다(5/6, 위 CI 항목). 이 판정은 조건을 바꾸지 않고 그대로 적는다. T8 은 아래 줄에 적는다.
+
+- **T8 (18:52–19시).** 배포된 앱 디렉터리(asar 는 `staged-26.1111-fcc.asar` 와 바이트까지 같음)를 사본으로 떴다. 백엔드는 fcc-v1.1.6, 홈·프로필은 따로 두었다. 이 사본으로 §15 패치 보고서 7절과 같은 절차를 돌렸다(`~/tmp/p116-work/app_patch_t8/cases/t1111-fcc116`). 1.1.4-fix 백엔드 때와 견준 결과:
+  - 열 때: rpc 4건·20,317 B(전 20,149 B). thread/resume·items/list 는 0건이다.
+  - 위로 스크롤 6회: 6건·98,353 B.
+  - 「작업 기록 보기」 단추: 5→6 개. 누르면 items/list 2건이 오고 글자가 33→842 로 는다.
+  - 새 글 보내기: thread/resume 뒤 turn/start.
+  - electron 오류 0.
+  - (b)·(c)는 통과다. (a) 플로팅 빠른 채팅은 치환과 구문까지만 확인했고, 화면 확인은 사용자 몫으로 남았다. 실제 앱 화면에서 긴 스레드를 여는 rpc 기록은 실앱에 기록 장치가 없어 사본으로 갈음했다.
