@@ -2298,3 +2298,67 @@ G_117: 앱 26.1120 과 터미널 codex 가 upstream 0.171.0-alpha.13.2 위에 VR
 - L2: 우리 이음매(압축 끊음, 조립 입구 A1–A20, 거절 오디오, 지시문 빼기, D3″, §12 포크 자리, V114-01 자리)마다 새 트리의 자리를 적고, 새 자리는 처리 방법을 적는다. 앱 패치는 26.1120 의 대응 자리(파일·치환 문자열)를 적는다. libvrs·FFI·스토어 배치는 바꾸지 않는다. 직렬 구조 없음.
 - L3: 충돌 65개 해결, `cargo build --release -p codex-cli -p codex-code-mode-host` 통과, codex-prompts·models-manager·vrs 시험 통과, codex-core 시험 컴파일(알려진 실패 말고 새 실패 0), 이음매 대조에서 빠진 VRS 줄 0, 감사 보고 `l3check/port_171/REPORT.md`. 앱 패치 빌드 스크립트가 26.1120 asar 를 만들고 검사를 통과. 직렬 구조 없음.
 - L4: U1–U8.
+
+### 16.1 L1 — 뜻이 바뀌는가 (11-25 12–13시, 읽기만)
+
+upstream 226fa88979..ad9d659a84 를 네 갈래로 읽었다: 롤아웃, 압축, 모델 입력 자리, 사용량 경계와 도구 호출 길. 근거 file:line 은 0.171 원판 `~/tmp/codex-u171` 기준. 갈래별 전문은 `~/tmp/p117-work/L1_{rollout,compaction,model_input,usage_boundary,toolpath}.md`.
+
+**1. 롤아웃(원문 무손실의 대상)은 바뀌지 않는다.** `RolloutItem` 13·`ResponseItem` 18·`ContentItem` 4·`EventMsg` 86 변형이 같고, `rollout/src/policy.rs` diff 0, 봉투·경로·zstd 형식이 같다. libvrs 가 읽는 키는 모두 같은 자리·같은 모양이다(코드 대조). 선택 키만 늘었다(`model_search_state`·`retain_across_windows`·`id_allocation` 등, 줄 `metadata` 는 libvrs 가 읽지 않음). 새 기록 자리는 `thread_manager/shutdown.rs:265–309` 하나(퇴출된 V2 자식의 결과를 안 떠 있는 부모 롤아웃에 `LiveThread::resume`+`append_items`)이고, 기록기의 `codex_vrs::insert` 를 지난다.
+
+**2. 압축의 뜻은 바뀌지 않는다.** 새 종류·RPC·발동 기준·설정 키 없음. `PreModelRequest`/`PostModelRequest` 훅은 모든 모델 요청에 붙는 것이다. 새 압축 전용 코드는 `session/compaction_replacement.rs` 등이며 모두 끊는다(16.2).
+
+**3. 모델 입력.**
+
+(a) **정규화 N 의 확장: 못 찾는 도구 오디오.** `for_prompt` 안의 `replace_unresolvable_media_files`(옛 `…_image_files`)가 도구 출력의 업로드 오디오도 저장소가 못 찾으면 자리표시로 바꾼다(`media_availability.rs:15–131`).
+- 정의. U(S_t) = {id : 저장소가 id 를 못 찾음}. N_{R,U}(x) = x 에서 (i) file_id ∈ R 인 사용자 오디오를 빼고(§15.1 3(a)), (ii) id ∈ U 인 이미지·도구 오디오 참조를 자리표시로 바꾼 것. 모델 입력 = {N_{R,U}(x) : x ∈ A(S_t)}.
+- 증명. N_{R,U}(x) 는 x·R·U 만으로 정해진다(국소). U 는 id 별 독립 질의의 합집합이라 결합·교환·멱등이고 질의가 끝나는 차례와 무관하다. 바뀌는 것은 요청 사본뿐이므로 S 와 A 의 출력 집합은 그대로다. 비용은 그 요청에 든 file_id 수에 비례한다. ∎
+
+(b) **줄의 하니스 메타에 기대는 결정이 늘었다 — 항상 보존 Ret 과 검색 제공자 Prov.** A 의 항목은 libvrs 가 돌려준 payload 라 줄 `metadata` 가 없다. 0.171 은 (i) 부모의 「항상 보존」 항목을 새 자식과 부분 포크에 넘기고(`agent/history.rs:46–81·89·305`), (ii) 웹 검색 제공자를 시작 이력의 메타에서 되살린다(`model_search.rs:148–207`).
+- 정의. 줄 ℓ ∈ S 의 메타를 m(ℓ) 이라 하면
+  - Ret(S) = {item(ℓ) : ℓ ∈ S, m(ℓ).retain_across_windows = true}.
+  - Prov(S) = ⨆_{ℓ ∈ S} σ(ℓ), 격자 Unused < Standalone < SearchMcp(옛 표지도 같은 격자로 사상). 증거를 모르면 ⊤ = SearchMcp(0.171 이 체크포인트 없는 이력에 쓰는 값).
+  - 새 자식의 상속 I(c) = Ret(S_p). 부분·전체 포크의 항목 = Ret(S_p) ∪ F (F = 지금 A20 이 내는 항목). 늘어놓는 차례는 원문 위치(S 의 줄 자리) — F 에 이미 있는 것은 그 자리, 없는 것은 앞쪽.
+  - upstream 의 토큰 예산 선택(`select_retained_items`)은 새것부터 깎아 나가는 누적이고 일부를 버린다. 정의에 넣지 않는다. 창을 넘으면 D5(오류)다.
+- 증명. (i) Ret 은 줄별 술어의 필터이므로 Ret(S ∪ S′) = Ret(S) ∪ Ret(S′): 결합·교환·멱등, 국소. (ii) Prov 는 join 이므로 결합·교환·멱등이고, 줄 하나의 기여는 그 줄로 정해진다. (iii) 라이브 값과 S 의 값이 같다: 라이브 Ret 은 줄을 기록하는 자리에서 같은 줄의 술어로 합집합하고, 재개 때는 롤아웃 재생이 같은 식으로 짓는다. 거절 오디오 R 과 같은 논증(§15.1 3(a)(iv))이다. (iv) 호출·출력 쌍은 주입 때 둘 다 표지를 갖고 인접해야 받으므로(`codex_thread.rs:1189–1199`) 필터가 쌍을 가르지 않는다. (v) S 는 읽기만 하므로 I2 는 그대로다. ∎
+- A(S) 자체의 정의는 바꾸지 않는다(U6 「조립 정의가 같다」). A ⊉ Ret 일 수 있다는 것은 0.167 부터 같은 상태이며 층 L1, G_117 무관으로 목록에 적는다.
+
+(c) **새 입구 A4′: 재개 때 이미지 prewarm**(`startup_prewarm.rs:42·428–495`, `session.rs:2148–2154·2189`, 기능 `RestoredHistoryPrewarm` 기본 꺼짐). 라이브 사본을 `for_prompt` 해 모델 쪽으로 보내므로 U2 「입구 하나」에 어긋난다. 끊는다(16.2). 나머지 A1–A20 은 모두 새 위치에 대응한다(L1_model_input 3절).
+
+(d) **D3″ 는 코드 diff 0.** `IncrementalToolsLegacy`(Bedrock)가 기본 켜짐이 됐지만 D3″ 가 두 함수를 거짓으로 고정하므로 닫힌다.
+
+(e) Guardian v2·v3 는 기본 꺼짐(UnderDevelopment). 기본 켜짐인 동기 검토자는 A10·A13 자리 그대로다. v3 housekeeper 는 자기 대화만 쓰고 사용자 스레드 입력이 아니다.
+
+**4. 사용량 경계 — 뜻 그대로.** 라이브 이력의 칸 번호·길이·세대에 기대는 새 필드도, 목록을 통째로 가는 새 교체 자리도 없다. 슬라이스(`history.rs:1154`)에는 여전히 세대가 없으므로 §14.5 정의를 그대로 쓴다. 슬라이스 클램프는 넣지 않는다(§14.5 에서 우회로 정함).
+
+**5. 도구 호출 길 — 새 위험 없음, 포크 결함 하나.** 이력 접근 집합(기록·확장 도구 읽기·`notify_tool_start`)은 같고 `extension_tools.rs`·`lifecycle.rs` 는 diff 0 이다. 항목 경계 중단(#61909)·롤아웃 예산(#61582)·중첩 가디언 문맥(#61946)은 기본 꺼짐이다.
+- **V117-01 (L3, U3 막음).** 포크 `tools/registry.rs:901` 은 `notify_tool_start(..).or_cancel_tool(..).await?` 로 Result 를 한 겹만 벗긴다. 포크의 `notify_tool_start` 는 조립 스냅숏 때문에 Result 를 돌려주므로 조립 실패가 버려진다(1.1.6 빌드 로그에 `unused Result` 경고가 있었다). `.await??` 로 고친다.
+
+L1 끝:
+- 뜻이 바뀌는 것: N 의 확장(3(a)), Ret·Prov(3(b)). 둘 다 순서 없는 합집합·join 과 항목별 국소 함수로 정의하고 증명했다. 나머지 정의는 그대로 쓴다.
+- 직렬 구조 없음: Ret·Prov·U 는 합집합과 join, N 은 국소 치환, upstream 의 누적 예산 선택은 정의에 들이지 않았다.
+- 무관 목록: A ⊉ Ret(위), 창 ID 할당이 켜질 때의 부모 접두 읽기(`live_writer.rs:31`, 지금은 도달하지 않음), Guardian v3(기본 꺼짐), 패닉 턴 무알림(upstream).
+- G_117 진척: U1–U3·U6 의 뜻이 0.171 에서도 서도록 정했다.
+
+### 16.2 L2 — 자리
+
+끝 조건은 16.0. 갈래별 자리 표 전문은 L1_compaction 3절(표 A·B), L1_model_input 3절, L1_toolpath·L1_usage_boundary 의 표, L1_rollout 3절이고, 여기에는 결정만 적는다.
+
+- **압축 끊음.** modify/delete 20개는 지운 채로 둔다. 병합이 들이는 `session/compaction_replacement.rs` 와 스냅숏 `…compaction__interrupt_during_remote_compaction_preserves_summary_on_resume.snap` 을 지운다. 충돌 밖 자리: `session/mod.rs` 의 압축 선언(T:180·249·301–302)·`compaction_resume_metadata`, `ext/guardian-v3/.../housekeeper_sampler.rs:69` 의 `model_auto_compact_token_limit`, `ext/guardian-v2/.../sampler.rs:179`·`request_tests.rs:392` 의 `parent_compaction`, `session/rollout_budget.rs` 의 압축 전용 세 함수, `state/additional_context.rs restore_compacted_items`, `step_activation_tests.rs:904 TaskKind::Compact`. 충돌 덩어리에 섞인 비압축 새 내용은 표 B 대로 살린다. 감사 grep 은 §15.2 패턴에 L1_compaction 4절 (c) 를 더한다.
+- **조립 입구.**
+  - A1·A2 `session/turn.rs` 의 새 표본 반복(`SamplingRequest`·`SamplingInterrupt`·`tool_cancellation`): 매 시도 `vrs_prompt_input`, `check_prompt_window`, `live_history_usage_cut`, `input_list_generation` 을 새 본문에 얹는다. `session/mod.rs:5788` 의 `update_token_info_from_usage` 와 `TokenUsageContext::Sampling` 에도 세대 인자를 둔다.
+  - A4 `startup_prewarm.rs`: 지금 자리 유지. A4′ 는 `PrewarmInput::Restoring` 갈래, `has_file_image`, `session.rs:2148–2154·2189` 의 전송 쪽을 지운다(늘 `Base`).
+  - A20 `agent/history.rs`: `load_agent_model_context` 의 새 반환형(`StoredModelContext`)에 맞추되 부모 항목은 안쪽에서 VRS(§15.2). `spawn.rs:318·1177` 의 새 호출도 같다.
+  - 정규화: `for_prompt` 의 새 이름(`media_availability`)을 받는다. 거절 오디오 사영(V116-01)과 `restore_rejected_audio_file_ids` 를 유지한다. `history_rejected_audio.rs` 는 `FileErrorSource::ToolFileAudio` 와 이름 변경을 받고 체크포인트 두 줄만 뺀다.
+  - Guardian A8–A14, thread_sample, 예측 포크, sender_context, V9-01: 우리 처리 그대로 새 위치로.
+- **Ret(16.1 3(b)).**
+  - `ContextManager` 에 `rejected_audio_file_ids` 와 같은 방식으로 `always_retained`(항목 id 로 중복을 없앤 원문 위치 순 목록)를 둔다. 더하는 자리: `record_prepared_conversation_items` 가 항목을 기록하는 곳에서 `is_always_retained()` 인 것. 되살리는 자리: `rollout_reconstruction.rs` 의 거절 오디오 재생과 같은 반복. 경로로 여는 저장 스레드: `rejected_audio_file_ids_for_path` 를 거절 id 와 보존 항목을 같은 읽기에서 함께 모으는 함수로 바꾼다(롤아웃을 한 번 더 읽지 않는다). `replace_assembled_with_suffix` 는 이 목록을 지우지 않는다.
+  - `retained_items_for_fresh_child`: 부모 세션 상태의 `always_retained` 에서 읽는다(`clone_history()` 를 부르지 않는다). 메타 정리는 upstream 70–80 그대로. `compact_remote_v2` 의존은 없앤다.
+  - A20: 포크 항목 F 앞에 Ret 가운데 F 에 없는 것을 원문 위치 순으로 둔다. F 안의 해당 항목에는 보존 메타를 되돌린다. `keep_forked_rollout_item`·`retain_forked_item` 의 「항상 보존」 갈래는 upstream 대로.
+- **Prov(16.1 3(b)).** A20 항목에는 부모 라이브 상태로 `SearchOwner::checkpoint(&parent_store, &mut items)` 를 찍는다. 저장 스레드(ThreadNotFound 갈래)와 참조 포크는 증거를 모르는 쪽이라 ⊤(upstream 기본값)이다. 재개는 upstream `restore` 그대로.
+- **D3″·지시문 빼기·§12(V8) 자리·V114-01 자리·기록 길·도구 길**: §15.2 와 같고 줄만 옮긴다. `hook_runtime.rs` 는 `hooks_for_model_request` 의 새 가시성(upstream)을 받고 압축 훅 라벨만 뺀다. `turn_input.rs`·`handlers.rs:130` 의 `TurnInputSubmission` 모양을 받는다.
+- **V117-01.** `tools/registry.rs` `notify_tool_start` 호출을 `.await??`. 같은 꼴(포크가 Result 로 바꾼 함수를 한 겹만 벗김)이 더 있는지 컴파일러 `unused Result` 경고 0 으로 본다.
+- **롤아웃.** `recorder.rs` 의 실시간 내구 장벽은 포크 `record_canonical_items` 에서 항목이 아직 `RolloutItem` 일 때 표지를 계산해 함께 보낸다. `search.rs` 는 새 목록 방식에 `--text` 를 다시 붙인다. `lib.rs` 는 내보내기 합집합. `live_writer.rs` 는 포크의 `resume_thread` 재배치와 upstream 의 커서 갱신을 함께 둔다.
+- **앱 패치 자리**는 `~/tmp/p117-work/app_patch/REPORT.md` 로 따로 적는다.
+- 실패는 모두 오류로 드러낸다(D5). 새 잠금·대기·장벽 없음(위 실시간 내구 장벽은 upstream 의 음성 기록 동작이고 포크가 더하는 것이 아니다).
+
+L2 끝: 이음매마다 0.171 자리를 적었고 새 자리(Ret·Prov·A4′·media·rollout 장벽)의 처리를 정했다. libvrs·FFI·스토어 배치는 그대로다. 직렬 구조 없음: Ret 은 항목 id 기준 합집합이고 늘어놓는 차례만 원문 위치를 쓴다. G_117 진척: L3 로 넘어간다.
