@@ -1,11 +1,20 @@
 //! Multi-turn Astra scenarios snapshot the model-visible request history of shipped features.
 
+#[path = "scenarios_bundled_app_hooks.rs"]
+mod bundled_app_hooks;
+
 #[path = "scenarios_turn_input_agent_message.rs"]
 mod turn_input_agent_message;
+
+#[path = "scenarios_multi_environment_mcp.rs"]
+mod multi_environment_mcp;
 
 use super::image_rollout::RecordingFileAttachmentStore;
 use super::permissions_messages::PermissionPathScenario;
 use codex_attachment_store::AttachmentStoreErrorKind;
+use codex_attachment_store::UploadContent;
+use codex_core::RequestCountry;
+use codex_core::config::TokenBudgetConfig;
 use codex_protocol_test_support::ContentItemTestExt;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -50,12 +59,15 @@ use codex_protocol::items::TurnItem;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ImageDetail;
 use codex_protocol::models::ImageReference;
+use codex_protocol::models::PermissionProfile;
+use codex_protocol::models::PermissionProfileSnapshot;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::CodeModeToolMessages;
 use codex_protocol::openai_models::InputModality;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::openai_models::ToolMessage;
 use codex_protocol::openai_models::ToolMode;
+use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::AdditionalContextEntry;
 use codex_protocol::protocol::AdditionalContextKind;
 use codex_protocol::protocol::EnvironmentConfigState;
@@ -63,7 +75,9 @@ use codex_protocol::protocol::EventMsg;
 #[cfg(not(target_os = "windows"))]
 use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::Op;
+use codex_protocol::protocol::ThreadSettingsOverrides;
 use codex_protocol::protocol::TurnEnvironmentSelection;
+use codex_protocol::protocol::TurnEnvironmentSelections;
 use codex_protocol::protocol::TurnSettingsUpdate;
 use codex_protocol::protocol::TurnSettingsUpdateOutcome;
 use codex_protocol::request_user_input::RequestUserInputAnswer;
@@ -78,6 +92,7 @@ use codex_utils_path_uri::PathUri;
 use core_test_support::context_snapshot;
 use core_test_support::context_snapshot::ContextSnapshotOptions;
 use core_test_support::context_snapshot::SnapshotEntry;
+use core_test_support::exec_server::ExecServerProcess;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_custom_tool_call;
@@ -93,9 +108,11 @@ use core_test_support::skip_if_wine_exec;
 use core_test_support::stdio_server_bin;
 use core_test_support::streaming_sse::StreamingSseChunk;
 use core_test_support::streaming_sse::start_streaming_sse_server;
+use core_test_support::test_codex::configure_scenario_catalog;
 use core_test_support::test_codex::environment_config_for_selection;
 use core_test_support::test_codex::executor_path_uri;
 use core_test_support::test_codex::test_codex;
+use core_test_support::test_codex::test_env;
 use core_test_support::wait_for_event;
 use core_test_support::wait_for_event_match;
 use core_test_support::wait_for_mcp_server;
@@ -131,6 +148,9 @@ mod catalog_settings;
 #[path = "scenarios_catalog_approval_instructions_tests.rs"]
 mod catalog_approval_instructions;
 
+#[path = "scenarios_catalog_apps_instructions_tests.rs"]
+mod catalog_apps_instructions;
+
 #[path = "scenarios_managed_human_approval_tests.rs"]
 mod managed_human_approval;
 
@@ -163,6 +183,9 @@ mod host_turn_admission;
 
 #[path = "scenarios_partial_answers.rs"]
 mod partial_answers;
+
+#[path = "scenarios_guardian_async_elastic.rs"]
+mod guardian_async_elastic;
 
 #[path = "scenarios_guardian_sender_context.rs"]
 mod guardian_sender_context;
@@ -237,6 +260,9 @@ mod skill_catalog_dedup;
 
 #[path = "scenarios_frozen_cloud_skills.rs"]
 mod frozen_cloud_skills;
+
+#[path = "scenarios_statusline_authoring_tests.rs"]
+mod statusline_authoring;
 
 #[path = "scenarios_world_state_prefix_tests.rs"]
 mod world_state_prefix;
@@ -341,24 +367,6 @@ fn plugin(name: &str) -> UserInput {
         name: name.to_string(),
         path: format!("plugin://{name}@test"),
     }
-}
-
-pub(super) fn configure_scenario_catalog(config: &mut Config) {
-    // Keep the fixture independent of the checkout's project configuration.
-    let stack = &config.config_layer_stack;
-    config.config_layer_stack = ConfigLayerStack::new(
-        stack
-            .all_layers_low_to_high()
-            .filter(|layer| !matches!(&layer.name, ConfigLayerSource::Project { .. }))
-            .cloned()
-            .collect(),
-        stack.requirements().clone(),
-        stack.requirements_toml().clone(),
-    )
-    .expect("fixture config layers")
-    .with_cloud_config_binding(stack.cloud_config_binding().cloned());
-    config.model_catalog = Some(bundled_models_response().expect("bundled model catalog"));
-    config.cloud_skill_enabled = false;
 }
 
 fn configure_catalog_plugin_scenario(config: &mut Config) {
@@ -469,10 +477,23 @@ async fn gif_generation_preserves_animation_and_replays_a_still_preview() -> Res
     let [animation, preview] = uploads.as_slice() else {
         panic!("expected an animated artifact and a separate model preview");
     };
-    assert_eq!(animation.data, BASE64_STANDARD.decode(gif)?);
-    assert_eq!(image::guess_format(&preview.data)?, image::ImageFormat::Png);
+    let UploadContent::Image {
+        data: animation_data,
+        ..
+    } = &animation.content
+    else {
+        panic!("expected animation image upload");
+    };
+    let UploadContent::Image {
+        data: preview_data, ..
+    } = &preview.content
+    else {
+        panic!("expected preview image upload");
+    };
+    assert_eq!(*animation_data, BASE64_STANDARD.decode(gif)?);
+    assert_eq!(image::guess_format(preview_data)?, image::ImageFormat::Png);
     assert_eq!(
-        image::load_from_memory(&preview.data)?
+        image::load_from_memory(preview_data)?
             .to_rgba8()
             .get_pixel(0, 0)
             .0,
@@ -494,13 +515,11 @@ async fn gif_generation_preserves_animation_and_replays_a_still_preview() -> Res
 async fn admitted_prompt_id_reaches_responses() -> Result<()> {
     skip_if_no_network!(Ok(()));
     let server = start_mock_server().await;
-    let test = test_codex()
-        .with_config(|config| {
-            configure_scenario_catalog(config);
-            config.include_environment_context = false;
-        })
-        .build_with_auto_env(&server)
-        .await?;
+    let mut builder = test_codex().with_config(|config| {
+        configure_scenario_catalog(config);
+        config.include_environment_context = false;
+    });
+    let test = builder.build_with_auto_env(&server).await?;
     let mock = mount_sse_sequence(
         &server,
         vec![
@@ -1169,15 +1188,48 @@ async fn astra_switches_environments_for_the_rest_of_the_active_turn() -> Result
                 .features
                 .enable(Feature::DefaultModeRequestUserInput)
                 .expect("enable request_user_input");
+            config
+                .features
+                .enable(Feature::PerEnvironmentContext)
+                .expect("enable per-environment context");
         })
         .build_with_auto_env(&server)
         .await?;
-    let original = test.executor_environment().selection().clone();
+    let executor = ExecServerProcess::start().await?;
+    let first_workspace = TempDir::new()?;
+    test.thread_manager
+        .environment_manager()
+        .upsert_environment(
+            "environment-a".to_string(),
+            executor.websocket_url.clone(),
+            /*connect_timeout*/ None,
+        )?;
+    let mut first = test.executor_environment().selection().clone();
+    first.environment_id = "environment-a".to_string();
+    first.cwd = PathUri::from_host_native_path(first_workspace.path())?;
+    first.workspace_roots = vec![first.cwd.clone()];
+    let mut first_config = environment_config_for_selection(&test.config, &first);
+    first_config.permission_profile =
+        PermissionProfileSnapshot::legacy(PermissionProfile::read_only());
+    first.config = EnvironmentConfigState::Ready(first_config);
+
+    let mut original = test.executor_environment().selection().clone();
+    let mut original_config = environment_config_for_selection(&test.config, &original);
+    original_config.permission_profile =
+        PermissionProfileSnapshot::legacy(PermissionProfile::workspace_write_with(
+            &[],
+            NetworkSandboxPolicy::Enabled,
+            /*exclude_tmpdir_env_var*/ true,
+            /*exclude_slash_tmp*/ true,
+        ));
+    original.config = EnvironmentConfigState::Ready(original_config);
     let mut other = original.clone();
     other.cwd = original.cwd.join("other-workspace")?;
     other.workspace_roots = vec![other.cwd.clone()];
-    other.config =
-        EnvironmentConfigState::Ready(environment_config_for_selection(&test.config, &other));
+    let mut other_config = environment_config_for_selection(&test.config, &other);
+    other_config.permission_profile =
+        PermissionProfileSnapshot::legacy(PermissionProfile::read_only());
+    other.config = EnvironmentConfigState::Ready(other_config);
     test.fs()
         .create_directory(
             &other.cwd,
@@ -1190,9 +1242,21 @@ async fn astra_switches_environments_for_the_rest_of_the_active_turn() -> Result
         .await?;
 
     test.codex
-        .start_or_steer_turn(TurnInputRequest::user_input(vec![text(
-            "Ask before continuing in the other workspace.",
-        )]))
+        .start_or_steer_turn(
+            TurnInputRequest::user_input(vec![text(
+                "Ask before continuing in the other workspace.",
+            )])
+            .with_thread_settings(ThreadSettingsOverrides {
+                environments: Some(
+                    TurnEnvironmentSelections::new(
+                        test.config.cwd.clone(),
+                        vec![first.clone(), original],
+                    )
+                    .into_requests(),
+                ),
+                ..Default::default()
+            }),
+        )
         .await?;
     let request = wait_for_event_match(&test.codex, |event| match event {
         EventMsg::RequestUserInput(request) => Some(request.clone()),
@@ -1204,7 +1268,7 @@ async fn astra_switches_environments_for_the_rest_of_the_active_turn() -> Result
         .submit(Op::TurnSettings {
             turn_id: request.turn_id.clone(),
             update: TurnSettingsUpdate {
-                environments: Some(vec![other.clone().into_request()]),
+                environments: Some(vec![first.into_request(), other.into_request()]),
                 ..Default::default()
             },
             reply,
@@ -1235,14 +1299,14 @@ async fn astra_switches_environments_for_the_rest_of_the_active_turn() -> Result
         .await?;
 
     let requests = mock.requests();
-    insta::assert_snapshot!(
-        "astra_active_environment_selection",
-        context_snapshot::format_request_history_snapshot(
-            "Astra starts in one workspace, switches for the next step of the active turn, and returns to the original workspace on the next turn.",
-            &requests,
-            &ContextSnapshotOptions::default(),
-        )
-    );
+    let snapshot = context_snapshot::format_request_history_snapshot(
+        "Astra sees two environments with different permissions. Only the second environment's workspace and permissions change for the next step; the original defaults return on the next turn.",
+        &requests,
+        &ContextSnapshotOptions::default(),
+    )
+    .replace(r#"<environment id="local""#, r#"<environment id="environment-b""#)
+    .replace(r#"<environment id="remote""#, r#"<environment id="environment-b""#);
+    insta::assert_snapshot!("astra_active_environment_selection", snapshot);
     Ok(())
 }
 
@@ -2992,6 +3056,28 @@ async fn subagent_browser_auth_resolves_user_prompt() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn guardian_nested_elicitation_request_history() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    skip_if_wine_exec!(Ok(()), "the MCP fixture requires a host Python interpreter");
+
+    let requests = super::guardian_mcp_elicitation::nested_elicitation_request_history().await?;
+    assert_eq!(requests.len(), 5);
+    let snapshot = context_snapshot::format_request_history_snapshot(
+        "A Node REPL invocation waits for two independent Guardian reviews. The follow-up review uses a transcript delta and receives the same live enclosing call.",
+        &requests,
+        &ContextSnapshotOptions::default().rewrite_known_segments(),
+    );
+    let snapshot = regex_lite::Regex::new(r"Wall time: [0-9]+(?:\.[0-9]+)? seconds")?
+        .replace_all(&snapshot, "Wall time: <DURATION> seconds");
+    let snapshot = regex_lite::Regex::new(
+        r#"(The active permission profile for environment )"(?:local|remote)""#,
+    )?
+    .replace_all(&snapshot, "$1\"<ENVIRONMENT>\"");
+    insta::assert_snapshot!("guardian_nested_elicitation", snapshot);
+    Ok(())
+}
+
 #[cfg(not(target_os = "windows"))]
 #[tokio::test]
 async fn guardian_elastic_budgeting_request_history() -> Result<()> {
@@ -3004,6 +3090,7 @@ async fn guardian_elastic_budgeting_request_history() -> Result<()> {
     const SECTION_TOKENS: usize = ENTRY_TOKENS * TRANSCRIPT_ENTRIES_PER_SECTION;
     const DEFAULT_SECTION_TOKENS: usize = 900;
     const REPEATS: usize = 64;
+    const SELECTED_EXEC_TOKENS: usize = 256;
     skip_if_no_network!(Ok(()));
     let server = responses::start_mock_server().await;
     let commentary = "Untrusted assistant evidence. ".repeat(REPEATS);
@@ -3021,6 +3108,20 @@ async fn guardian_elastic_budgeting_request_history() -> Result<()> {
     let mock = responses::mount_sse_sequence(
         &server,
         vec![
+            sse(vec![
+                ev_custom_tool_call(
+                    "selected", "exec",
+                    r#"await tools.update_plan({plan:[{step:"Inspect",status:"in_progress"}]}); text("selected-" + "x".repeat(640) + "-end");"#,
+                ),
+                ev_completed("lookup"),
+            ]),
+            sse(vec![
+                ev_custom_tool_call(
+                    "unselected", "exec",
+                    r#"text("ordinary-" + "y".repeat(640) + "-end");"#,
+                ),
+                ev_completed("ordinary"),
+            ]),
             sse(vec![
                 earlier_event,
                 commentary_event,
@@ -3043,23 +3144,40 @@ async fn guardian_elastic_budgeting_request_history() -> Result<()> {
     .await;
     let entry_limits = codex_guardian_context::ElasticSectionLimits::new;
     let mut policy = codex_guardian_context::ElasticBudgetConfig {
-        sections: [(
-            codex_guardian_context::ElasticSection::TranscriptMessages,
-            entry_limits(ENTRY_TOKENS, ENTRY_TOKENS)?
-                .with_max_total_section_tokens(SECTION_TOKENS)?,
-        )]
+        sections: [
+            (
+                codex_guardian_context::ElasticSection::TranscriptMessages,
+                entry_limits(ENTRY_TOKENS, ENTRY_TOKENS)?
+                    .with_max_total_section_tokens(SECTION_TOKENS)?,
+            ),
+            (
+                codex_guardian_context::ElasticSection::TranscriptTools,
+                entry_limits(ENTRY_TOKENS, ENTRY_TOKENS)?
+                    .with_max_total_section_tokens(SECTION_TOKENS)?,
+            ),
+        ]
         .into(),
+        ..Default::default()
     };
     // Skills are absent in sync requests and release their entire reservation.
     let skills_minimum = codex_guardian_context::DEFAULT_MAX_INPUT_TOKENS
         - usize::try_from(policy.total_minimum_tokens())?
-        + DEFAULT_SECTION_TOKENS;
+        + DEFAULT_SECTION_TOKENS
+        - SELECTED_EXEC_TOKENS;
     policy.sections.insert(
         codex_guardian_context::ElasticSection::TrustedSkills,
         entry_limits(skills_minimum, DEFAULT_SECTION_TOKENS)?,
     );
     let settings = format!(
-        "[features.guardianv2]\nsync_elastic_budgeting = true\n{}",
+        r#"[features.guardianv2]
+sync_elastic_budgeting = true
+{}
+[features.guardianv2.sync_elastic_sections.transcript_selected_exec_results]
+nested_tool_names = ["update_plan"]
+min_total_section_tokens = {SELECTED_EXEC_TOKENS}
+max_section_entry_tokens = {SELECTED_EXEC_TOKENS}
+max_total_section_tokens = {SELECTED_EXEC_TOKENS}
+"#,
         toml::to_string(&policy)?
             .replace("[sections.", "[features.guardianv2.sync_elastic_sections.")
     );
@@ -3069,6 +3187,12 @@ async fn guardian_elastic_budgeting_request_history() -> Result<()> {
         )
         .with_config(|config| {
             configure_scenario_catalog(config);
+            config.features.enable(Feature::CodeMode).unwrap();
+            config
+                .features
+                .enable(Feature::ExecutedToolCallMetadata)
+                .unwrap();
+            config.update_plan_enabled = true;
             config.approvals_reviewer = ApprovalsReviewer::AutoReview;
             config.permissions.approval_policy =
                 codex_core::config::Constrained::allow_any(AskForApproval::OnRequest);
@@ -3077,7 +3201,7 @@ async fn guardian_elastic_budgeting_request_history() -> Result<()> {
         .await?;
     test.submit_text_turn(&user_request).await?;
     let requests = mock.requests();
-    let guardian_text = requests[1].message_input_texts("user").join("\n");
+    let guardian_text = requests[3].message_input_texts("user").join("\n");
     assert!(guardian_text.contains(&user_request));
     let transcript = guardian_text
         .split_once(">>> TRANSCRIPT START")
@@ -3088,17 +3212,24 @@ async fn guardian_elastic_budgeting_request_history() -> Result<()> {
         .0;
     assert!(!transcript.contains("Earlier untrusted"));
     assert!(transcript.contains("Untrusted assistant evidence"));
+    let selected = format!("selected-{}-end", "x".repeat(640));
+    assert!(transcript.contains(&selected), "{transcript}");
+    assert!(!transcript.contains(&format!("ordinary-{}-end", "y".repeat(640))));
     assert!(
         requests.last().unwrap().body_json()["input"]
             .to_string()
             .contains(&earlier_commentary)
     );
     let mut snapshot = context_snapshot::format_request_history_snapshot(
-        "Elastic sync budgeting caps entries before deduplication, keeps complete retained instructions, and limits Optional transcript evidence by section.",
+        "Elastic sync budgeting keeps retained instructions, caps ordinary tool evidence, and reserves space for the exec output that ran the configured nested tool.",
         &requests,
         &ContextSnapshotOptions::default().rewrite_known_segments(),
     );
     for (pattern, replacement) in [
+        (
+            r"(?m)^(\s*Wall time) [0-9]+(?:\.[0-9]+)? seconds$",
+            "$1 <DURATION> seconds",
+        ),
         (r#"(?m)^(\s*"cwd": )"[^"]*""#, "$1\"<CWD>\""),
         (
             r#""command": \[\s*(?:"[^"]*",\s*)*("[^\n]*)\n\s*\]"#,

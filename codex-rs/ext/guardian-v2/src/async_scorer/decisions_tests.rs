@@ -279,9 +279,9 @@ async fn http_contract_and_untrusted_response_validation() {
     .unwrap();
     let mut sampler = Arc::new(sampler);
     // The conversation adapter omits unsupported non-message items while preserving message order.
-    let (mut retained, _) = LunaSampler::prepare_input(
+    let (mut retained, _) = LunaSampler::finish_input(
         &request,
-        /*history*/ None,
+        LunaSampler::prepare_setup(&request),
         request
             .input
             .iter()
@@ -339,9 +339,9 @@ async fn decisions_admits_newest_request_by_cancelling_oldest() {
         .unwrap(),
     );
     let request = super::super::sampler::tests::sample_request("turn");
-    let (input, _) = LunaSampler::prepare_input(
+    let (input, _) = LunaSampler::finish_input(
         &request,
-        /*history*/ None,
+        LunaSampler::prepare_setup(&request),
         request
             .input
             .iter()
@@ -448,9 +448,9 @@ async fn cancelling_a_decisions_request_releases_thread_capacity() {
         .unwrap(),
     );
     let request = super::super::sampler::tests::sample_request("turn");
-    let (input, _) = LunaSampler::prepare_input(
+    let (input, _) = LunaSampler::finish_input(
         &request,
-        /*history*/ None,
+        LunaSampler::prepare_setup(&request),
         request
             .input
             .iter()

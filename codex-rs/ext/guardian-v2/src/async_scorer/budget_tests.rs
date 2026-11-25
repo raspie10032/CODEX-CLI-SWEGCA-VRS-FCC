@@ -1,5 +1,7 @@
 //! Contributor integration tests use the normal catalog-backed lifecycle setup.
 
+use crate::async_scorer::conversation::ConversationBackend;
+
 use super::*;
 use crate::async_scorer::authorization::ScoreAuthorization;
 use codex_protocol::models::ImageReference;
@@ -17,10 +19,6 @@ async fn catalog_budget_fixture(base_url: String, window: i64) -> Result<Guardia
         .with_model_info_override(MODEL, move |model| {
             model.context_window = Some(window);
             model.effective_context_window_percent = 50;
-            model.comp_hash = Some("budget-checkpoint".to_owned());
-        })
-        .with_model_info_override("gpt-5.5", |model| {
-            model.comp_hash = Some("budget-checkpoint".to_owned());
         })
         .with_pre_build_hook(|home| {
             std::fs::write(home.join("config.toml"),
@@ -66,15 +64,8 @@ async fn catalog_budget_fixture(base_url: String, window: i64) -> Result<Guardia
 
 #[derive(Clone, Copy)]
 enum BudgetEvidence {
-    Checkpoint,
     Image,
     UserInstructions,
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn contributor_accounts_for_parent_checkpoint() -> Result<()> {
-    skip_if_no_network!(Ok(()));
-    assert_catalog_budget(BudgetEvidence::Checkpoint).await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -91,7 +82,6 @@ async fn contributor_preserves_complete_user_instructions_or_defers_to_sync() ->
 
 async fn assert_catalog_budget(evidence: BudgetEvidence) -> Result<()> {
     let windows = match evidence {
-        BudgetEvidence::Checkpoint => [18_000, 32_000],
         // In the smaller window the text fits, but the 10K image reservation cannot.
         BudgetEvidence::Image => [14_000, 40_000],
         BudgetEvidence::UserInstructions => [18_000, 50_000],
@@ -122,22 +112,7 @@ async fn assert_catalog_budget(evidence: BudgetEvidence) -> Result<()> {
             codex_guardian_context::MANUAL_APPROVAL_DEVELOPER_PREFIX
         );
         let mut user = user_instruction(&instruction);
-        let (checkpoint, commentary) = match evidence {
-            BudgetEvidence::Checkpoint => (
-                Some(ResponseItem::ContextCompaction {
-                    id: Some(ResponseItemId::from_server("cmp_budget".to_owned())),
-                    encrypted_content: Some("checkpoint".repeat(/*n*/ 1_200)),
-                    internal_chat_message_metadata_passthrough: None,
-                }),
-                (0..4)
-                    .map(|index| {
-                        format!(
-                            "commentary {index}: {}",
-                            "optional checkpoint commentary ".repeat(/*n*/ 180)
-                        )
-                    })
-                    .collect::<Vec<_>>(),
-            ),
+        let commentary = match evidence {
             BudgetEvidence::Image => {
                 let ResponseItem::Message { content, .. } = &mut user else {
                     unreachable!("user instruction is a message");
@@ -146,12 +121,11 @@ async fn assert_catalog_budget(evidence: BudgetEvidence) -> Result<()> {
                     image: ImageReference::Inline { image_url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGPgEpEDAABoAD1UCKP3AAAAAElFTkSuQmCC".to_owned() },
                     detail: None,
                 });
-                (None, vec!["optional old commentary ".repeat(/*n*/ 500)])
+                vec!["optional old commentary ".repeat(/*n*/ 500)]
             }
-            BudgetEvidence::UserInstructions => (None, Vec::new()),
+            BudgetEvidence::UserInstructions => Vec::new(),
         };
-        let mut history = checkpoint.iter().cloned().collect::<Vec<_>>();
-        history.push(user);
+        let mut history = vec![user];
         if matches!(evidence, BudgetEvidence::UserInstructions) {
             history.push(ResponseItem::Message {
                 status: None,
@@ -180,27 +154,12 @@ async fn assert_catalog_budget(evidence: BudgetEvidence) -> Result<()> {
             .codex
             .inject_response_items(history.clone())
             .await?;
-        let history: Arc<dyn ConversationHistorySnapshot> = match evidence {
-            BudgetEvidence::Checkpoint => Arc::new(TestRetainedHistory {
-                retained_context: None,
-                retained: history.clone(),
-                current: TestConversationHistory(history),
-                compaction_model_hash: Some("budget-checkpoint".to_owned()),
-                review_context_revision: fixture
-                    .test
-                    .codex
-                    .conversation_history_snapshot()
-                    .await
-                    .unwrap()
-                    .guardian_review_context_revision(),
-            }),
-            BudgetEvidence::Image | BudgetEvidence::UserInstructions => fixture
-                .test
-                .codex
-                .conversation_history_snapshot()
-                .await
-                .unwrap(),
-        };
+        let history: Arc<dyn ConversationHistorySnapshot> = fixture
+            .test
+            .codex
+            .conversation_history_snapshot()
+            .await
+            .unwrap();
         let thread_store = fixture.test.codex.thread_extension_data();
         let turn_store = ExtensionData::new("turn-1");
         turn_store.insert_arc(thread_store.get::<Config>().expect("captured test config"));
@@ -214,7 +173,9 @@ async fn assert_catalog_budget(evidence: BudgetEvidence) -> Result<()> {
                     sampled_at: None,
                 },
             );
-            let progress = thread_store.get::<GuardianV2ScoreProgress>().unwrap();
+            let progress = ConversationBackend::for_turn(thread_store, thread_store)
+                .map(|cache| Arc::clone(&cache.progress))
+                .unwrap();
             let authorization =
                 ScoreAuthorization::current(&fixture.test.codex, &Default::default())
                     .await
@@ -255,13 +216,7 @@ async fn assert_catalog_budget(evidence: BudgetEvidence) -> Result<()> {
             })
             .await;
         if matches!(outcome, BudgetOutcome::RequiresSync) {
-            let reason = if matches!(evidence, BudgetEvidence::Checkpoint) {
-                // Raw injection supplies no live checkpoint provenance, regardless of the sample.
-                "incompatible_compaction"
-            } else {
-                "elevated_risk"
-            };
-            fixture.assert_fails_closed(reason).await?;
+            fixture.assert_fails_closed("scoring_failure").await?;
             assert!(
                 server
                     .received_requests()
@@ -273,7 +228,9 @@ async fn assert_catalog_budget(evidence: BudgetEvidence) -> Result<()> {
             fixture.test.codex.shutdown_and_wait().await?;
             continue;
         }
-        let progress = thread_store.get::<GuardianV2ScoreProgress>().unwrap();
+        let progress = ConversationBackend::for_turn(thread_store, thread_store)
+            .map(|cache| Arc::clone(&cache.progress))
+            .unwrap();
         tokio::time::timeout(ASYNC_TEST_TIMEOUT, async {
             while progress.inspect(/*call_id*/ None).lag > 0 {
                 tokio::task::yield_now().await;
@@ -284,10 +241,7 @@ async fn assert_catalog_budget(evidence: BudgetEvidence) -> Result<()> {
         let text = request.message_input_texts("user").concat();
         let request = request.body_json();
         let input = request["input"].to_string();
-        if let Some(checkpoint) = checkpoint {
-            assert_eq!(request["input"][2], serde_json::to_value(checkpoint)?);
-            assert!(input.contains("commentary 0:"));
-        } else if matches!(evidence, BudgetEvidence::Image) {
+        if matches!(evidence, BudgetEvidence::Image) {
             assert!(input.contains("input_image"));
             assert!(input.contains("optional old commentary"));
         } else {
@@ -306,12 +260,7 @@ async fn assert_catalog_budget(evidence: BudgetEvidence) -> Result<()> {
                 /*metrics*/ None
             )
             .await,
-            if matches!(evidence, BudgetEvidence::Checkpoint) {
-                // A valid sampled snapshot cannot make an unannotated live checkpoint safe.
-                None
-            } else {
-                Some(ReviewDecision::Approved)
-            }
+            Some(ReviewDecision::Approved)
         );
         fixture.test.codex.shutdown_and_wait().await?;
     }

@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use codex_history::ResponseItemEnvelope;
 use codex_history::RolloutItem;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
@@ -173,24 +174,28 @@ pub(crate) async fn vrs_history_for_path(path: &Path) -> Result<ContextManager, 
             other => break other?,
         }
     };
-    let rejected_audio_file_ids = rejected_audio_file_ids_for_path(&path).await?;
+    let (rejected_audio_file_ids, always_retained) = durable_facts_for_path(&path).await?;
     let mut history = ContextManager::new(Session::new_item_id_generator());
     history.restore_rejected_audio_file_ids(rejected_audio_file_ids);
+    history.restore_always_retained(always_retained);
     history.replace_assembled(decode_assembled_items(assembled.items)?);
     Ok(history)
 }
 
-/// Restores the durable live rejection set while reading the rollout exactly once.
-async fn rejected_audio_file_ids_for_path(path: &Path) -> Result<BTreeSet<String>, VrsError> {
+/// Restores durable rejection and retention facts while reading the rollout exactly once.
+async fn durable_facts_for_path(
+    path: &Path,
+) -> Result<(BTreeSet<String>, Vec<ResponseItemEnvelope>), VrsError> {
     let mut lines = codex_rollout::open_rollout_line_reader(path)
         .await
-        .map_err(|err| {
-            VrsError::Unavailable(format!("failed to read rollout audio facts: {err}"))
-        })?;
+        .map_err(|err| VrsError::Unavailable(format!("failed to read rollout facts: {err}")))?;
     let mut rejected = BTreeSet::new();
-    while let Some(line) = lines.next_line().await.map_err(|err| {
-        VrsError::Unavailable(format!("failed to read rollout audio facts: {err}"))
-    })? {
+    let mut retention = crate::context_manager::RetentionReplay::default();
+    while let Some(line) = lines
+        .next_line()
+        .await
+        .map_err(|err| VrsError::Unavailable(format!("failed to read rollout facts: {err}")))?
+    {
         if line.trim().is_empty() {
             continue;
         }
@@ -199,18 +204,30 @@ async fn rejected_audio_file_ids_for_path(path: &Path) -> Result<BTreeSet<String
             Err(err) => {
                 warn!(
                     error = %err,
-                    "skipping malformed rollout line while restoring rejected audio"
+                    "skipping malformed rollout line while restoring durable facts"
                 );
                 continue;
             }
         };
-        if let RolloutItem::EventMsg(EventMsg::TurnComplete(completed)) = rollout_line.item
-            && let Some(error) = completed.error
-        {
-            rejected.extend(error.rejected_audio_file_ids);
+        match rollout_line.item {
+            RolloutItem::EventMsg(EventMsg::TurnComplete(completed)) => {
+                if let Some(error) = completed.error {
+                    rejected.extend(error.rejected_audio_file_ids);
+                }
+            }
+            RolloutItem::EventMsg(EventMsg::ThreadRolledBack(rollback)) => {
+                retention.rollback(rollback.num_turns);
+            }
+            RolloutItem::ResponseItem(envelope) => {
+                retention.record(&envelope);
+            }
+            RolloutItem::InterAgentCommunication(communication) => {
+                retention.record_item(&communication.to_model_input_item());
+            }
+            _ => {}
         }
     }
-    Ok(rejected)
+    Ok((rejected, retention.finish()))
 }
 
 /// The prompt input for one model step (design D3 A1/A2, D4, D5).
@@ -351,7 +368,10 @@ impl Session {
     pub(crate) async fn vrs_history(&self) -> Result<ContextManager, VrsError> {
         let items = vrs_input(self, None).await?;
         let state = self.state.lock().await;
-        Ok(state.history.with_assembled_items(items))
+        let always_retained = Arc::unwrap_or_clone(state.history.always_retained());
+        let mut history = state.history.with_assembled_items(items);
+        history.restore_always_retained(always_retained);
+        Ok(history)
     }
 
     /// One immutable generation per live Session; insertion and assembly share this identity,
@@ -653,6 +673,82 @@ mod tests {
             }
         }
         assert_eq!(normalized, vec![unchanged]);
+    }
+
+    #[tokio::test]
+    async fn path_durable_facts_restore_retention_and_apply_rollbacks() {
+        use codex_history::CodexHarnessMetadata;
+        use codex_history::ResponseItemEnvelope;
+        use codex_history::RolloutItem;
+        use codex_protocol::ResponseItemId;
+        use codex_protocol::protocol::ErrorEvent;
+        use codex_protocol::protocol::EventMsg;
+        use codex_protocol::protocol::ThreadRolledBackEvent;
+        use codex_protocol::protocol::TurnCompleteEvent;
+
+        let retained = |id: &str, turn_id: &str, text: &str| {
+            let mut item = message(
+                "user",
+                vec![ContentItem::InputText {
+                    text: text.to_string(),
+                }],
+            );
+            item.set_id(Some(ResponseItemId::with_suffix("msg", id)));
+            item.set_turn_id_if_missing(turn_id);
+            ResponseItemEnvelope {
+                item,
+                metadata: Some(CodexHarnessMetadata {
+                    retain_across_windows: Some(true),
+                    ..Default::default()
+                }),
+            }
+        };
+        let first = retained("retained-first", "turn-first", "keep first");
+        let rolled_back = retained("retained-rolled-back", "turn-second", "remove second");
+        let items = vec![
+            RolloutItem::ResponseItem(first.clone()),
+            RolloutItem::ResponseItem(rolled_back),
+            RolloutItem::EventMsg(EventMsg::ThreadRolledBack(ThreadRolledBackEvent {
+                num_turns: 1,
+            })),
+            RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+                root_turn_id: None,
+                turn_id: "turn-audio-rejection".to_string(),
+                last_agent_message: None,
+                error: Some(ErrorEvent {
+                    message: "invalid recording".to_string(),
+                    codex_error_info: None,
+                    rejected_audio_file_ids: vec!["file_rejected".to_string()],
+                    misalignment: None,
+                }),
+                started_at: None,
+                completed_at: None,
+                duration_ms: None,
+                time_to_first_token_ms: None,
+            })),
+        ];
+        let file = tempfile::NamedTempFile::new().expect("rollout file");
+        let path = file.path().to_path_buf();
+        let encoded = items
+            .iter()
+            .enumerate()
+            .map(|(ordinal, item)| {
+                codex_rollout::encode_rollout_line(item, Some(ordinal as u64))
+                    .expect("encode rollout line")
+            })
+            .collect::<Vec<_>>()
+            .concat();
+        std::fs::write(&path, encoded).expect("write rollout file");
+
+        let (rejected, always_retained) = super::durable_facts_for_path(&path)
+            .await
+            .expect("restore durable facts");
+
+        assert_eq!(
+            rejected,
+            std::collections::BTreeSet::from(["file_rejected".to_string()])
+        );
+        assert_eq!(always_retained, vec![first]);
     }
 
     #[tokio::test]

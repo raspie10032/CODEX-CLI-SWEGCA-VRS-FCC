@@ -1,20 +1,21 @@
 //! Background model warmup shared by startup and idle-thread resume.
 //! One scheduled task owns the prepared client session until the next regular
 //! turn consumes it; shutdown and turn cancellation use the same handoff.
+//! Warmup settings are captured when the worker constructs its turn.
 
+use futures::FutureExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-use futures::FutureExt;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument;
 use tracing::info;
+use tracing::info_span;
 use tracing::instrument;
-use tracing::trace_span;
 use tracing::warn;
 
 use crate::client::ModelClientSession;
@@ -28,14 +29,14 @@ use codex_otel::STARTUP_PREWARM_DURATION_METRIC;
 use codex_otel::SessionTelemetry;
 use codex_protocol::error::Result as CodexResult;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub(crate) enum PrewarmInput {
     Base,
     History,
 }
 
 impl PrewarmInput {
-    fn as_str(self) -> &'static str {
+    fn as_str(&self) -> &'static str {
         match self {
             Self::Base => "base",
             Self::History => "history",
@@ -252,6 +253,14 @@ impl Session {
         let session_telemetry = self.services.session_telemetry.clone();
         let started_at = Instant::now();
         let startup_prewarm_session = Arc::clone(self);
+        let input_label = input.as_str();
+        let prewarm_span = info_span!(
+            "startup_prewarm",
+            otel.name = "startup_prewarm",
+            thread.id = %self.thread_id(),
+            prewarm.input = input_label,
+        )
+        .or_current();
         let startup_prewarm = tokio::spawn(
             async move {
                 let result = schedule_startup_prewarm_inner(startup_prewarm_session, input).await;
@@ -264,16 +273,11 @@ impl Session {
                 session_telemetry.record_duration(
                     STARTUP_PREWARM_DURATION_METRIC,
                     started_at.elapsed(),
-                    &[("status", status), ("input", input.as_str())],
+                    &[("status", status), ("input", input_label)],
                 );
                 result
             }
-            .instrument(trace_span!(
-                "startup_prewarm",
-                otel.name = "startup_prewarm",
-                thread.id = %self.thread_id(),
-                prewarm.input = input.as_str(),
-            )),
+            .instrument(prewarm_span),
         );
         state.set_session_startup_prewarm(SessionStartupPrewarmHandle::new(
             startup_prewarm,
@@ -413,6 +417,7 @@ async fn schedule_startup_prewarm_inner(
             history
         }
     };
+    let reuse_response = true;
     let startup_prompt = build_prompt(
         prompt_input,
         step_context.as_ref(),
@@ -435,7 +440,7 @@ async fn schedule_startup_prewarm_inner(
     // Prewarm establishes the request baseline before the first turn can change effort.
     client_session
         .prewarm_websocket(
-            &startup_prompt,
+            &Arc::new(startup_prompt),
             &step_context.settings.model_info,
             &step_context.session_telemetry,
             session
@@ -444,6 +449,7 @@ async fn schedule_startup_prewarm_inner(
             step_context.settings.reasoning_summary,
             step_context.settings.service_tier.clone(),
             &responses_metadata,
+            reuse_response,
         )
         .await?;
     startup_turn_context.session_telemetry.record_startup_phase(

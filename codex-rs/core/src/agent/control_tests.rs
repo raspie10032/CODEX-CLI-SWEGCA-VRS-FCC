@@ -13,7 +13,6 @@ use crate::agent::next_thread_spawn_depth;
 use crate::agent::types::AgentMessage;
 use crate::agent::types::LiveAgent;
 use crate::agent::types::MessageDeliveryMode;
-use crate::agent::types::ResolvedMultiAgentV2UsageHints;
 use crate::agent::types::SpawnAgentForkMode;
 use crate::agent::types::SpawnAgentOptions;
 use crate::agent_communication::AgentCommunicationContext;
@@ -21,20 +20,24 @@ use crate::agent_communication::AgentCommunicationKind;
 use crate::config::AgentRoleConfig;
 use crate::config::Config;
 use crate::config::ConfigBuilder;
-use crate::context::BaseInstructionsFragment;
 use crate::context::ContextualUserFragment;
-use crate::context::ManagedDeveloperInstructions;
 use crate::context::ModelInstructions;
 use crate::context::MultiAgentRoleInstructions;
 use crate::context::SubagentNotification;
-use crate::context::world_state::IncrementalToolsUpdate;
 use crate::init_state_db;
 use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::session::SessionSettingsUpdate;
 use crate::session::step_context::StepContext;
+use crate::session::step_settings::StepSettingsUpdate;
+use crate::session::tests::update_selected_settings_for_test;
 use crate::thread_manager::ForkSnapshot;
 use crate::thread_manager::StartThreadOptions;
+use crate::tools::context::ToolCallSource;
+use crate::tools::context::ToolInvocation;
+use crate::tools::context::ToolPayload;
 use crate::tools::handlers::multi_agents_common::thread_spawn_source;
+use crate::tools::handlers::multi_agents_v2::SendMessageHandler;
+use crate::tools::registry::ToolExecutor;
 use assert_matches::assert_matches;
 use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::Instructions;
@@ -43,15 +46,20 @@ use codex_extension_api::LoadedUserInstructions;
 use codex_extension_api::ThreadInstructionsProvider;
 use codex_extension_api::empty_extension_registry;
 use codex_features::Feature;
-use codex_history::CompactedItem;
+use codex_history::CodexHarnessMetadata;
+use codex_history::ImageReplaySource;
 use codex_history::InitialHistory;
+use codex_history::ResponseItemEnvelope;
 use codex_history::ResumedHistory;
+use codex_history::RetainedSource;
+use codex_history::RetainedSourceId;
+use codex_history::RetainedSourceRole;
 use codex_history::RolloutItem;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
 use codex_models_manager::manager::ModelCatalogSettings;
-use codex_models_manager::model_info::model_info_from_slug;
 use codex_protocol::AgentPath;
+use codex_protocol::RequestCountry;
 use codex_protocol::ResponseItemId;
 use codex_protocol::capabilities::CapabilityRootLocation;
 use codex_protocol::capabilities::SelectedCapabilityRoot;
@@ -74,11 +82,11 @@ use codex_protocol::mcp::OPENAI_FORM_EXTENSION_ID;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ContentItemKind;
 use codex_protocol::models::FunctionCallOutputPayload;
+use codex_protocol::models::ImageDetail;
 use codex_protocol::models::InternalChatMessageMetadataPassthrough;
 use codex_protocol::models::MessagePhase;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::ResponseItem;
-use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EnvironmentConfigState;
@@ -92,8 +100,6 @@ use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::ThreadSettingsAppliedEvent;
 use codex_protocol::protocol::ThreadSettingsOverrides;
 use codex_protocol::protocol::ThreadSettingsSnapshot;
-use codex_protocol::protocol::TokenUsage;
-use codex_protocol::protocol::TokenUsageRecord;
 use codex_protocol::protocol::TurnAbortReason;
 use codex_protocol::protocol::TurnAbortedEvent;
 use codex_protocol::protocol::TurnCompleteEvent;
@@ -133,7 +139,7 @@ impl LocalAgentControl {
     pub(crate) async fn spawn_agent_with_metadata(
         &self,
         config: Config,
-        initial_input: Vec<UserInput>,
+        initial_input: Vec<ResolvedUserInput>,
         source: SessionSource,
         options: SpawnAgentOptions,
     ) -> CodexResult<LiveAgent> {
@@ -173,8 +179,8 @@ async fn test_config() -> (TempDir, Config) {
     test_config_with_cli_overrides(Vec::new()).await
 }
 
-fn text_input(text: &str) -> Vec<UserInput> {
-    vec![UserInput::Text {
+fn text_input(text: &str) -> Vec<ResolvedUserInput> {
+    vec![ResolvedUserInput::Text {
         text: text.to_string(),
         text_elements: Vec::new(),
     }]
@@ -576,14 +582,7 @@ async fn assert_thread_not_loaded(manager: &ThreadManager, thread_id: ThreadId) 
 async fn send_input_errors_when_manager_dropped() {
     let control = LocalAgentControl::default();
     let err = control
-        .send_input(
-            ThreadId::new(),
-            vec![UserInput::Text {
-                text: "hello".to_string(),
-                text_elements: Vec::new(),
-            }],
-            Default::default(),
-        )
+        .send_input(ThreadId::new(), text_input("hello"), Default::default())
         .await
         .expect_err("send_input should fail without a manager");
     assert_eq!(
@@ -963,14 +962,7 @@ async fn send_input_errors_when_thread_missing() {
     let thread_id = ThreadId::new();
     let err = harness
         .control
-        .send_input(
-            thread_id,
-            vec![UserInput::Text {
-                text: "hello".to_string(),
-                text_elements: Vec::new(),
-            }],
-            Default::default(),
-        )
+        .send_input(thread_id, text_input("hello"), Default::default())
         .await
         .expect_err("send_input should fail for missing thread");
     assert_matches!(
@@ -1045,19 +1037,22 @@ async fn send_input_submits_user_message() {
     let harness = AgentControlHarness::new().await;
     let (thread_id, thread) = harness.start_thread().await;
 
-    let submission_id = harness
-        .control
-        .send_input(
-            thread_id,
-            vec![UserInput::Text {
-                text: "hello from tests".to_string(),
-                text_elements: Vec::new(),
-            }],
-            Default::default(),
-        )
+    let control = thread
+        .session
+        .services
+        .local_agent_runtime
+        .control(thread.session.session_id());
+    let receipt = control
+        .send(SendRequest {
+            caller: ThreadId::new(),
+            target: AgentTarget::Id(thread_id),
+            resume_config: harness.config.clone(),
+            input: AgentInput::UserInput(text_input("hello from tests")),
+            start_options: Default::default(),
+        })
         .await
-        .expect("send_input should succeed");
-    assert!(!submission_id.is_empty());
+        .expect("a live recipient does not require a registered sender");
+    assert!(!receipt.submission_id.is_empty());
     wait_for_recorded_user_message(thread.as_ref(), "hello from tests").await;
 }
 
@@ -1291,6 +1286,7 @@ async fn spawn_v2_reload_test_child(
             text_input("hello child"),
             source,
             SpawnAgentOptions {
+                request_country: parent.config_snapshot().await.request_country,
                 parent_thread_id: Some(parent.session.thread_id),
                 ..Default::default()
             },
@@ -1304,6 +1300,8 @@ async fn check_v2_agent_reload(route: V2ReloadRoute) {
     let _ = config.features.enable(Feature::MultiAgentV2);
     let _ = config.features.enable(Feature::Sqlite);
     config.model = Some("gpt-5.6-sol".to_string());
+    let germany = RequestCountry::from_iso_code("DE").unwrap();
+    let united_states = RequestCountry::from_iso_code("US").unwrap();
     config.multi_agent_v2.max_concurrent_threads_per_session = 3;
     config.permissions.allow_login_shell = true;
     config
@@ -1316,6 +1314,7 @@ async fn check_v2_agent_reload(route: V2ReloadRoute) {
     let root = harness
         .manager
         .start_thread(StartThreadOptions {
+            request_country: germany.clone(),
             history_mode: Some(ThreadHistoryMode::Paginated),
             client_mcp_extensions: client_mcp_extensions.clone(),
             user_instructions: Some(LoadedUserInstructions {
@@ -1333,6 +1332,7 @@ async fn check_v2_agent_reload(route: V2ReloadRoute) {
         })
         .await
         .expect("start root thread");
+    assert_eq!(root.thread.config_snapshot().await.request_country, germany);
     let control = root
         .thread
         .session
@@ -1446,10 +1446,14 @@ async fn check_v2_agent_reload(route: V2ReloadRoute) {
                         parent_turn.config.cwd.clone(),
                         vec![selection],
                     )),
+                    step_settings: StepSettingsUpdate {
+                        request_country: Some(united_states.clone()),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 })
                 .await
-                .expect("save parent environments");
+                .expect("save parent environments and country");
             parent_thread.session.mark_interrupted();
             // The fixture has no task runner to finish the turn or consume child results.
             *parent_thread.session.active_turn.lock().await = None;
@@ -1473,6 +1477,13 @@ async fn check_v2_agent_reload(route: V2ReloadRoute) {
         .get_thread(spawned_agent.thread_id)
         .await
         .expect("reloaded child thread should exist");
+    assert_eq!(
+        reloaded_child.config_snapshot().await.request_country,
+        match route {
+            V2ReloadRoute::Sender => germany,
+            V2ReloadRoute::NestedParent => united_states,
+        },
+    );
     if matches!(route, V2ReloadRoute::Sender) {
         assert_eq!(
             harness
@@ -1731,10 +1742,12 @@ async fn cold_resume_with_thread_instructions_preserves_lazy_v2_child_inheritanc
     let (home, mut config) = test_config().await;
     let _ = config.features.enable(Feature::MultiAgentV2);
     let _ = config.features.enable(Feature::Sqlite);
+    let admitted_country = RequestCountry::from_iso_code("DE").unwrap();
     let harness = AgentControlHarness::new_with_config(home, config).await;
     let parent = harness
         .manager
         .start_thread(StartThreadOptions {
+            request_country: admitted_country.clone(),
             history_mode: Some(ThreadHistoryMode::Legacy),
             thread_instructions_provider: Some(Arc::new(TestThreadInstructionsProvider {
                 text: "initial thread instructions".into(),
@@ -1814,6 +1827,7 @@ async fn cold_resume_with_thread_instructions_preserves_lazy_v2_child_inheritanc
     });
     let resumed_parent = resumed_manager
         .start_thread(StartThreadOptions {
+            request_country: admitted_country.clone(),
             initial_history,
             session_source: Some(SessionSource::Exec),
             thread_instructions_provider: Some(provider.clone()),
@@ -1837,30 +1851,37 @@ async fn cold_resume_with_thread_instructions_preserves_lazy_v2_child_inheritanc
     assert_thread_not_loaded(&resumed_manager, worker_thread_id).await;
 
     if nested {
-        let turn = resumed_parent.thread.session.new_default_turn().await;
-        resumed_parent
-            .thread
-            .session
-            .services
-            .agent_control
-            .send(crate::SendRequest {
-                caller: parent_thread_id,
-                target: crate::AgentTarget::Id(target_thread_id),
-                resume_config: crate::agent::child_config::build_agent_resume_config(&turn)
-                    .expect("capture resume config"),
-                input: crate::AgentInput::Message {
-                    message: AgentMessage::Plaintext("hello after resume".to_string()),
-                    mode: MessageDeliveryMode::QueueOnly,
+        let session = &resumed_parent.thread.session;
+        let turn = session.new_default_turn().await;
+        assert_eq!(turn.request_country(), &admitted_country);
+        let mut issuing_step = StepContext::for_test(Arc::clone(&turn));
+        let issuing_country = RequestCountry::from_iso_code("US").unwrap();
+        update_selected_settings_for_test(
+            Arc::make_mut(&mut Arc::make_mut(&mut issuing_step).settings),
+            |selected| selected.request_country = issuing_country,
+        );
+        SendMessageHandler
+            .handle(ToolInvocation {
+                session: Arc::clone(session),
+                turn,
+                step_context: issuing_step,
+                cancellation_token: CancellationToken::new(),
+                tracker: Default::default(),
+                call_id: "queue-only-cold-load".to_string(),
+                tool_name: codex_tools::ToolName::plain("send_message"),
+                source: ToolCallSource::DirectPlaintextMessage,
+                payload: ToolPayload::Function {
+                    arguments: serde_json::json!({
+                        "target": target_thread_id.to_string(),
+                        "message": "hello after resume",
+                    })
+                    .to_string(),
                 },
-                start_options: TurnStartOptions {
-                    root_turn_id: turn.turn_metadata_state.root_turn_id(),
-                    turn_trigger: turn.turn_metadata_state.current_turn_trigger(),
-                    cyber_access_program: turn.cyber_access_program,
-                    ..Default::default()
-                },
+                native_call: None,
+                environments: Default::default(),
             })
             .await
-            .expect("message should reload the grandchild");
+            .expect("queue-only message should reload the grandchild");
         assert_thread_not_loaded(&resumed_manager, worker_thread_id).await;
     } else {
         resumed_manager
@@ -1872,6 +1893,14 @@ async fn cold_resume_with_thread_instructions_preserves_lazy_v2_child_inheritanc
         .get_thread(target_thread_id)
         .await
         .expect("resumed target should be loaded");
+    assert_eq!(
+        resumed_target.config_snapshot().await.request_country,
+        if nested {
+            RequestCountry::UNKNOWN
+        } else {
+            admitted_country
+        },
+    );
     let inherited = resumed_target.session.inherited_instructions().await;
     let root_provider = resumed_parent
         .thread
@@ -2710,172 +2739,6 @@ async fn spawn_agent_without_fork_from_paginated_parent_stays_fresh_and_paginate
 }
 
 #[tokio::test]
-async fn spawn_agent_fork_sanitizes_inherited_compaction_metadata() {
-    let mut harness = AgentControlHarness::new().await;
-    let _ = harness.config.features.disable(Feature::MultiAgentV2);
-
-    let (parent_thread_id, parent_thread) = harness.start_paginated_thread().await;
-    let parent_resume_metadata = codex_history::CompactionResumeMetadata {
-        rejected_audio_file_ids: Default::default(),
-        dynamic_tools: None,
-        multi_agent_version: Some(MultiAgentVersion::V2),
-        last_started_turn_id: Some("parent-turn".to_string()),
-        turn_attribution: Some(codex_history::TurnAttribution {
-            turn_id: "parent-turn".to_string(),
-            turn_trigger: Some("automation".to_string()),
-            parent_turn_id: Some("initiating-turn".to_string()),
-            initiating_agent_path: Some(codex_protocol::AgentPath::root()),
-            root_turn_id: Some("root-turn".to_string()),
-        }),
-        previous_turn_settings: Some(codex_history::PreviousTurnSettings {
-            model: "parent-model".into(),
-            comp_hash: None,
-            cyber_access_program: None,
-            realtime_active: None,
-        }),
-    };
-    let parent_usage = TokenUsage {
-        total_tokens: 120,
-        ..TokenUsage::default()
-    };
-    let parent_record = TokenUsageRecord {
-        thread_id: parent_thread_id,
-        turn_id: "parent-turn".to_string(),
-        session_id: parent_thread.session.session_id(),
-        root_turn_id: "parent-turn".to_string(),
-        response_id: "parent-response".to_string(),
-        usage: parent_usage.clone(),
-        turn_token_usage: parent_usage.clone(),
-        thread_token_usage: parent_usage,
-    };
-    let parent_spawn_call_id = "spawn-call-token-usage".to_string();
-    parent_thread
-        .session
-        .persist_rollout_items(&[
-            RolloutItem::Compacted(Box::new(CompactedItem {
-                message: String::new(),
-                replacement_history: Some(vec![user_message("compacted parent context").into()]),
-                retained_context: None,
-                guardian_history: None,
-                mcp_resource_origins: None,
-                window_number: Some(1),
-                first_window_id: None,
-                previous_window_id: None,
-                window_id: None,
-                compaction_response_id: None,
-                latest_token_usage_record: Some(parent_record.clone()),
-                resume_metadata: Some(parent_resume_metadata.clone()),
-            })),
-            RolloutItem::TokenUsageRecord(parent_record),
-            rollout_response_item(spawn_agent_call(&parent_spawn_call_id)),
-        ])
-        .await;
-
-    let child_thread_id = harness
-        .spawn_anonymous_child(
-            parent_thread_id,
-            SpawnAgentOptions {
-                fork_parent_spawn_call_id: Some(parent_spawn_call_id),
-                fork_mode: Some(SpawnAgentForkMode::FullHistory),
-                ..Default::default()
-            },
-        )
-        .await;
-    let child_thread = harness
-        .manager
-        .get_thread(child_thread_id)
-        .await
-        .expect("child thread should be registered");
-
-    let child_usage = TokenUsage {
-        total_tokens: 80,
-        ..TokenUsage::default()
-    };
-    assert!(
-        !child_thread
-            .session
-            .clone_history()
-            .await
-            .retained_context()
-            .user_messages_complete(),
-        "V1 forks lack complete retained authorization in both context modes"
-    );
-    let turn_context = child_thread.session.new_default_turn().await;
-    child_thread
-        .session
-        .record_observed_response_completed(
-            turn_context.as_ref(),
-            "child-response",
-            Some(&child_usage),
-            /*usage_metadata*/ None,
-        )
-        .await;
-    child_thread
-        .flush_rollout()
-        .await
-        .expect("child rollout should flush");
-    let rollout_path = child_thread
-        .rollout_path()
-        .expect("child rollout should exist");
-    let lines = std::fs::read_to_string(&rollout_path)
-        .expect("read child rollout")
-        .lines()
-        .map(|line| codex_rollout::parse_rollout_line(line).expect("parse rollout line"))
-        .collect::<Vec<_>>();
-    assert!(
-        !lines.iter().any(|line| {
-            matches!(
-                &line.item,
-                RolloutItem::TokenUsageRecord(record) if record.thread_id == parent_thread_id
-            )
-        }),
-        "child rollout should not inherit parent token usage records"
-    );
-    assert!(
-        lines.iter().all(|line| {
-            !matches!(
-                &line.item,
-                RolloutItem::Compacted(compacted)
-                    if compacted.latest_token_usage_record.is_some()
-            )
-        }),
-        "child rollout should not inherit parent token usage checkpoints"
-    );
-    let inherited_resume_metadata = lines
-        .iter()
-        .find_map(|line| match &line.item {
-            RolloutItem::Compacted(item) => item.resume_metadata.as_ref(),
-            _ => None,
-        })
-        .expect("inherited checkpoint");
-    assert_eq!(
-        inherited_resume_metadata,
-        &codex_history::CompactionResumeMetadata {
-            multi_agent_version: Some(MultiAgentVersion::V1),
-            turn_attribution: None,
-            ..parent_resume_metadata
-        }
-    );
-    let child_record = lines.iter().rev().find_map(|line| match &line.item {
-        RolloutItem::TokenUsageRecord(record) => Some(record),
-        _ => None,
-    });
-    assert_eq!(
-        child_record,
-        Some(&TokenUsageRecord {
-            thread_id: child_thread_id,
-            turn_id: turn_context.sub_id.clone(),
-            session_id: child_thread.session.session_id(),
-            root_turn_id: turn_context.sub_id.clone(),
-            response_id: "child-response".to_string(),
-            usage: child_usage.clone(),
-            turn_token_usage: child_usage.clone(),
-            thread_token_usage: child_usage,
-        })
-    );
-}
-
-#[tokio::test]
 async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
     let managed_fragment = "<managed_developer_instructions>\nParent developer instructions.\n</managed_developer_instructions>";
     let persistent_fragment =
@@ -3300,787 +3163,6 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         .expect("parent shutdown should submit");
 }
 
-#[test_case::test_case(true; "marked catalog hints")]
-#[test_case::test_case(false; "unmarked bundled hints")]
-#[tokio::test]
-async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history(marked: bool) {
-    let harness = AgentControlHarness::new().await;
-    let mut parent_config = harness.config.clone();
-    let _ = parent_config.features.enable(Feature::MultiAgentV2);
-    parent_config.developer_instructions = Some("Parent developer instructions.".to_string());
-    parent_config.multi_agent_v2.root_agent_usage_hint_text =
-        Some("Parent root guidance.".to_string());
-    parent_config.multi_agent_v2.subagent_usage_hint_text =
-        Some("Parent subagent guidance.".to_string());
-    let mut child_config = harness.config.clone();
-    child_config.multi_agent_v2.preserve_fork_prefix = false;
-    let _ = child_config.features.enable(Feature::MultiAgentV2);
-    child_config.developer_instructions = Some("Child developer instructions.".to_string());
-    child_config.multi_agent_v2.subagent_developer_instructions =
-        Some("Child developer instructions.".to_string());
-    child_config.multi_agent_v2.root_agent_usage_hint_text =
-        Some("Child root guidance.".to_string());
-    child_config.multi_agent_v2.subagent_usage_hint_text =
-        Some("Child subagent guidance.".to_string());
-    let new_thread = harness
-        .manager
-        .start_thread(StartThreadOptions::new(parent_config))
-        .await
-        .expect("start parent thread");
-    let parent_thread_id = new_thread.thread_id;
-    let parent_thread = new_thread.thread;
-    let turn_context = parent_thread.session.new_default_turn().await;
-    let parent_spawn_call_id = "spawn-call-compacted-usage-hints".to_string();
-    let catalog_role = |base: &str| MultiAgentRoleInstructions::Composed {
-        base: base.to_string(),
-        marked,
-        omit_update_plan_instructions: false,
-        max_concurrency: 2,
-        wait_agent_enabled: false,
-        expose_model_overrides: false,
-    };
-    let parent_task = InterAgentCommunication::new(
-        AgentPath::root(),
-        AgentPath::root().join("worker").expect("valid worker path"),
-        Vec::new(),
-        "compacted parent delegated task".to_string(),
-        /*trigger_turn*/ true,
-    );
-    let tool_declarations = ResponseItem::AdditionalTools {
-        id: None,
-        role: "developer".to_string(),
-        tools: Arc::from([serde_json::json!({"type": "function", "name": "compacted_tool"})]),
-    };
-    let tools_update = ContextualUserFragment::into(IncrementalToolsUpdate(
-        codex_prompts::ResolvedIncrementalToolMessages::default().tool_update_hint,
-    ));
-    let replacement_history = vec![
-        tools_update.clone(),
-        tool_declarations.clone(),
-        ContextualUserFragment::into(crate::context::GuardianApprovedAction::new("parent-private-release".to_owned())),
-        ResponseItem::Message {
-            status: None,
-            encrypted_content: None,
-            id: None,
-            role: "user".to_string(),
-            content: vec![ContentItem::InputText {
-                text: "compacted parent summary".to_string(),
-            }],
-            phase: None,
-            internal_chat_message_metadata_passthrough: None,
-        },
-        ContextualUserFragment::into(catalog_role("Catalog parent root guidance.")),
-        parent_task.to_model_input_item(),
-        ResponseItem::Message {
-            status: None,
-            encrypted_content: None,
-            id: None,
-            role: "developer".to_string(),
-            content: vec![ContentItem::InputText {
-                text: "Previous parent root guidance.".to_string(),
-            }],
-            phase: None,
-            internal_chat_message_metadata_passthrough: Some(
-                InternalChatMessageMetadataPassthrough {
-                    content_item_kinds: Some(vec![ContentItemKind("multi_agent.usage_hint".to_string())]),
-                    ..Default::default()
-                },
-            ),
-        },
-        ResponseItem::Message {
-            status: None,
-            encrypted_content: None,
-            id: None,
-            role: "developer".to_string(),
-            content: vec![
-                ContentItem::InputText {
-                    text: "Compacted context before.\nParent developer instructions.\nCompacted context after."
-                        .to_string(),
-                },
-                ContentItem::InputText {
-                    text: "<multi_agent_mode>Proactive multi-agent delegation is active.</multi_agent_mode>"
-                        .to_string(),
-                },
-                ContentItem::InputText {
-                    text: "Preserved compacted developer context.".to_string(),
-                },
-            ],
-            phase: None,
-            internal_chat_message_metadata_passthrough: None,
-        },
-    ];
-    let answer_event: codex_history::RetainedContextEvent = serde_json::from_value(serde_json::json!({
-        "type": "verified_answer", "turn_id": "parent-answer-turn", "call_id": "parent-answer-call",
-        "questions": [{"question": "Parent-local action?", "answer": "Parent only."}]
-    })).expect("verified answer fixture");
-    let delivery = codex_history::ResponseItemEnvelope {
-        item: serde_json::from_value(serde_json::json!({
-            "type": "function_call_output", "id": "parent-delivery",
-            "name": "send_message_to_thread", "output": "Parent delivery"
-        }))
-        .unwrap(),
-        metadata: Some(codex_history::CodexHarnessMetadata {
-            user_input_order: Some(7),
-            sender_user_messages: Some(Box::new(codex_history::SenderUserMessages {
-                receiver_turn_id: "parent-turn".to_owned(),
-                receiver_message_id: "parent-delivery".to_owned(),
-                text: "Parent-only sender context".to_owned(),
-            })),
-            ..Default::default()
-        }),
-    };
-    let mut retained_context = codex_history::RetainedContext::default();
-    retained_context.record(
-        &answer_event,
-        &codex_protocol_test_support::uuid_v7_item_id_generator_for_test(),
-    );
-    retained_context.record_sender_user_messages(delivery.metadata.as_ref().unwrap());
-    parent_thread
-        .session
-        .persist_rollout_items(&[
-            RolloutItem::Compacted(Box::new(CompactedItem {
-                message: String::new(),
-                replacement_history: Some(
-                    replacement_history
-                        .into_iter()
-                        .map(Into::into)
-                        .chain([delivery.clone()])
-                        .collect(),
-                ),
-                retained_context: Some(retained_context),
-                guardian_history: Some(codex_history::GuardianHistoryCheckpoint(vec![
-                    user_message("Parent-local approval must not be inherited.").into(),
-                ])),
-                mcp_resource_origins: None,
-                window_number: None,
-                first_window_id: None,
-                previous_window_id: None,
-                window_id: None,
-                compaction_response_id: None,
-                latest_token_usage_record: None,
-                resume_metadata: None,
-            })),
-            RolloutItem::RetainedContext(answer_event),
-            RolloutItem::ResponseItem(delivery),
-            RolloutItem::TurnContext(turn_context.to_turn_context_item()),
-            rollout_response_item(spawn_agent_call(&parent_spawn_call_id)),
-        ])
-        .await;
-    parent_thread
-        .session
-        .ensure_rollout_materialized(PersistContext::Standard)
-        .await;
-    parent_thread
-        .session
-        .flush_rollout()
-        .await
-        .expect("parent rollout should flush");
-
-    let child_thread_id = harness
-        .control
-        .spawn_agent_with_metadata(
-            child_config,
-            text_input("child task"),
-            SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
-                parent_thread_id,
-                depth: 1,
-                agent_path: None,
-                agent_nickname: None,
-                agent_role: None,
-            }),
-            SpawnAgentOptions {
-                fork_parent_spawn_call_id: Some(parent_spawn_call_id),
-                fork_mode: Some(SpawnAgentForkMode::FullHistory),
-                multi_agent_v2_usage_hints: Some(ResolvedMultiAgentV2UsageHints {
-                    root: None,
-                    subagent: Some(catalog_role("Catalog child subagent guidance.")),
-                }),
-                ..Default::default()
-            },
-        )
-        .await
-        .expect("forked spawn should sanitize compacted usage hints")
-        .thread_id;
-
-    let child_thread = harness
-        .manager
-        .get_thread(child_thread_id)
-        .await
-        .expect("child thread should be registered");
-    let history = child_thread.session.clone_history().await;
-    assert_eq!(
-        strip_response_item_ids(
-            &history
-                .raw_items()
-                .filter(|item| {
-                    matches!(item, ResponseItem::AdditionalTools { .. })
-                        || matches!(item, ResponseItem::Message {
-                            internal_chat_message_metadata_passthrough: Some(metadata), ..
-                        } if metadata.content_item_kinds.as_ref().is_some_and(|kinds| {
-                            kinds.iter().any(|kind| kind.as_str() == IncrementalToolsUpdate::KIND)
-                        }))
-                })
-                .cloned()
-                .collect::<Vec<_>>()
-        ),
-        vec![tools_update, tool_declarations],
-        "full-history forks must retain tool update notices with declarations embedded in compaction checkpoints"
-    );
-    assert!(
-        !history_contains_text(
-            history.conversation_history_snapshot().review_items(),
-            "Parent-local approval must not be inherited.",
-        ),
-        "a subagent must not inherit its parent review checkpoint",
-    );
-    assert!(
-        !history_contains_text(history.raw_items(), "parent-private-release"),
-        "a subagent must not inherit parent-local approval messages",
-    );
-    let mut inherited_context = codex_history::RetainedContext::default();
-    inherited_context.reserve_order();
-    assert_eq!(history.retained_context(), &inherited_context);
-    assert!(
-        history_contains_text(history.raw_items(), "compacted parent summary"),
-        "forked child history should retain compacted non-hint content"
-    );
-    assert!(
-        !history_contains_text(history.raw_items(), "Catalog parent root guidance."),
-        "forked child history should strip the resolved parent hint from compacted replacement history"
-    );
-    assert!(
-        history_contains_text(history.raw_items(), "Catalog child subagent guidance."),
-        "full-history forked child should add the resolved child hint after compacted-history sanitization"
-    );
-    assert!(
-        !history
-            .raw_items()
-            .any(|item| matches!(item, ResponseItem::AgentMessage { .. })),
-        "forked child history should not inherit compacted parent agent messages"
-    );
-    assert!(
-        !history_contains_text(history.raw_items(), "Previous parent root guidance."),
-        "forked child history should strip stale parent hints from compacted replacement history"
-    );
-    assert!(
-        !history_contains_text(
-            history.raw_items(),
-            "Proactive multi-agent delegation is active."
-        ),
-        "forked child history should strip stale policy fragments from compound compacted messages"
-    );
-    assert!(
-        !history_contains_text(history.raw_items(), "Parent developer instructions."),
-        "forked child history should replace parent instructions in compacted replacement history"
-    );
-    assert!(
-        history_contains_text(
-            history.raw_items(),
-            "Compacted context before.\nChild developer instructions.\nCompacted context after."
-        ),
-        "forked child history should replace compacted parent instructions without removing surrounding context"
-    );
-    assert!(
-        history_contains_text(
-            history.raw_items(),
-            "Preserved compacted developer context."
-        ),
-        "forked child history should preserve unrelated compacted developer fragments"
-    );
-
-    let _ = harness
-        .control
-        .shutdown_live_agent(child_thread_id)
-        .await
-        .expect("child shutdown should submit");
-    let _ = parent_thread
-        .submit(Op::Shutdown {})
-        .await
-        .expect("parent shutdown should submit");
-}
-
-/// Full-history forks must restore child instructions when compaction discarded
-/// the only matching parent instruction fragment from effective history.
-#[tokio::test]
-async fn spawn_agent_full_fork_restores_instructions_after_compaction_discards_parent_fragment() {
-    let harness = AgentControlHarness::new().await;
-    let mut parent_config = harness.config.clone();
-    let _ = parent_config.features.enable(Feature::MultiAgentV2);
-    parent_config.developer_instructions = Some("Parent developer instructions.".to_string());
-    let mut child_config = parent_config.clone();
-    child_config.developer_instructions = Some("Child developer instructions.".to_string());
-    child_config.multi_agent_v2.subagent_developer_instructions =
-        Some("Child developer instructions.".to_string());
-
-    let new_thread = harness
-        .manager
-        .start_thread(StartThreadOptions::new(parent_config))
-        .await
-        .expect("start parent thread");
-    let parent_thread_id = new_thread.thread_id;
-    let parent_thread = new_thread.thread;
-    let turn_context = parent_thread.session.new_default_turn().await;
-    let parent_spawn_call_id = "spawn-call-compacted-stale-instructions".to_string();
-    let replacement_history = vec![
-        ResponseItem::Message {
-            status: None,
-            encrypted_content: None,
-            id: None,
-            role: "user".to_string(),
-            content: vec![ContentItem::InputText {
-                text: "compacted parent summary".to_string(),
-            }],
-            phase: None,
-            internal_chat_message_metadata_passthrough: None,
-        },
-        ResponseItem::Message {
-            status: None,
-            encrypted_content: None,
-            id: None,
-            role: "developer".to_string(),
-            content: vec![ContentItem::InputText {
-                text: "Preserved compacted developer context.".to_string(),
-            }],
-            phase: None,
-            internal_chat_message_metadata_passthrough: None,
-        },
-    ];
-
-    // Preserve the parent's live baseline while its durable checkpoint omits the
-    // developer fragment that appeared in obsolete pre-compaction history.
-    parent_thread
-        .session
-        .replace_history(
-            replacement_history.clone(),
-            Some(turn_context.to_turn_context_item()),
-        )
-        .await;
-    parent_thread
-        .session
-        .persist_rollout_items(&[
-            rollout_response_item(ResponseItem::Message {
-                status: None,
-                encrypted_content: None,
-                id: None,
-                role: "developer".to_string(),
-                content: vec![ContentItem::InputText {
-                    text: "Parent developer instructions.".to_string(),
-                }],
-                phase: None,
-                internal_chat_message_metadata_passthrough: None,
-            }),
-            RolloutItem::Compacted(Box::new(CompactedItem {
-                message: String::new(),
-                replacement_history: Some(
-                    replacement_history.into_iter().map(Into::into).collect(),
-                ),
-                retained_context: None,
-                guardian_history: None,
-                mcp_resource_origins: None,
-                window_number: None,
-                first_window_id: None,
-                previous_window_id: None,
-                window_id: None,
-                compaction_response_id: None,
-                latest_token_usage_record: None,
-                resume_metadata: None,
-            })),
-            RolloutItem::TurnContext(turn_context.to_turn_context_item()),
-            rollout_response_item(spawn_agent_call(&parent_spawn_call_id)),
-        ])
-        .await;
-    parent_thread
-        .session
-        .ensure_rollout_materialized(PersistContext::Standard)
-        .await;
-    parent_thread
-        .session
-        .flush_rollout()
-        .await
-        .expect("parent rollout should flush");
-
-    let child_thread_id = harness
-        .control
-        .spawn_agent_with_metadata(
-            child_config,
-            text_input("child task"),
-            SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
-                parent_thread_id,
-                depth: 1,
-                agent_path: None,
-                agent_nickname: None,
-                agent_role: None,
-            }),
-            SpawnAgentOptions {
-                fork_parent_spawn_call_id: Some(parent_spawn_call_id),
-                fork_mode: Some(SpawnAgentForkMode::FullHistory),
-                ..Default::default()
-            },
-        )
-        .await
-        .expect("forked spawn should preserve effective compacted instructions")
-        .thread_id;
-    let child_thread = harness
-        .manager
-        .get_thread(child_thread_id)
-        .await
-        .expect("child thread should be registered");
-    let history = child_thread.session.clone_history().await;
-    assert!(
-        history_contains_text(
-            history.raw_items(),
-            "Preserved compacted developer context."
-        ),
-        "full-history fork should preserve unrelated compacted developer fragments"
-    );
-    assert!(
-        !history_contains_text(history.raw_items(), "Parent developer instructions."),
-        "full-history fork should not restore stale pre-compaction parent instructions"
-    );
-    assert!(
-        history_contains_text(history.raw_items(), "Child developer instructions."),
-        "full-history fork should append child instructions absent from effective compacted history"
-    );
-
-    let _ = harness
-        .control
-        .shutdown_live_agent(child_thread_id)
-        .await
-        .expect("child shutdown should submit");
-    let _ = parent_thread
-        .submit(Op::Shutdown {})
-        .await
-        .expect("parent shutdown should submit");
-}
-
-/// A legacy compaction clears the child's baseline, so its first turn must
-/// rebuild configured developer instructions exactly once.
-#[test_case::test_case(false; "filtered fork")]
-#[test_case::test_case(true; "preserve prefix fallback")]
-#[tokio::test]
-async fn spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_once(
-    preserve_fork_prefix: bool,
-) {
-    let managed_policy = "Managed policy for every agent.";
-    let current_managed_fragment = format!(
-        "<managed_developer_instructions>\n{managed_policy}\n</managed_developer_instructions>"
-    );
-    let stale_managed_fragment =
-        "<managed_developer_instructions>\nOld managed policy.\n</managed_developer_instructions>";
-    for (case, parent_developer_instructions) in [
-        ("without parent instructions", None),
-        (
-            "with parent instructions",
-            Some("Parent developer instructions."),
-        ),
-    ] {
-        let mut harness = AgentControlHarness::new().await;
-        let mut parent_config = harness.config.clone();
-        let _ = parent_config.features.enable(Feature::MultiAgentV2);
-        let _ = parent_config.features.enable(Feature::IncrementalTools);
-        let mut model = model_info_from_slug("gpt-5.5");
-        model.use_responses_lite = true;
-        parent_config.model_catalog = Some(ModelsResponse {
-            models: vec![model],
-        });
-        parent_config.base_instructions = Some("Current model instructions.".to_string());
-        parent_config.developer_instructions = parent_developer_instructions.map(str::to_string);
-        let mut requirements = parent_config.config_layer_stack.requirements().clone();
-        requirements.additional_developer_instructions = Some(codex_config::Sourced::new(
-            managed_policy.to_string(),
-            codex_config::RequirementSource::Unknown,
-        ));
-        let mut requirements_toml = parent_config.config_layer_stack.requirements_toml().clone();
-        requirements_toml.additional_developer_instructions = Some(managed_policy.to_string());
-        parent_config.config_layer_stack = codex_config::ConfigLayerStack::new(
-            parent_config
-                .config_layer_stack
-                .all_layers_low_to_high()
-                .cloned()
-                .collect(),
-            requirements,
-            requirements_toml,
-        )
-        .expect("managed requirements stack");
-        let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("dummy"));
-        harness.manager = ThreadManager::new(
-            &parent_config,
-            crate::build_startup_models(
-                &parent_config,
-                auth_manager.clone(),
-                uuid::Uuid::new_v4().to_string(),
-                Arc::new(ModelCatalogSettings::disk(
-                    parent_config.codex_home.to_path_buf(),
-                )),
-            ),
-            crate::CodexAppsToolsCache::default(),
-            SessionSource::Exec,
-            Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
-            empty_extension_registry(),
-            Arc::new(crate::test_support::EmptyUserInstructionsProvider),
-            /*analytics_events_client*/ None,
-            crate::thread_manager::passthrough_image_store(),
-            crate::ThreadStoreBuilder::from_config(&parent_config, harness.state_db.clone())
-                .build(),
-            crate::thread_manager::local_agent_graph_store_from_state_db(harness.state_db.as_ref()),
-            /*attestation_provider*/ None,
-            /*external_time_provider*/ None,
-        );
-        harness.control = harness.manager.agent_control();
-        let mut child_config = parent_config.clone();
-        child_config.multi_agent_v2.preserve_fork_prefix = preserve_fork_prefix;
-        child_config.developer_instructions = Some("Child developer instructions.".to_string());
-        child_config.multi_agent_v2.subagent_developer_instructions =
-            Some("Child developer instructions.".to_string());
-
-        let new_thread = harness
-            .manager
-            .start_thread(StartThreadOptions::new(parent_config))
-            .await
-            .expect("start parent thread");
-        let parent_thread_id = new_thread.thread_id;
-        let parent_thread = new_thread.thread;
-        let turn_context = parent_thread.session.new_default_turn().await;
-        let parent_spawn_call_id = match parent_developer_instructions {
-            Some(_) => "spawn-call-legacy-compact-with-parent",
-            None => "spawn-call-legacy-compact-without-parent",
-        };
-        let parent_user_message = ResponseItem::Message {
-            status: None,
-            encrypted_content: None,
-            id: None,
-            role: "user".to_string(),
-            content: vec![ContentItem::InputText {
-                text: "parent task before legacy compaction".to_string(),
-            }],
-            phase: None,
-            internal_chat_message_metadata_passthrough: None,
-        };
-
-        // A live parent can reestablish its baseline after resuming a rollout
-        // whose older compaction record cannot restore that baseline to a child.
-        parent_thread
-            .session
-            .replace_history(
-                vec![parent_user_message.clone()],
-                Some(turn_context.to_turn_context_item()),
-            )
-            .await;
-        let mut rollout_items = vec![
-            rollout_response_item(parent_user_message),
-            RolloutItem::Compacted(Box::new(CompactedItem {
-                message: "legacy compacted summary".to_string(),
-                replacement_history: None,
-                retained_context: None,
-                guardian_history: None,
-                mcp_resource_origins: None,
-                window_number: None,
-                first_window_id: None,
-                previous_window_id: None,
-                window_id: None,
-                compaction_response_id: None,
-                latest_token_usage_record: None,
-                resume_metadata: Some(codex_history::CompactionResumeMetadata {
-                    rejected_audio_file_ids: Default::default(),
-                    dynamic_tools: None,
-                    multi_agent_version: Some(MultiAgentVersion::V2),
-                    last_started_turn_id: None,
-                    turn_attribution: None,
-                    previous_turn_settings: Some(codex_history::PreviousTurnSettings {
-                        model: "parent-model".into(),
-                        comp_hash: None,
-                        cyber_access_program: None,
-                        realtime_active: None,
-                    }),
-                }),
-            })),
-        ];
-        if let Some(instructions) = parent_developer_instructions {
-            rollout_items.push(rollout_response_item(ResponseItem::Message {
-                status: None,
-                encrypted_content: None,
-                id: None,
-                role: "developer".to_string(),
-                content: vec![ContentItem::InputText {
-                    text: instructions.to_string(),
-                }],
-                phase: None,
-                internal_chat_message_metadata_passthrough: None,
-            }));
-        }
-        rollout_items.push(rollout_response_item(ResponseItem::Message {
-            status: None,
-            encrypted_content: None,
-            id: None,
-            role: "developer".to_string(),
-            content: vec![ContentItem::InputText {
-                text: stale_managed_fragment.to_string(),
-            }],
-            phase: None,
-            internal_chat_message_metadata_passthrough: None,
-        }));
-        rollout_items.extend([
-            rollout_response_item(ContextualUserFragment::into(BaseInstructionsFragment(
-                "Original model instructions.".to_string(),
-            ))),
-            rollout_response_item(ContextualUserFragment::into(ModelInstructions {
-                model: None,
-                instructions: Some("Updated model instructions.".to_string()),
-            })),
-        ]);
-        rollout_items.push(rollout_response_item(ContextualUserFragment::into(
-            IncrementalToolsUpdate(
-                codex_prompts::ResolvedIncrementalToolMessages::default().tool_update_hint,
-            ),
-        )));
-        rollout_items.push(rollout_response_item(ResponseItem::AdditionalTools {
-            id: None,
-            role: "developer".to_string(),
-            tools: Arc::from([serde_json::json!({"type": "function", "name": "parent_tool"})]),
-        }));
-        rollout_items.push(RolloutItem::TurnContext(
-            turn_context.to_turn_context_item(),
-        ));
-        rollout_items.push(rollout_response_item(spawn_agent_call(
-            parent_spawn_call_id,
-        )));
-        parent_thread
-            .session
-            .persist_rollout_items(&rollout_items)
-            .await;
-        parent_thread
-            .session
-            .ensure_rollout_materialized(PersistContext::Standard)
-            .await;
-        parent_thread
-            .session
-            .flush_rollout()
-            .await
-            .expect("parent rollout should flush");
-
-        let child_thread_id = harness
-            .control
-            .spawn_agent_with_metadata(
-                child_config,
-                text_input("child task"),
-                SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
-                    parent_thread_id,
-                    depth: 1,
-                    agent_path: None,
-                    agent_nickname: None,
-                    agent_role: None,
-                }),
-                SpawnAgentOptions {
-                    fork_parent_spawn_call_id: Some(parent_spawn_call_id.to_string()),
-                    fork_mode: Some(SpawnAgentForkMode::FullHistory),
-                    ..Default::default()
-                },
-            )
-            .await
-            .expect("forked spawn should preserve legacy compacted history")
-            .thread_id;
-        let child_thread = harness
-            .manager
-            .get_thread(child_thread_id)
-            .await
-            .expect("child thread should be registered");
-        child_thread
-            .flush_rollout()
-            .await
-            .expect("flush child checkpoint");
-        let (items, _, _) = codex_rollout::RolloutRecorder::load_rollout_items(
-            &child_thread.rollout_path().expect("child rollout"),
-        )
-        .await
-        .expect("read child checkpoint");
-        assert_eq!(
-            items
-                .iter()
-                .filter_map(|item| match item {
-                    RolloutItem::ResponseItem(envelope)
-                        if matches!(&envelope.item, ResponseItem::Message {
-                            internal_chat_message_metadata_passthrough: Some(metadata), ..
-                        } if metadata.content_item_kinds.as_ref().is_some_and(|kinds| {
-                            kinds.iter().any(|kind| kind.as_str() == IncrementalToolsUpdate::KIND)
-                        })) =>
-                        Some(envelope.item.clone()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>(),
-            Vec::<ResponseItem>::new(),
-            "{case}: a legacy compaction fork must drop notices for tool declarations it rebuilds"
-        );
-        let inherited_state = items.into_iter().find_map(|item| match item {
-            RolloutItem::Compacted(item) => item.resume_metadata,
-            _ => None,
-        });
-        assert_eq!(
-            inherited_state,
-            Some(codex_history::CompactionResumeMetadata {
-                rejected_audio_file_ids: Default::default(),
-                dynamic_tools: None,
-                multi_agent_version: Some(MultiAgentVersion::V2),
-                last_started_turn_id: None,
-                turn_attribution: None,
-                previous_turn_settings: None,
-            })
-        );
-        while child_thread
-            .session
-            .reference_context_item()
-            .await
-            .is_none()
-        {
-            tokio::task::yield_now().await;
-        }
-        let history = child_thread.session.clone_history().await;
-        let mut instruction_count = 0;
-        let mut managed_instructions = Vec::new();
-        let mut model_instructions = Vec::new();
-        for item in history.raw_items() {
-            if let Some(base) = BaseInstructionsFragment::text_from_item(item) {
-                model_instructions.push(base);
-            }
-            let ResponseItem::Message { role, content, .. } = item else {
-                continue;
-            };
-            if role != "developer" {
-                continue;
-            }
-            for content_item in content {
-                if let ContentItem::InputText { text } = content_item {
-                    instruction_count += usize::from(text == "Child developer instructions.");
-                    if ModelInstructions::matches_text(text) {
-                        model_instructions.push(text.as_str());
-                    }
-                    if ManagedDeveloperInstructions::matches_text(text) {
-                        managed_instructions.push(text.as_str());
-                    }
-                }
-            }
-        }
-        assert_eq!(
-            (instruction_count, managed_instructions, model_instructions),
-            (
-                1,
-                vec![current_managed_fragment.as_str()],
-                vec!["Current model instructions."],
-            ),
-            "{case}: canonical context reconstruction must keep only the current child, managed, and model instructions"
-        );
-
-        let _ = harness
-            .control
-            .shutdown_live_agent(child_thread_id)
-            .await
-            .expect("child shutdown should submit");
-        let _ = parent_thread
-            .submit(Op::Shutdown {})
-            .await
-            .expect("parent shutdown should submit");
-    }
-}
-
 #[test_case::test_case(false; "complete")]
 #[test_case::test_case(true; "error_reason")]
 #[tokio::test]
@@ -4204,6 +3286,186 @@ async fn resume_and_cold_fork_restore_mcp_attribution_in_constructed_requests(
         .shutdown_and_wait()
         .await
         .expect("shutdown resumed thread");
+}
+
+#[tokio::test]
+async fn live_and_stored_parent_forks_preserve_all_retained_items_in_source_order() {
+    let harness = AgentControlHarness::new().await;
+    let (parent_thread_id, parent_thread) = harness.start_thread().await;
+    let turn_context = parent_thread.session.new_default_turn().await;
+    let retained_item = |id: &str, text: &str, token_limit: usize| {
+        let mut item: ResponseItemEnvelope = user_message(text).into();
+        item.item
+            .set_id(Some(ResponseItemId::from_server(id.to_owned())));
+        item.metadata = Some(CodexHarnessMetadata {
+            image_replay_sources: vec![ImageReplaySource {
+                prepared_url_digest: id.as_bytes().to_vec(),
+                detail: Some(ImageDetail::Low),
+                original_data_url: Arc::new(format!("data:image/test;id={id}")),
+            }],
+            retained_source: Some(RetainedSource {
+                id: RetainedSourceId {
+                    message_id: id.to_owned(),
+                    turn_id: "retained-turn".to_owned(),
+                    role: RetainedSourceRole::User,
+                },
+                revision: ResponseItemId::from_server(format!("{id}-revision")),
+                complete: true,
+            }),
+            retain_across_windows: Some(true),
+            history_truncation_token_limit: Some(token_limit),
+            ..Default::default()
+        });
+        item
+    };
+    parent_thread
+        .session
+        .record_annotated_conversation_items(
+            turn_context.as_ref(),
+            turn_context.model_info(),
+            vec![
+                retained_item("retained-one", "first retained fact", 101),
+                user_message("ordinary assembled fact").into(),
+                retained_item("retained-two", "second retained fact", 202),
+            ],
+        )
+        .await;
+    parent_thread.ensure_rollout_materialized().await;
+    parent_thread
+        .flush_rollout()
+        .await
+        .expect("flush retained parent rollout");
+
+    let spawn_fork = |call_id: &str| SpawnAgentOptions {
+        fork_parent_spawn_call_id: Some(call_id.to_owned()),
+        fork_mode: Some(SpawnAgentForkMode::FullHistory),
+        ..Default::default()
+    };
+    let source = || {
+        SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+            parent_thread_id,
+            depth: 1,
+            agent_path: None,
+            agent_nickname: None,
+            agent_role: None,
+        })
+    };
+    let live_child_id = harness
+        .control
+        .spawn_agent_with_metadata(
+            harness.config.clone(),
+            text_input("live child task"),
+            source(),
+            spawn_fork("live-retained-fork"),
+        )
+        .await
+        .expect("live parent fork should succeed")
+        .thread_id;
+    let live_child = harness
+        .manager
+        .get_thread(live_child_id)
+        .await
+        .expect("live child should be registered");
+
+    parent_thread
+        .shutdown_and_wait()
+        .await
+        .expect("shutdown retained parent");
+    assert!(
+        harness
+            .manager
+            .remove_thread(&parent_thread_id)
+            .await
+            .is_some()
+    );
+    drop(parent_thread);
+
+    let stored_child_id = harness
+        .control
+        .spawn_agent_with_metadata(
+            harness.config.clone(),
+            text_input("stored child task"),
+            source(),
+            spawn_fork("stored-retained-fork"),
+        )
+        .await
+        .expect("stored parent fork should assemble from its rollout")
+        .thread_id;
+    let stored_child = harness
+        .manager
+        .get_thread(stored_child_id)
+        .await
+        .expect("stored-parent child should be registered");
+
+    // A subagent fills its live cache at its first turn, so read its own assembly instead of
+    // racing that turn.
+    let retained_summary = |history: crate::context_manager::ContextManager| {
+        history
+            .into_annotated_items()
+            .into_iter()
+            .filter_map(|item| {
+                let id = item.id()?.as_str().to_owned();
+                matches!(id.as_str(), "retained-one" | "retained-two").then(|| {
+                    let metadata = item.metadata.expect("retained item metadata");
+                    (
+                        id,
+                        metadata.retain_across_windows,
+                        metadata.history_truncation_token_limit,
+                        metadata
+                            .retained_source
+                            .as_ref()
+                            .map(|source| source.id.message_id.clone()),
+                        metadata.image_replay_sources.len(),
+                    )
+                })
+            })
+            .collect::<Vec<_>>()
+    };
+    let expected = vec![
+        (
+            "retained-one".to_owned(),
+            Some(true),
+            Some(101),
+            Some("retained-one".to_owned()),
+            1,
+        ),
+        (
+            "retained-two".to_owned(),
+            Some(true),
+            Some(202),
+            Some("retained-two".to_owned()),
+            1,
+        ),
+    ];
+    assert_eq!(
+        retained_summary(
+            live_child
+                .session
+                .vrs_history()
+                .await
+                .expect("assemble the live-parent child"),
+        ),
+        expected
+    );
+    assert_eq!(
+        retained_summary(
+            stored_child
+                .session
+                .vrs_history()
+                .await
+                .expect("assemble the stored-parent child"),
+        ),
+        expected
+    );
+
+    live_child
+        .shutdown_and_wait()
+        .await
+        .expect("shutdown live-parent child");
+    stored_child
+        .shutdown_and_wait()
+        .await
+        .expect("shutdown stored-parent child");
 }
 
 #[tokio::test]
@@ -4585,6 +3847,8 @@ async fn multi_agent_v2_completion_ignores_dead_direct_parent() {
         .await
         .expect("tester thread should exist");
     let tester_turn = tester_thread.session.new_default_turn().await;
+    let writes = &harness.control.runtime.unconfirmed_results;
+    let before = writes.load(std::sync::atomic::Ordering::Acquire);
     tester_thread
         .session
         .send_event(
@@ -4602,6 +3866,7 @@ async fn multi_agent_v2_completion_ignores_dead_direct_parent() {
         )
         .await;
 
+    assert_eq!(writes.load(std::sync::atomic::Ordering::Acquire), before);
     sleep(Duration::from_millis(100)).await;
 
     assert!(
@@ -4633,6 +3898,18 @@ async fn multi_agent_v2_completion_ignores_dead_direct_parent() {
         )
     ));
     assert!(!has_subagent_notification(root_history.raw_items()));
+}
+
+#[test]
+fn terminal_result_writes_require_confirmation_after_the_parent_claims_mail() {
+    let count = Arc::new(std::sync::atomic::AtomicUsize::default());
+    let publish = || MessageDelivery::publish(ThreadId::new(), &[], Some(&count)).unwrap();
+    let parent = ThreadId::new();
+    drop(publish().consumed(parent));
+    let saved = publish();
+    saved.consumed(parent).unwrap().confirm();
+    assert!(saved.consumed(parent).is_none());
+    assert_eq!(count.load(std::sync::atomic::Ordering::Acquire), 1);
 }
 
 #[tokio::test]
@@ -5101,6 +4378,7 @@ async fn resume_thread_subagent_restores_stored_metadata() {
 
     parent_thread
         .update_thread_settings(ThreadSettingsOverrides {
+            request_country: Some(RequestCountry::from_iso_code("US").unwrap()),
             environments: Some(TurnEnvironmentRequests::new(
                 harness.config.cwd.clone(),
                 Vec::new(),
@@ -5119,6 +4397,11 @@ async fn resume_thread_subagent_restores_stored_metadata() {
         Vec::new()
     );
 
+    assert_eq!(
+        original_snapshot.history_mode,
+        codex_protocol::protocol::ThreadHistoryMode::Legacy
+    );
+    let before_resume = thread_store.calls().await;
     let resumed_thread_id = harness
         .control
         .resume_agent_from_rollout(
@@ -5134,6 +4417,13 @@ async fn resume_thread_subagent_restores_stored_metadata() {
         )
         .await
         .expect("resume should succeed");
+    // Remote stores reject unbounded reads on their metadata API.
+    let after_resume = thread_store.calls().await;
+    assert_eq!(
+        after_resume.read_thread_with_history,
+        before_resume.read_thread_with_history
+    );
+    assert!(after_resume.load_history > before_resume.load_history);
     assert_eq!(resumed_thread_id, child_thread_id);
 
     let resumed_thread = harness
@@ -5172,6 +4462,10 @@ async fn resume_thread_subagent_restores_stored_metadata() {
         roots
     );
     let resumed_snapshot = resumed_thread.config_snapshot().await;
+    assert_eq!(
+        resumed_snapshot.request_country,
+        RequestCountry::from_iso_code("US").unwrap()
+    );
     let SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
         parent_thread_id: resumed_parent_thread_id,
         depth: resumed_depth,

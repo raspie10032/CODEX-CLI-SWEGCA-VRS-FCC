@@ -1,5 +1,6 @@
 //! Loads stored agent context and prepares the history a child inherits when it forks.
 
+use crate::agent::control::LocalAgentRuntime;
 use crate::agent::types::SpawnAgentForkMode;
 use crate::agent::types::SpawnAgentOptions;
 use crate::config::Config;
@@ -16,6 +17,7 @@ use crate::context::MultiAgentRoleInstructions;
 use crate::context::MultiAgentUsageHint;
 use crate::context::world_state::IncrementalToolsUpdate;
 use crate::context::world_state::PersistentModeState;
+use crate::model_search::SearchOwner;
 use crate::session::multi_agents::resolve_usage_hints;
 use crate::tasks::InterruptedTurnHistoryMarker;
 use crate::thread_manager::ForkSnapshot;
@@ -23,6 +25,7 @@ use crate::thread_manager::ThreadManagerState;
 use crate::thread_manager::fork_history_from_snapshot;
 use codex_context_fragments::set_annotated_content;
 use codex_context_fragments::to_annotated_content;
+use codex_history::CodexHarnessMetadata;
 use codex_history::InitialHistory;
 use codex_history::ResponseItemEnvelope;
 use codex_history::RolloutItem;
@@ -41,9 +44,117 @@ use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::protocol::ThreadHistoryMode;
 use codex_thread_store::LoadThreadHistoryParams;
 use codex_thread_store::ReadThreadParams;
+use std::collections::HashMap;
+use std::collections::HashSet;
+
+impl LocalAgentRuntime {
+    pub(crate) async fn retained_items_for_fresh_child(
+        &self,
+        initial_history: &InitialHistory,
+        session_source: &SessionSource,
+    ) -> Vec<ResponseItemEnvelope> {
+        // Full-history forks already carry their retained items.
+        let (InitialHistory::New, Some(parent_thread_id)) =
+            (initial_history, session_source.parent_thread_id())
+        else {
+            return Vec::new();
+        };
+        let Ok(manager) = self.upgrade() else {
+            return Vec::new();
+        };
+        let Ok(parent) = manager.get_thread(parent_thread_id).await else {
+            return Vec::new();
+        };
+        let items = parent.session.always_retained().await;
+        retained_items_for_fresh_child(items.as_ref())
+    }
+}
+
+fn retained_items_for_fresh_child(
+    parent_items: &[ResponseItemEnvelope],
+) -> Vec<ResponseItemEnvelope> {
+    let mut items = parent_items.to_vec();
+    for item in &mut items {
+        let parent_metadata = item.metadata.take().unwrap_or_default();
+        // Keep item metadata needed for retention and replay. Checkpoints belong to the child.
+        item.metadata = Some(CodexHarnessMetadata {
+            retain_across_windows: parent_metadata.retain_across_windows,
+            retained_source: parent_metadata.retained_source,
+            history_truncation_token_limit: parent_metadata.history_truncation_token_limit,
+            image_replay_sources: parent_metadata.image_replay_sources,
+            inherited_user_message: true,
+            ..Default::default()
+        });
+    }
+    items
+}
+
+fn restore_retention_metadata(target: &mut ResponseItemEnvelope, retained: &ResponseItemEnvelope) {
+    let retained = retained.metadata.as_ref().cloned().unwrap_or_default();
+    let target = target.metadata.get_or_insert_default();
+    target.retain_across_windows = retained.retain_across_windows;
+    target.retained_source = retained.retained_source;
+    target.history_truncation_token_limit = retained.history_truncation_token_limit;
+    target.image_replay_sources = retained.image_replay_sources;
+}
+
+fn clear_parent_search_provenance(item: &mut ResponseItemEnvelope) {
+    if let Some(metadata) = &mut item.metadata {
+        metadata.model_search_state = None;
+        metadata.mcp_attribution = None;
+        metadata.native_search_fallback_used = false;
+    }
+}
+
+/// Places retained parent facts missing from the VRS assembly before that assembly and restores
+/// retention/replay metadata on matching IDs without replacing VRS payloads.
+fn merge_retained_with_assembled(
+    retained: &[ResponseItemEnvelope],
+    mut assembled: Vec<ResponseItemEnvelope>,
+) -> Vec<ResponseItemEnvelope> {
+    let retained_by_id: HashMap<String, &ResponseItemEnvelope> = retained
+        .iter()
+        .filter_map(|item| item.id().map(|id| (id.as_str().to_owned(), item)))
+        .collect();
+    let mut assembled_ids = HashSet::with_capacity(assembled.len());
+    for item in &mut assembled {
+        if let Some(id) = item.id().map(|id| id.as_str().to_owned()) {
+            assembled_ids.insert(id.clone());
+            if let Some(retained) = retained_by_id.get(&id) {
+                restore_retention_metadata(item, retained);
+            }
+        }
+        clear_parent_search_provenance(item);
+    }
+
+    let mut merged = Vec::with_capacity(retained.len().saturating_add(assembled.len()));
+    merged.extend(retained.iter().filter_map(|item| {
+        let id = item.id()?.as_str();
+        (!assembled_ids.contains(id)).then(|| {
+            let mut item = item.clone();
+            clear_parent_search_provenance(&mut item);
+            item
+        })
+    }));
+    merged.extend(assembled);
+    merged
+}
+
+pub(crate) fn prepare_parent_items_for_fork(
+    retained: &[ResponseItemEnvelope],
+    assembled: Vec<ResponseItemEnvelope>,
+    parent_store: Option<&codex_extension_api::ExtensionData>,
+) -> Vec<ResponseItemEnvelope> {
+    let mut items = merge_retained_with_assembled(retained, assembled);
+    if let Some(parent_store) = parent_store {
+        SearchOwner::checkpoint(parent_store, &mut items);
+    }
+    items
+}
 
 fn keep_forked_rollout_item(item: &RolloutItem, preserve_context_baselines: bool) -> bool {
     match item {
+        RolloutItem::ResponseItem(envelope) if envelope.is_always_retained() => true,
         RolloutItem::ResponseItem(envelope) => match &envelope.item {
             ResponseItem::Message { role, phase, .. } => match role.as_str() {
                 "system" | "developer" | "user" => true,
@@ -134,40 +245,27 @@ pub(super) async fn load_agent_model_context(
     state: &ThreadManagerState,
     thread_id: ThreadId,
     history_mode: ThreadHistoryMode,
-) -> CodexResult<Option<codex_thread_store::StoredModelContext>> {
-    let stored = match history_mode {
-        ThreadHistoryMode::Legacy => state
-            .read_stored_thread(ReadThreadParams {
-                thread_id,
-                include_archived: true,
-                include_history: true,
-            })
-            .await?
-            .history
-            .map(|history| codex_thread_store::StoredModelContext {
-                thread_id,
-                revision: history.revision,
-                items: history.items,
-            }),
-        ThreadHistoryMode::Paginated => Some(
-            state
-                .load_latest_model_context(LoadThreadHistoryParams {
-                    thread_id,
-                    include_archived: true,
-                })
-                .await?,
-        ),
+) -> CodexResult<codex_thread_store::StoredModelContext> {
+    let params = LoadThreadHistoryParams {
+        thread_id,
+        include_archived: true,
     };
-    let Some(mut stored) = stored else {
-        return Ok(None);
+    let mut stored = match history_mode {
+        ThreadHistoryMode::Legacy => state.load_legacy_model_context(params).await?,
+        ThreadHistoryMode::Paginated => state.load_latest_model_context(params).await?,
     };
-    let history = match state.get_thread(thread_id).await {
-        Ok(thread) => thread
+    let parent_thread = match state.get_thread(thread_id).await {
+        Ok(thread) => Some(thread),
+        Err(error) if matches!(error.details(), CodexErrorDetails::ThreadNotFound(_)) => None,
+        Err(error) => return Err(error),
+    };
+    let history = match parent_thread.as_ref() {
+        Some(thread) => thread
             .session
             .vrs_history()
             .await
             .map_err(crate::session::vrs_input::vrs_error_to_codex)?,
-        Err(error) if matches!(error.details(), CodexErrorDetails::ThreadNotFound(_)) => {
+        None => {
             let stored_thread = state
                 .read_stored_thread(ReadThreadParams {
                     thread_id,
@@ -184,7 +282,6 @@ pub(super) async fn load_agent_model_context(
                 .await
                 .map_err(crate::session::vrs_input::vrs_error_to_codex)?
         }
-        Err(error) => return Err(error),
     };
     // Preserve only host resume metadata from storage. Model-visible items come solely
     // from A(S_t, thread); accumulated rollout records are not a fallback.
@@ -197,13 +294,19 @@ pub(super) async fn load_agent_model_context(
                 | RolloutItem::DynamicToolsUpdated { .. }
         )
     });
+    let retained = history.always_retained();
     stored.items.extend(
-        history
-            .into_annotated_items()
-            .into_iter()
-            .map(RolloutItem::ResponseItem),
+        prepare_parent_items_for_fork(
+            retained.as_ref(),
+            history.into_annotated_items(),
+            parent_thread
+                .as_ref()
+                .map(|parent| parent.thread_extension_data()),
+        )
+        .into_iter()
+        .map(RolloutItem::ResponseItem),
     );
-    Ok(Some(stored))
+    Ok(stored)
 }
 
 /// Prepare copied history while leaving startup settings and timing with the caller.
@@ -303,9 +406,16 @@ pub(super) async fn prepare_forked_history(
     };
     let destination_history_mode = matches!(parent_history_mode, ThreadHistoryMode::Paginated)
         .then_some(ThreadHistoryMode::Paginated);
+    let retained = parent_history.always_retained();
     let world_state = parent_history.world_state_checkpoint();
-    let mut forked_rollout_items = parent_history
-        .into_annotated_items()
+    let inherited_items = prepare_parent_items_for_fork(
+        retained.as_ref(),
+        parent_history.into_annotated_items(),
+        parent_thread
+            .as_ref()
+            .map(|parent| parent.thread_extension_data()),
+    );
+    let mut forked_rollout_items = inherited_items
         .into_iter()
         .map(RolloutItem::ResponseItem)
         .collect::<Vec<_>>();
@@ -354,9 +464,11 @@ pub(super) async fn prepare_forked_history(
         forked_rollout_items = items;
     }
     let retain_forked_item = |envelope: &mut ResponseItemEnvelope, replaced: &mut bool| {
-        if multi_agent_version == MultiAgentVersion::V2
-            && (preserve_fork_prefix
-                || matches!(&envelope.item, ResponseItem::Message { role, .. } if role == "user" || role == "assistant"))
+        let explicitly_retained = envelope.is_always_retained();
+        if explicitly_retained
+            || (multi_agent_version == MultiAgentVersion::V2
+                && (preserve_fork_prefix
+                    || matches!(&envelope.item, ResponseItem::Message { role, .. } if role == "user" || role == "assistant")))
         {
             // Resume must not recapture copied parent messages as local authorization.
             envelope
@@ -371,7 +483,7 @@ pub(super) async fn prepare_forked_history(
             // Assistant and tool positions belong to the parent counter, not the child.
             metadata.user_input_order = None;
         }
-        if preserve_fork_prefix {
+        if preserve_fork_prefix || explicitly_retained {
             return true;
         }
         let response_item = &mut envelope.item;
@@ -529,4 +641,195 @@ pub(super) async fn prepare_forked_history(
         InitialHistory::Forked(forked_rollout_items),
         destination_history_mode,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge_retained_with_assembled;
+    use crate::model_search::SearchOwner;
+    use codex_history::CodexHarnessMetadata;
+    use codex_history::ImageReplaySource;
+    use codex_history::InitialHistory;
+    use codex_history::ModelSearchState;
+    use codex_history::ResponseItemEnvelope;
+    use codex_history::RetainedSource;
+    use codex_history::RetainedSourceId;
+    use codex_history::RetainedSourceRole;
+    use codex_history::RolloutItem;
+    use codex_protocol::ResponseItemId;
+    use codex_protocol::models::ContentItem;
+    use codex_protocol::models::ImageDetail;
+    use codex_protocol::models::ResponseItem;
+    use codex_protocol::openai_models::WebSearchProvider;
+    use std::sync::Arc;
+
+    fn user_item(id: &str, text: &str, retained: bool) -> ResponseItemEnvelope {
+        let mut item: ResponseItemEnvelope = ResponseItem::Message {
+            status: None,
+            encrypted_content: None,
+            id: None,
+            role: "user".to_owned(),
+            content: vec![ContentItem::InputText {
+                text: text.to_owned(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }
+        .into();
+        item.item
+            .set_id(Some(ResponseItemId::from_server(id.to_owned())));
+        item.metadata = Some(CodexHarnessMetadata {
+            image_replay_sources: retained
+                .then(|| {
+                    vec![ImageReplaySource {
+                        prepared_url_digest: id.as_bytes().to_vec(),
+                        detail: Some(ImageDetail::Low),
+                        original_data_url: Arc::new(format!("data:image/test;id={id}")),
+                    }]
+                })
+                .unwrap_or_default(),
+            retained_source: retained.then(|| RetainedSource {
+                id: RetainedSourceId {
+                    message_id: id.to_owned(),
+                    turn_id: "retained-turn".to_owned(),
+                    role: RetainedSourceRole::User,
+                },
+                revision: ResponseItemId::from_server(format!("{id}-revision")),
+                complete: true,
+            }),
+            retain_across_windows: retained.then_some(true),
+            history_truncation_token_limit: retained.then_some(123),
+            model_search_state: Some(ModelSearchState::Standalone),
+            native_search_fallback_used: true,
+            ..Default::default()
+        });
+        item
+    }
+
+    #[test]
+    fn retained_items_precede_assembly_without_replacing_matching_payloads() {
+        let retained = vec![
+            user_item("r1", "retained one", true),
+            user_item("r2", "old retained payload", true),
+            user_item("r3", "retained three", true),
+        ];
+        let assembled_r2 = user_item("r2", "assembled payload", false);
+        let assembled = vec![
+            assembled_r2.clone(),
+            user_item("f", "assembled fact", false),
+        ];
+
+        let merged = merge_retained_with_assembled(&retained, assembled);
+
+        assert_eq!(
+            merged
+                .iter()
+                .map(|item| item.id().unwrap().as_str())
+                .collect::<Vec<_>>(),
+            vec!["r1", "r3", "r2", "f"]
+        );
+        assert_eq!(merged[2].item, assembled_r2.item);
+        let r2_metadata = merged[2].metadata.as_ref().unwrap();
+        assert_eq!(r2_metadata.retain_across_windows, Some(true));
+        assert_eq!(r2_metadata.history_truncation_token_limit, Some(123));
+        assert_eq!(
+            r2_metadata
+                .retained_source
+                .as_ref()
+                .map(|source| source.id.message_id.as_str()),
+            Some("r2")
+        );
+        assert_eq!(r2_metadata.image_replay_sources.len(), 1);
+        assert!(
+            merged
+                .iter()
+                .all(|item| item.metadata.as_ref().is_none_or(|metadata| metadata
+                    .model_search_state
+                    .is_none()
+                    && metadata.mcp_attribution.is_none()
+                    && !metadata.native_search_fallback_used))
+        );
+    }
+
+    #[test]
+    fn fresh_child_gets_every_retained_item_in_parent_source_order() {
+        let mut first = user_item("r1", "first retained", true);
+        first.metadata.as_mut().unwrap().user_input_order = Some(7);
+        let second = user_item("r2", "second retained", true);
+
+        let inherited = super::retained_items_for_fresh_child(&[first, second]);
+
+        assert_eq!(
+            inherited
+                .iter()
+                .map(|item| item.id().unwrap().as_str())
+                .collect::<Vec<_>>(),
+            vec!["r1", "r2"]
+        );
+        assert!(inherited.iter().all(|item| {
+            let metadata = item.metadata.as_ref().unwrap();
+            metadata.inherited_user_message
+                && metadata.retain_across_windows == Some(true)
+                && metadata.history_truncation_token_limit == Some(123)
+                && metadata.retained_source.is_some()
+                && metadata.image_replay_sources.len() == 1
+                && metadata.user_input_order.is_none()
+                && metadata.model_search_state.is_none()
+                && !metadata.native_search_fallback_used
+        }));
+    }
+
+    #[test]
+    fn live_and_stored_forks_preserve_the_same_retained_items() {
+        let retained = vec![
+            user_item("r1", "first retained", true),
+            user_item("r2", "second retained", true),
+        ];
+        let assembled = vec![user_item("f1", "assembled", false)];
+        let store = codex_extension_api::ExtensionData::new("live-retained-fork".to_owned());
+        assert!(SearchOwner::admit(&store, WebSearchProvider::Standalone));
+
+        let live = super::prepare_parent_items_for_fork(&retained, assembled.clone(), Some(&store));
+        let stored = super::prepare_parent_items_for_fork(&retained, assembled, None);
+        let ids = |items: &[ResponseItemEnvelope]| {
+            items
+                .iter()
+                .map(|item| item.id().unwrap().as_str().to_owned())
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(ids(&live), vec!["r1", "r2", "f1"]);
+        assert_eq!(ids(&stored), ids(&live));
+        assert!(live.iter().all(|item| {
+            let metadata = item.metadata.as_ref().unwrap();
+            metadata.model_search_state == Some(ModelSearchState::Standalone)
+                && metadata.native_search_fallback_used
+        }));
+        assert!(stored.iter().all(|item| {
+            let metadata = item.metadata.as_ref().unwrap();
+            metadata.model_search_state.is_none()
+                && metadata.mcp_attribution.is_none()
+                && !metadata.native_search_fallback_used
+        }));
+
+        let stored_store =
+            codex_extension_api::ExtensionData::new("stored-retained-fork".to_owned());
+        SearchOwner::restore(
+            &stored_store,
+            &InitialHistory::Forked(
+                stored
+                    .iter()
+                    .cloned()
+                    .map(RolloutItem::ResponseItem)
+                    .collect(),
+            ),
+        );
+        let mut restored = stored;
+        SearchOwner::checkpoint(&stored_store, &mut restored);
+        assert!(restored.iter().all(|item| {
+            item.metadata.as_ref().is_some_and(|metadata| {
+                metadata.model_search_state == Some(ModelSearchState::SearchMcp)
+            })
+        }));
+    }
 }

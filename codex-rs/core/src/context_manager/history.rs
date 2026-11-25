@@ -9,13 +9,14 @@
 //! Live usage boundaries advance only when a response supplies usable usage.
 //! Oversized instructions keep an incomplete excerpt for bounded root review, including
 //! sources recovered from legacy Guardian checkpoints before their raw history is dropped.
-//! Prompt projections replace unavailable file images without changing retained history.
+//! Prompt projections replace unavailable file images and tool audio without changing retained history.
 
 #[path = "history_rejected_audio.rs"]
 pub(crate) mod rejected_audio;
 #[path = "history_user_authorization.rs"]
 mod user_authorization;
 
+use super::always_retained::AlwaysRetained;
 use crate::context::BaseInstructionsFragment;
 use crate::context::ContextualUserFragment;
 use crate::context::ModelSwitchInstructions;
@@ -25,7 +26,7 @@ use crate::context::world_state::WorldState;
 use crate::context::world_state::WorldStateSnapshot;
 use crate::context::world_state::WorldStateUpdate;
 use crate::context_manager::normalize;
-use crate::context_manager::replace_unresolvable_image_files;
+use crate::context_manager::replace_unresolvable_media_files;
 use crate::event_mapping::contextual_dev_fragments;
 use crate::event_mapping::is_contextual_user_message_content;
 use crate::event_mapping::parse_turn_item;
@@ -33,7 +34,6 @@ use crate::guardian::GUARDIAN_MAX_ROOT_MESSAGE_TOKENS;
 use crate::guardian::guardian_truncate_text;
 use crate::session::FileAudioDurations;
 use crate::session::turn_context::TurnContext;
-use crate::utils::json::serialized_json_bytes;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use codex_attachment_store::AttachmentStore;
@@ -81,6 +81,7 @@ use codex_utils_output_truncation::approx_token_count;
 use codex_utils_output_truncation::approx_tokens_from_byte_count_i64;
 use codex_utils_output_truncation::truncate_function_output_payload;
 use codex_utils_output_truncation::with_serialization_allowance;
+use codex_utils_string::serialized_json_bytes;
 use image::ImageReader;
 use std::collections::BTreeSet;
 use std::io::Cursor;
@@ -104,7 +105,7 @@ fn next_guardian_review_context_revision() -> u64 {
 /// Transcript of thread history
 #[derive(Clone)]
 pub(crate) struct ContextManager {
-    item_id_generator: ItemIdGenerator,
+    pub(crate) item_id_generator: ItemIdGenerator,
     sampling: super::sampling::SamplingProgress,
     /// Inclusive sequence cutoff for calls that may still be running in the fork source.
     pub(crate) restored_through_sequence: u64,
@@ -120,6 +121,9 @@ pub(crate) struct ContextManager {
     /// File IDs rejected by Responses. Retained history stays append-only; only
     /// request projections omit these references.
     rejected_audio_file_ids: Arc<BTreeSet<String>>,
+    /// Client-retained originals, independent of the bounded VRS assembly cache.
+    /// Entries keep rollout metadata and remain in original recording order.
+    always_retained: AlwaysRetained,
     pub(crate) file_audio_durations: Arc<FileAudioDurations>,
     /// Reviewer policy travels with the history snapshot, independently of capture.
     guardian_review_mode: GuardianContextMode,
@@ -165,6 +169,7 @@ impl std::fmt::Debug for ContextManager {
             .field("review_history", &self.review_history)
             .field("retained_context", &self.retained_context)
             .field("rejected_audio_file_ids", &self.rejected_audio_file_ids)
+            .field("always_retained", &self.always_retained)
             .field("guardian_review_mode", &self.guardian_review_mode)
             .field(
                 "guardian_include_additional_context",
@@ -324,6 +329,7 @@ impl ContextManager {
             review_budgeting: ContextBudgeting::Fixed,
             retained_context: Arc::default(),
             rejected_audio_file_ids: Arc::default(),
+            always_retained: AlwaysRetained::default(),
             file_audio_durations: Arc::default(),
             guardian_review_mode: GuardianContextMode::ThreadOwned,
             guardian_include_additional_context: Feature::GuardianIncludeAdditionalContext
@@ -383,7 +389,16 @@ impl ContextManager {
     }
 
     pub(crate) fn record_retained_context(&mut self, event: &RetainedContextEvent) -> bool {
-        if !Arc::make_mut(&mut self.retained_context).record(event, &self.item_id_generator) {
+        self.record_retained_context_for_persistence(&mut event.clone())
+    }
+
+    pub(crate) fn record_retained_context_for_persistence(
+        &mut self,
+        event: &mut RetainedContextEvent,
+    ) -> bool {
+        if !Arc::make_mut(&mut self.retained_context)
+            .record_and_capture(event, &self.item_id_generator)
+        {
             return false;
         }
         match event {
@@ -563,7 +578,7 @@ impl ContextManager {
         items: &mut [ResponseItemEnvelope],
         policy: TruncationPolicy,
     ) {
-        for envelope in items {
+        for envelope in items.iter_mut() {
             self.sampling.record(envelope);
             if let Some(source) =
                 self.record_item_with_metadata(&envelope.item, envelope.metadata.as_ref(), policy)
@@ -571,27 +586,35 @@ impl ContextManager {
                 envelope.metadata.get_or_insert_default().retained_source = Some(source);
             }
         }
+        for envelope in items.iter() {
+            self.always_retained.insert(envelope);
+        }
     }
 
     /// Replays persisted originals without assigning new identities to known versions.
-    pub(crate) fn replay_annotated_item(
+    pub(crate) fn replay_annotated_items(
         &mut self,
-        envelope: &ResponseItemEnvelope,
+        envelopes: &[ResponseItemEnvelope],
         policy: TruncationPolicy,
     ) {
-        let captured =
-            self.record_item_with_metadata(&envelope.item, envelope.metadata.as_ref(), policy);
-        if let Some(source) = envelope
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.retained_source.as_ref())
-            && captured.as_ref().is_some_and(|captured| {
-                captured.id == source.id && captured.complete == source.complete
-            })
-            && Arc::make_mut(&mut self.retained_context).restore_source_revision(source)
-            && let Some(recorded) = Arc::make_mut(&mut self.items).last_mut()
-        {
-            recorded.metadata.get_or_insert_default().retained_source = Some(source.clone());
+        for envelope in envelopes {
+            let captured =
+                self.record_item_with_metadata(&envelope.item, envelope.metadata.as_ref(), policy);
+            if let Some(source) = envelope
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.retained_source.as_ref())
+                && captured.as_ref().is_some_and(|captured| {
+                    captured.id == source.id && captured.complete == source.complete
+                })
+                && Arc::make_mut(&mut self.retained_context).restore_source_revision(source)
+                && let Some(recorded) = Arc::make_mut(&mut self.items).last_mut()
+            {
+                recorded.metadata.get_or_insert_default().retained_source = Some(source.clone());
+            }
+        }
+        for envelope in envelopes {
+            self.always_retained.insert(envelope);
         }
     }
 
@@ -601,16 +624,17 @@ impl ContextManager {
         metadata: Option<&CodexHarnessMetadata>,
         policy: TruncationPolicy,
     ) -> Option<codex_history::RetainedSource> {
-        if !is_api_message(item, metadata) {
-            return None;
-        }
         let mut processed = ResponseItemEnvelope {
             item: item.clone(),
             metadata: metadata.cloned(),
         };
+        if !is_api_message(item, metadata) {
+            return None;
+        }
         self.sampling.record(&mut processed);
         if let ResponseItem::FunctionCallOutput { output, .. }
         | ResponseItem::CustomToolCallOutput { output, .. } = &mut processed.item
+            && !metadata.is_some_and(|metadata| metadata.tool_audio_budget_applied)
         {
             // The override already includes the tool's serialization allowance.
             let policy = metadata
@@ -647,7 +671,7 @@ impl ContextManager {
     /// Returns the history prepared for sending to the model. This applies a proper
     /// normalization and drops un-suited items. Unsupported image and audio content
     /// is stripped from messages and tool outputs according to `input_modalities`.
-    /// Unavailable file images are replaced with text placeholders.
+    /// Unavailable file images and tool audio are replaced with text placeholders.
     pub(crate) async fn for_prompt(
         self,
         input_modalities: &[InputModality],
@@ -667,7 +691,7 @@ impl ContextManager {
         image_store: &dyn AttachmentStore,
     ) -> Vec<ResponseItemEnvelope> {
         self.normalize_history(input_modalities);
-        replace_unresolvable_image_files(
+        replace_unresolvable_media_files(
             Arc::make_mut(&mut self.items)
                 .iter_mut()
                 .map(|envelope| &mut envelope.item),
@@ -731,6 +755,17 @@ impl ContextManager {
 
     pub(crate) fn rejected_audio_file_ids(&self) -> Arc<BTreeSet<String>> {
         Arc::clone(&self.rejected_audio_file_ids)
+    }
+
+    pub(crate) fn always_retained(&self) -> Arc<Vec<ResponseItemEnvelope>> {
+        self.always_retained.items()
+    }
+
+    pub(crate) fn restore_always_retained(&mut self, items: Vec<ResponseItemEnvelope>) {
+        self.always_retained = AlwaysRetained::default();
+        for envelope in &items {
+            self.always_retained.insert(envelope);
+        }
     }
 
     /// Restores durable rejection facts from a checkpoint and subsequent failed turns.
@@ -842,9 +877,14 @@ impl ContextManager {
         // Preserve host-only metadata for surviving item identities. It is not serialized into
         // rollout/model JSON (notably FunctionCallOutputPayload::success), and disappears as
         // soon as that item leaves the bounded assembly. Model input consumes A directly.
+        let always_retained = self.always_retained.items();
         let known: std::collections::HashMap<String, &ResponseItemEnvelope> = suffix
             .iter()
             .chain(self.items.iter())
+            // A fork/resume reconstructs durable Ret metadata before its first assembly, while
+            // its bounded item list is still empty. Prefer those originals for matching IDs so
+            // the first install cannot erase retention and image-replay provenance.
+            .chain(always_retained.iter())
             .filter_map(|envelope| Some((envelope.item.id()?.as_str().to_owned(), envelope)))
             .collect();
         let mut items: Vec<ResponseItemEnvelope> = items
@@ -1276,8 +1316,11 @@ impl ContextManager {
     }
 }
 
-/// Configuration updates require harness provenance; raw system messages are never retained.
-fn is_api_message(message: &ResponseItem, metadata: Option<&CodexHarnessMetadata>) -> bool {
+/// Configuration updates and internal system messages require harness provenance.
+pub(super) fn is_api_message(
+    message: &ResponseItem,
+    metadata: Option<&CodexHarnessMetadata>,
+) -> bool {
     match message {
         ResponseItem::Message { role, .. } => role.as_str() != "system",
         ResponseItem::ConfigurationUpdate { .. } => {

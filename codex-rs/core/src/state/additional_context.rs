@@ -1,4 +1,4 @@
-//! Deduplicates the active client context using its selected model-visible representation.
+//! Deduplicates active client context and tracks its durable history item IDs.
 
 use std::collections::BTreeMap;
 
@@ -13,6 +13,8 @@ use codex_otel::ADDITIONAL_CONTEXT_COUNT_METRIC;
 use codex_otel::ADDITIONAL_CONTEXT_VALUE_BYTES_BUCKETS;
 use codex_otel::ADDITIONAL_CONTEXT_VALUE_BYTES_METRIC;
 use codex_otel::SessionTelemetry;
+use codex_protocol::ItemIdGenerator;
+use codex_protocol::ResponseItemId;
 use codex_protocol::protocol::AdditionalContextEntry;
 use codex_protocol::protocol::AdditionalContextKind;
 use codex_utils_string::truncate_middle_with_token_budget;
@@ -42,9 +44,45 @@ impl PartialEq for StoredAdditionalContext {
     }
 }
 
+impl StoredAdditionalContext {
+    fn new(key: &str, entry: AdditionalContextEntry, format: &AdditionalContextFormat) -> Self {
+        match (format, entry.kind) {
+            (AdditionalContextFormat::ToolOutputs, AdditionalContextKind::Untrusted) => {
+                Self::ToolOutput(AdditionalContextToolOutput::new(
+                    key,
+                    entry.name,
+                    &entry.value,
+                ))
+            }
+            (AdditionalContextFormat::Messages, AdditionalContextKind::Untrusted)
+            | (_, AdditionalContextKind::Application) => Self::Message(entry),
+        }
+    }
+
+    fn envelope(&self, key: &str) -> ResponseItemEnvelope {
+        match self {
+            Self::ToolOutput(output) => ResponseItemEnvelope {
+                item: output.clone().into(),
+                metadata: Some(CodexHarnessMetadata {
+                    additional_context_tool_output: true,
+                    ..Default::default()
+                }),
+            },
+            Self::Message(entry) => ResponseItemEnvelope::new(match entry.kind {
+                AdditionalContextKind::Untrusted => ContextualUserFragment::into(
+                    AdditionalContextUserFragment::new(key.to_owned(), entry.value.clone()),
+                ),
+                AdditionalContextKind::Application => ContextualUserFragment::into(
+                    AdditionalContextDeveloperFragment::new(key.to_owned(), entry.value.clone()),
+                ),
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct AdditionalContextStore {
-    values: BTreeMap<String, StoredAdditionalContext>,
+    values: BTreeMap<String, (StoredAdditionalContext, ResponseItemId)>,
 }
 
 impl AdditionalContextStore {
@@ -53,9 +91,10 @@ impl AdditionalContextStore {
         values: BTreeMap<String, AdditionalContextEntry>,
         format: AdditionalContextFormat,
         telemetry: &SessionTelemetry,
+        item_id_generator: &ItemIdGenerator,
     ) -> Vec<ResponseItemEnvelope> {
         self.values.retain(|key, _| values.contains_key(key));
-        self.extend(values, format, telemetry)
+        self.extend(values, format, telemetry, item_id_generator)
     }
 
     /// Adds a producer's updates without dropping unrelated client context.
@@ -64,60 +103,28 @@ impl AdditionalContextStore {
         values: BTreeMap<String, AdditionalContextEntry>,
         format: AdditionalContextFormat,
         telemetry: &SessionTelemetry,
+        item_id_generator: &ItemIdGenerator,
     ) -> Vec<ResponseItemEnvelope> {
-        for entry in values.values() {
-            Self::record_metrics(entry, telemetry);
+        let mut fragments = Vec::new();
+        for (key, entry) in values {
+            Self::record_metrics(&entry, telemetry);
+            let value = StoredAdditionalContext::new(&key, entry, &format);
+            if self
+                .values
+                .get(&key)
+                .is_some_and(|(previous, _)| previous == &value)
+            {
+                continue;
+            }
+            let mut envelope = value.envelope(&key);
+            let Some(prefix) = envelope.id_prefix() else {
+                unreachable!("additional context has an item ID")
+            };
+            let id = item_id_generator(prefix);
+            envelope.set_id(Some(id.clone()));
+            self.values.insert(key, (value, id));
+            fragments.push(envelope);
         }
-        let values =
-            values
-                .into_iter()
-                .map(|(key, entry)| {
-                    let value = match (&format, entry.kind) {
-                        (
-                            AdditionalContextFormat::ToolOutputs,
-                            AdditionalContextKind::Untrusted,
-                        ) => StoredAdditionalContext::ToolOutput(AdditionalContextToolOutput::new(
-                            &key,
-                            entry.name,
-                            &entry.value,
-                        )),
-                        (AdditionalContextFormat::Messages, AdditionalContextKind::Untrusted)
-                        | (AdditionalContextFormat::Messages, AdditionalContextKind::Application)
-                        | (
-                            AdditionalContextFormat::ToolOutputs,
-                            AdditionalContextKind::Application,
-                        ) => StoredAdditionalContext::Message(entry),
-                    };
-                    (key, value)
-                })
-                .collect::<BTreeMap<_, _>>();
-        let fragments = values
-            .iter()
-            .filter(|(key, value)| self.values.get(*key) != Some(*value))
-            .map(|(key, entry)| match entry {
-                StoredAdditionalContext::ToolOutput(output) => ResponseItemEnvelope {
-                    item: output.clone().into(),
-                    metadata: Some(CodexHarnessMetadata {
-                        additional_context_tool_output: true,
-                        ..Default::default()
-                    }),
-                },
-                StoredAdditionalContext::Message(entry) => {
-                    ResponseItemEnvelope::new(match entry.kind {
-                        AdditionalContextKind::Untrusted => ContextualUserFragment::into(
-                            AdditionalContextUserFragment::new(key.clone(), entry.value.clone()),
-                        ),
-                        AdditionalContextKind::Application => {
-                            ContextualUserFragment::into(AdditionalContextDeveloperFragment::new(
-                                key.clone(),
-                                entry.value.clone(),
-                            ))
-                        }
-                    })
-                }
-            })
-            .collect();
-        self.values.extend(values);
         fragments
     }
 

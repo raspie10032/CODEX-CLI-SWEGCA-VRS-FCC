@@ -283,6 +283,7 @@ fn delivered_assistant_context_invalidates_reviews_without_changing_authorizatio
     let before_delivery = history.conversation_history_snapshot();
     let authorization = before_delivery.user_message_revision();
     let event = RetainedContextEvent::DeliveredAssistantMessage {
+        retained_source: None,
         message: codex_history::RetainedUserMessage {
             origin: codex_history::UserInputOrigin::User,
             turn_id: "turn".to_owned(),
@@ -2211,6 +2212,9 @@ async fn drop_last_n_user_turns_trims_context_updates_above_rolled_back_turn() {
         developer_msg(&format!(
             "{APPS_INSTRUCTIONS_OPEN_TAG}\nROLLED_BACK_APPS_INSTRUCTIONS"
         )),
+        developer_msg(
+            "<catalog_apps_instructions>Retired Apps guidance</catalog_apps_instructions>",
+        ),
         developer_msg(&format!(
             "{PLUGINS_INSTRUCTIONS_OPEN_TAG}\nROLLED_BACK_PLUGIN_INSTRUCTIONS"
         )),
@@ -4008,4 +4012,78 @@ fn shorter_assembly_and_stale_usage_count_keep_the_boundary_in_range() {
         history.get_total_token_usage(),
         130 + estimate_item_token_count(&appended)
     );
+}
+
+fn always_retained_message(
+    id: Option<&str>,
+    text: &str,
+    truncation_limit: usize,
+) -> ResponseItemEnvelope {
+    let mut item = user_msg(text);
+    item.set_id(id.map(|id| ResponseItemId::with_suffix("msg", id)));
+    ResponseItemEnvelope {
+        item,
+        metadata: Some(CodexHarnessMetadata {
+            retain_across_windows: Some(true),
+            history_truncation_token_limit: Some(truncation_limit),
+            ..Default::default()
+        }),
+    }
+}
+
+#[test]
+fn always_retained_union_deduplicates_by_id_in_original_order() {
+    let first_a = always_retained_message(Some("ret-a"), "first a", 101);
+    let b = always_retained_message(Some("ret-b"), "b", 202);
+    let later_a = always_retained_message(Some("ret-a"), "later duplicate a", 303);
+    let idless = always_retained_message(None, "idless", 404);
+    let mut history = ContextManager::default();
+
+    history.restore_always_retained(vec![first_a.clone(), b.clone(), later_a, idless]);
+
+    assert_eq!(history.always_retained().as_ref(), &[first_a, b]);
+}
+
+#[test]
+fn assembled_history_replacement_does_not_release_always_retained() {
+    let retained = always_retained_message(Some("retained"), "original payload", 512);
+    let mut recorded = [retained.clone()];
+    let mut history = ContextManager::default();
+    history.record_annotated_items(&mut recorded, TruncationPolicy::Tokens(10_000));
+    assert_eq!(history.always_retained().as_ref(), &recorded);
+
+    history.replace_assembled(Vec::new());
+    history.replace_assembled(vec![user_msg("new bounded assembly")]);
+
+    assert_eq!(history.always_retained().as_ref(), &recorded);
+}
+
+#[test]
+fn saved_rollback_markers_remove_retained_items_of_the_rolled_back_turns() {
+    let before = always_retained_message(Some("ret-before"), "before any turn", 1);
+    let mut before = before;
+    if let ResponseItem::Message { role, .. } = &mut before.item {
+        *role = "developer".to_string();
+    }
+    let one = always_retained_message(Some("ret-1"), "turn one", 101);
+    let two = always_retained_message(Some("ret-2"), "turn two", 202);
+    let three = always_retained_message(Some("ret-3"), "turn three", 303);
+
+    // Expected by hand: counts are 0, 1, 2; the marker lowers 2 to 1 and drops turn two;
+    // turn three then counts 2 and survives.
+    let mut replay = crate::context_manager::RetentionReplay::default();
+    replay.record(&before);
+    replay.record(&one);
+    replay.record(&two);
+    replay.rollback(/*num_turns*/ 1);
+    replay.record(&three);
+    assert_eq!(replay.finish(), vec![before.clone(), one.clone(), three]);
+
+    // A marker larger than the turn count removes every turn and keeps what came before them.
+    let mut replay = crate::context_manager::RetentionReplay::default();
+    replay.record(&before);
+    replay.record(&one);
+    replay.record(&two);
+    replay.rollback(/*num_turns*/ 9);
+    assert_eq!(replay.finish(), vec![before]);
 }

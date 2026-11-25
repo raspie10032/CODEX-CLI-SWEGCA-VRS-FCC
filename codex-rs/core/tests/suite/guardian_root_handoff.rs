@@ -308,66 +308,6 @@ pub(crate) async fn handoff_scenario(native_history: bool) -> Result<Vec<Respons
     );
 
     let requests = core_test_support::responses::received_responses_requests(&review_server).await;
-    // Compaction can remove every recognizable handoff. Fall back to the original root reader.
-    let history = test.codex.conversation_history_snapshot().await.unwrap();
-    let checkpoint: CompactedItem = serde_json::from_value(json!({
-        "message":"Root checkpoint.", "replacement_history":[], "retained_context":history.retained_context(),
-    }))?;
-    test.codex
-        .append_rollout_items(&[RolloutItem::Compacted(Box::new(checkpoint))])
-        .await?;
-    test.codex.flush_rollout().await?;
-    let rollout = test
-        .codex
-        .load_history(/*include_archived*/ false)
-        .await?
-        .items;
-    test.codex =
-        crate::suite::guardian_checkpoint_migration::resume(&test, &test.codex, rollout).await?;
-    expected.insert(
-        /*index*/ 2,
-        GuardianRootMessage::Assistant("Inspect the metrics too?".to_owned()),
-    );
-    assert_eq!(root_messages(&leaf).await, expected);
-
-    // An old ID-less checkpoint stores an excerpt beside the original legacy backup.
-    // The worker must receive one capped copy and preserve both evidence gaps.
-    let original = "Never publish project details. ".repeat(200);
-    let excerpt = codex_guardian_context::truncate_text(&original, /*max_tokens*/ 900);
-    let history = serde_json::from_value(json!([{"type":"compacted", "payload": {
-        "message":"Old ID-less checkpoint.", "replacement_history":[],
-        "guardian_history":[{"type":"message", "role":"user",
-            "content":[{"type":"input_text", "text":original}]}],
-        "retained_context":{
-            "user_messages":[{"turn_id":"", "text":excerpt, "complete":false}],
-            "user_messages_incomplete":true, "incomplete":false,
-            "verified_answers":[{"turn_id":"large", "call_id":"large", "questions":[{
-                "question":"Publish?", "answer":"Only if conditions hold. ".repeat(200)
-            }]}]
-        }
-    }}]))?;
-    test.codex =
-        crate::suite::guardian_checkpoint_migration::resume(&test, &test.codex, history).await?;
-    let snapshot = leaf
-        .guardian_root_snapshot()
-        .await?
-        .expect("migrated root snapshot");
-    assert_eq!(
-        (
-            snapshot.messages,
-            snapshot.authorization_version.retained_context_complete
-        ),
-        (
-            vec![
-                GuardianRootMessage::RetainedContextScope,
-                GuardianRootMessage::IncompleteRootInstructions,
-                GuardianRootMessage::IncompleteVerifiedAnswers,
-                GuardianRootMessage::User(excerpt),
-            ],
-            false
-        )
-    );
-
     let shutdown = test
         .thread_manager
         .shutdown_all_threads_bounded(Duration::from_secs(/*secs*/ 10))

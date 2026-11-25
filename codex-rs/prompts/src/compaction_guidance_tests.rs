@@ -85,7 +85,7 @@ fn bundled_catalog_loses_exactly_the_listed_sentences() {
     let models = catalog["models"]
         .as_array()
         .unwrap_or_else(|| panic!("bundled models.json should list models"));
-    let mut templates_with_compaction = 0;
+    let mut templates_with_compaction = Vec::new();
     for model in models {
         let Some(template) = model["model_messages"]["instructions_template"].as_str() else {
             continue;
@@ -99,7 +99,7 @@ fn bundled_catalog_loses_exactly_the_listed_sentences() {
             .filter(|sentence| is_compaction_sentence(sentence))
             .collect::<Vec<_>>();
         if !removed.is_empty() {
-            templates_with_compaction += 1;
+            templates_with_compaction.push(slug);
         }
         let unexpected = removed
             .iter()
@@ -130,5 +130,23 @@ fn bundled_catalog_loses_exactly_the_listed_sentences() {
             "{slug}: not idempotent"
         );
     }
-    assert!(templates_with_compaction > 0);
+    assert_eq!(
+        templates_with_compaction,
+        [
+            "gpt-6.2-sol",
+            "gpt-6.2-astra",
+            "gpt-6-astra",
+            "gpt-6.1-sol",
+            "gpt-6.1-terra",
+            "gpt-6-sol",
+            "gpt-6-luna",
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+            "gpt-daybreak-blue-latest",
+            "gpt-daybreak-red-latest",
+            "gpt-5.5",
+            "codex-auto-review",
+        ]
+    );
 }

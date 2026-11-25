@@ -118,6 +118,7 @@ async fn list_threads(mcp: &mut TestAppServer) -> Result<ThreadListResponse> {
         .send_thread_list_request(ThreadListParams {
             include_attached_threads: false,
             current_account_only: false,
+            included_thread_ids: None,
             excluded_thread_ids: None,
             attached_to_thread_id: None,
             originators: None,
@@ -3122,10 +3123,7 @@ async fn fork_option_disables_mcp_servers(
     )?;
     MockResponsesConfig::new(&server.uri())
         .with_model("gpt-5.4")
-        .with_root_config(&format!(
-            "model_catalog_json = {}\nfeatures.incremental_tools = {incremental_tools}",
-            serde_json::to_string(&catalog)?
-        ))
+        .with_root_config(&format!("features.incremental_tools = {incremental_tools}"))
         .with_extra_config(&format!(
             "[mcp_servers.fixture]\nurl = \"{}/mcp\"\nrequired = true\n",
             mcp_server.uri()
@@ -3138,6 +3136,8 @@ async fn fork_option_disables_mcp_servers(
     let parent = app
         .start_thread(ThreadStartParams {
             history_mode: Some(ThreadHistoryMode::Paginated),
+            // Only the parent catalog advertises the capability used by the prediction fork.
+            config: Some([("model_catalog_json".into(), json!(catalog))].into()),
             ..Default::default()
         })
         .await?;

@@ -640,7 +640,7 @@ fn post_tool_use_feedback_output_preserves_fallback_token_limit_override(
     };
 
     assert_eq!(
-        result.into_response(),
+        result.into_response(/*file_backed_tool_audio*/ false),
         ResponseItemEnvelope {
             item: ResponseItem::from(ResponseInputItem::FunctionCallOutput {
                 call_id: "call-1".to_string(),
@@ -652,6 +652,45 @@ fn post_tool_use_feedback_output_preserves_fallback_token_limit_override(
             }),
         }
     );
+}
+
+#[test_case::test_case(true; "file-backed audio enabled")]
+#[test_case::test_case(false; "file-backed audio disabled")]
+fn mcp_audio_producer_limit_is_transient_until_history_admission(file_backed_tool_audio: bool) {
+    let result = AnyToolResult {
+        call_id: "clip".into(),
+        payload: ToolPayload::Function {
+            arguments: "{}".into(),
+        },
+        result: Box::new(crate::tools::context::McpToolOutput {
+            result: codex_protocol::mcp::CallToolResult {
+                content: vec![serde_json::json!({
+                    "type": "audio",
+                    "mimeType": "audio/wav",
+                    "data": "UklGRiYAAABXQVZFZm10IBAAAAABAAEAwF0AAIC7AAACABAAZGF0YQIAAAAAAA==",
+                })],
+                structured_content: None,
+                is_error: None,
+                meta: None,
+            },
+            tool_input: serde_json::json!({}),
+            result_metadata_capture_allowed: false,
+            wall_time: Duration::ZERO,
+            original_image_detail_supported: false,
+            truncation_policy: TruncationPolicy::Tokens(100),
+        }),
+        post_tool_use_payload: None,
+    };
+
+    let metadata = result
+        .into_response(file_backed_tool_audio)
+        .metadata
+        .unwrap();
+    assert_eq!(metadata.producer_bounded_tool_audio, file_backed_tool_audio);
+    assert!(!metadata.tool_audio_budget_applied);
+    let serialized = serde_json::to_value(&metadata).unwrap();
+    assert!(serialized.get("producer_bounded_tool_audio").is_none());
+    assert!(serialized.get("tool_audio_budget_applied").is_none());
 }
 
 #[test]
@@ -674,7 +713,7 @@ fn post_tool_use_feedback_output_keeps_code_mode_result_typed() {
     };
 
     assert_eq!(
-        result.into_response(),
+        result.into_response(/*file_backed_tool_audio*/ false),
         ResponseItemEnvelope::new(
             ResponseInputItem::FunctionCallOutput {
                 call_id: "call-1".to_string(),
@@ -860,6 +899,48 @@ async fn dispatch_uses_canonical_tool_names_for_lifecycle_contributors() -> anyh
     assert_eq!(expected, actual);
 
     Ok(())
+}
+
+#[tokio::test]
+async fn dispatch_propagates_vrs_failure_from_tool_start_notification() {
+    let (mut session, turn) = crate::session::tests::make_session_and_context().await;
+    let records = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut builder = codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+    builder.tool_lifecycle_contributor(Arc::new(ToolLifecycleRecorder {
+        records: Arc::clone(&records),
+    }));
+    session.services.extensions = Arc::new(builder.build());
+    crate::session::tests::inject_vrs_recording_error(&session, "injected assembly failure").await;
+
+    let tool_name = codex_tools::ToolName::plain("assembly_failure_tool");
+    let handler = Arc::new(LifecycleTestHandler {
+        tool_name: tool_name.clone(),
+        result: LifecycleTestResult::Ok { success: true },
+    }) as Arc<dyn CoreToolRuntime>;
+    let registry = ToolRegistry::from_tools([handler]);
+    let result = registry
+        .dispatch_any_with_state(
+            test_invocation(
+                Arc::new(session),
+                Arc::new(turn),
+                "assembly-failure-call",
+                tool_name,
+            ),
+            /*call_state*/ None,
+        )
+        .await;
+
+    let error = match result {
+        Ok(_) => panic!("VRS assembly failure must stop tool dispatch"),
+        Err(error) => error,
+    };
+    assert!(error.to_string().contains("injected assembly failure"));
+    assert!(
+        records
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_empty()
+    );
 }
 
 fn test_invocation(

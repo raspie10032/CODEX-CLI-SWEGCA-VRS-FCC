@@ -57,7 +57,13 @@ async fn finalization_exports_loss_totals_only_for_accepted_input(window: i64) {
         .collect();
     let mut input = vec![TurnInput::UserInput {
         metadata: Default::default(),
-        content: context.clone().into_user_inputs().unwrap(),
+        content: context
+            .clone()
+            .into_user_inputs()
+            .unwrap()
+            .into_iter()
+            .map(ResolvedUserInput::from_client)
+            .collect(),
         client_id: None,
     }];
     session
@@ -152,19 +158,28 @@ fn required_context(text: String) -> ComposedContext {
         kind: PlannedActionKind::Command { json: text },
         reason: None,
     };
-    let context = super::super::prompt::collect_guardian_context(
-        &Vec::<ResponseItem>::new(),
-        &ContextProfile::synchronous(),
-        /*root_conversation_candidates*/ None,
-        &[],
-        Some(&action),
-        /*permissions*/ None,
-        /*node_repl*/ None,
-    )
-    .expect("collect required context");
+    let profile = ContextProfile::synchronous();
+    let context =
+        super::super::prompt::collect_guardian_context(codex_guardian_context::SectionInput {
+            target: profile.target,
+            history: &[],
+            transcript: &profile.transcript,
+            is_selected_exec_output: None,
+            root_conversation: &[],
+            root_conversation_candidates: None,
+            trusted_user_answers: &[],
+            planned_action: Some(&action),
+            permissions: None,
+            previous_reviews: None,
+            trusted_tool: None,
+            trusted_skill_paths: &[],
+            images: None,
+            node_repl: None,
+        })
+        .expect("collect required context");
     codex_guardian_context::prepare_context(
         std::borrow::Cow::Owned(context),
-        &ContextProfile::synchronous(),
+        &profile,
         /*entry_number_offset*/ 0,
         ContextPresentation::SyncFull {
             session_id: "test-parent",
@@ -179,7 +194,13 @@ fn required_context(text: String) -> ComposedContext {
 async fn cancelled_startup_does_not_record_unselected_review_evidence() {
     let (session, turn, events) = crate::session::tests::make_session_and_context_with_rx().await;
     let context = required_context("unselected review evidence ".repeat(/*n*/ 10_000));
-    let content = context.clone().into_user_inputs().unwrap();
+    let content = context
+        .clone()
+        .into_user_inputs()
+        .unwrap()
+        .into_iter()
+        .map(ResolvedUserInput::from_client)
+        .collect();
     session
         .services
         .thread_extension_data
@@ -263,7 +284,13 @@ async fn finalization_overflow_marks_the_reviewer_exhausted() {
     let context = required_context("required action".to_owned());
     let mut input = vec![TurnInput::UserInput {
         metadata: Default::default(),
-        content: context.clone().into_user_inputs().unwrap(),
+        content: context
+            .clone()
+            .into_user_inputs()
+            .unwrap()
+            .into_iter()
+            .map(ResolvedUserInput::from_client)
+            .collect(),
         client_id: None,
     }];
     session

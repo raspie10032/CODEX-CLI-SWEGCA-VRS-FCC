@@ -5,7 +5,6 @@
 #[path = "review_session_setup.rs"]
 mod setup;
 pub use setup::PreparedGuardianContext;
-pub(super) use setup::prepare_review;
 pub use setup::prepare_review_prewarm;
 pub(crate) use setup::run_guardian_review_session;
 
@@ -267,6 +266,16 @@ async fn run_review_on_session(
         deadline,
         params.external_cancel.as_ref(),
         Box::pin(async {
+            review_session
+                .session
+                .update_settings(crate::session::session::SessionSettingsUpdate {
+                    step_settings: crate::session::step_settings::StepSettingsUpdate {
+                        request_country: Some(params.parent_context.request_country.clone()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+                .await?;
             if prior_review_count > 0 {
                 ensure_guardian_followup_reminder(review_session).await?;
             }
@@ -702,7 +711,10 @@ impl codex_guardian_reviewer::ReviewerRuntime for GuardianReviewSession {
     async fn submit_turn(&self, request: TurnInputRequest) -> anyhow::Result<TurnInputSubmission> {
         Ok(self
             .io
-            .submit_turn_input(request, TurnInputMode::StartIfIdle)
+            .submit_turn_input(
+                crate::codex_thread::resolve_client_turn_input(request).await?,
+                TurnInputMode::StartIfIdle,
+            )
             .await?)
     }
 

@@ -32,7 +32,6 @@ use super::coverage::scores_tool;
 use super::extension::GuardianV2Extension;
 use super::metrics::record_classification;
 use super::sampler::LunaSampler;
-use super::score::GuardianV2ScoreProgress;
 use codex_protocol::openai_models::GuardianUnscoredAction as UnscoredAction;
 
 impl GuardianV2Extension {
@@ -60,13 +59,16 @@ impl GuardianV2Extension {
         let Some(guardian_config) = input.thread_store.get::<GuardianV2Config>() else {
             return;
         };
-        let Some(score_progress) = input.thread_store.get::<GuardianV2ScoreProgress>() else {
+        let Some(conversation) =
+            ConversationBackend::for_turn(input.thread_store, input.turn_store)
+        else {
             return;
         };
+        let score_progress = Arc::clone(&conversation.progress);
         let is_js_execution = input.mcp_tool.is_some_and(|tool| {
             let info = tool.tool_info();
-            is_node_repl_backed_connector(&info.server_name, info.connector_id.as_deref())
-                && if info.server_name == "codex_apps" {
+            is_node_repl_backed_connector(info.server_name(), info.connector_id.as_deref())
+                && if info.server_name() == "codex_apps" {
                     info.tool
                         .meta
                         .as_ref()
@@ -104,7 +106,7 @@ impl GuardianV2Extension {
             .mcp_tool
             .map(|tool| {
                 let info = tool.tool_info();
-                GuardianScope::for_mcp_connector(&info.server_name, info.connector_id.as_deref())
+                GuardianScope::for_mcp_connector(info.server_name(), info.connector_id.as_deref())
             })
             .or_else(|| {
                 if guardian_config.review_multi_agent_calls {
@@ -134,8 +136,10 @@ impl GuardianV2Extension {
         }
         if !scores_tool(&policy, input.tool_name, input.payload, scope) {
             match policy.unscored_action {
-                UnscoredAction::Ignore => {}
-                UnscoredAction::AgeScore => {
+                // An older policy cannot hide actions from the current policy's cache.
+                UnscoredAction::Ignore
+                    if conversation.is_current_for_thread(input.thread_store) => {}
+                UnscoredAction::Ignore | UnscoredAction::AgeScore => {
                     let index = score_progress.observe(&input);
                     // Unscored permission widening must not reuse an earlier approval score.
                     if input.tool_name.is_default_namespace()
@@ -161,20 +165,13 @@ impl GuardianV2Extension {
         let context_mode = GuardianContextMode::from_history(input.conversation_history.as_ref());
         let analytics = input.session_store.get::<AnalyticsEventsClient>();
         let sampled_at = SystemTime::now();
-        let Some(conversation) = input.thread_store.get::<ConversationBackend>() else {
-            let index = score_progress.observe(&input);
-            score_progress.invalidate(index);
-            score_progress.fail_closed(sampled_at);
-            return;
-        };
         let (tool_call_index, reservation) =
             conversation.reserve(|| score_progress.observe(&input));
         tracing::Span::current().record("tool_call_index", tool_call_index);
         let reservation = match reservation {
             Ok(reservation) => reservation,
             Err(error) => {
-                score_progress.invalidate(tool_call_index);
-                score_progress.fail_closed(sampled_at);
+                score_progress.fail_closed(sampled_at, tool_call_index);
                 record_classification(
                     metrics.as_deref(),
                     context_mode,
@@ -263,7 +260,7 @@ impl GuardianV2Extension {
         let guardian_config = match guardian_config.with_model_defaults(model_defaults) {
             Ok(config) => config,
             Err(error) => {
-                score_progress.fail_closed(sampled_at);
+                score_progress.fail_closed(sampled_at, tool_call_index);
                 record_classification(
                     metrics.as_deref(),
                     context_mode,
@@ -300,7 +297,7 @@ impl GuardianV2Extension {
             Ok(text) => text,
             Err(ActionRenderError::TooLarge { .. }) => {
                 score_progress.mark_oversized(input.call_id, tool_call_index);
-                score_progress.fail_closed(sampled_at);
+                score_progress.fail_closed(sampled_at, tool_call_index);
                 record_classification(
                     metrics.as_deref(),
                     context_mode,
@@ -311,8 +308,7 @@ impl GuardianV2Extension {
                 return;
             }
             Err(error) => {
-                score_progress.invalidate(tool_call_index);
-                score_progress.fail_closed(sampled_at);
+                score_progress.fail_closed(sampled_at, tool_call_index);
                 record_classification(
                     metrics.as_deref(),
                     context_mode,
@@ -330,10 +326,13 @@ impl GuardianV2Extension {
         };
         // Snapshot before spawning so a delayed sample cannot see later reviews.
         let sync_reviews = guardian_evidence.snapshot();
-        let codex_core::context::GuardianUserInputSnapshot {
-            fragments: trusted_user_inputs,
-            authorization_version,
-        } = guardian_evidence.user_input_snapshot(input.conversation_history.as_ref());
+        let authorization_version =
+            guardian_evidence.authorization_version(input.conversation_history.as_ref());
+        let trusted_user_inputs = input
+            .conversation_history
+            .retained_context()
+            .map(codex_guardian_context::collect_verified_answer_candidates)
+            .unwrap_or_default();
         let history = Arc::clone(&input.conversation_history);
         let local_trusted_skill_paths = guardian_evidence.trusted_skill_paths(input.turn_id);
         let node_repl_images = if guardian_config.transcript.include_images {
@@ -351,7 +350,7 @@ impl GuardianV2Extension {
             match thread.guardian_root_snapshot().await {
                 Ok(snapshot) => snapshot,
                 Err(error) => {
-                    score_progress.fail_closed(sampled_at);
+                    score_progress.fail_closed(sampled_at, tool_call_index);
                     record_classification(
                         metrics.as_deref(),
                         context_mode,
@@ -372,7 +371,7 @@ impl GuardianV2Extension {
         };
 
         let Some(permissions) = input.permissions.await else {
-            score_progress.fail_closed(sampled_at);
+            score_progress.fail_closed(sampled_at, tool_call_index);
             record_classification(
                 metrics.as_deref(),
                 context_mode,
@@ -385,7 +384,7 @@ impl GuardianV2Extension {
         let score_authorization = match ScoreAuthorization::current(&thread, &permissions).await {
             Ok(authorization) => authorization,
             Err(error) => {
-                score_progress.fail_closed(sampled_at);
+                score_progress.fail_closed(sampled_at, tool_call_index);
                 record_classification(
                     metrics.as_deref(),
                     context_mode,

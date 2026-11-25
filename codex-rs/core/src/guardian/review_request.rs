@@ -348,14 +348,23 @@ impl ReviewHost for super::super::runtime::ReviewRuntime {
     }
 
     async fn cached_approval_is_current(&self, prepared: &PreparedApproval) -> bool {
-        let root = self
+        let root = match self
             .session
             .services
             .agent_control
             .get_guardian_package(self.session.thread_id)
             .await
-            .ok()
-            .flatten();
+        {
+            Ok(root) => root,
+            Err(error) => {
+                tracing::warn!(
+                    thread_id = %self.session.thread_id,
+                    error = %error,
+                    "cached Guardian approval rejected because root evidence could not be assembled"
+                );
+                return false;
+            }
+        };
         !self.history_reset.is_cancelled()
             && self.validate_action().is_ok()
             && prepared.root_history

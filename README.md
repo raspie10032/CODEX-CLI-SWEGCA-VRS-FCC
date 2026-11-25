@@ -11,12 +11,12 @@ Every place that builds model input calls that same assembly. That includes the 
 
 ## Where things stand
 
-- **Base:** `rust-v0.169.0-alpha.11.1` (`226fa88`), the Codex version bundled with ChatGPT desktop app 26.1111. The first VRS build was on `rust-v0.162.0-alpha.2` (`74e804dee`, tagged `vrs-base`) and was merged forward through `rust-v0.162.0-alpha.17.2` (v1.1.0 to v1.1.2), `rust-v0.164.0-alpha.11.1` (v1.1.3) and `rust-v0.167.0-alpha.3.2` (v1.1.4 and v1.1.5).
+- **Base:** `rust-v0.171.0-alpha.13.2` (`ad9d659`), the Codex version bundled with ChatGPT desktop app 26.1120. The first VRS build was on `rust-v0.162.0-alpha.2` (`74e804dee`, tagged `vrs-base`) and was merged forward through `rust-v0.162.0-alpha.17.2` (v1.1.0 to v1.1.2), `rust-v0.164.0-alpha.11.1` (v1.1.3), `rust-v0.167.0-alpha.3.2` (v1.1.4 and v1.1.5) and `rust-v0.169.0-alpha.11.1` (v1.1.6).
 - **Incremental tools:** upstream's experimental `incremental_tools` feature, and the Code Mode `incremental_exec` switch added in 0.169, record instructions and tool definitions into the history. This fork rebuilds that prefix on every request instead, so both are accepted but ignored.
 - **Branch:** `main`, with libvrs round 7 (`vrs-lib7/`). The work was done on a branch named `vrs-int`, which the design records still mention.
-- **Release:** [`fcc-v1.1.6`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.6) has a prebuilt, stripped `codex` and `codex-code-mode-host` for x86_64 Linux, on the 0.169 base.
+- **Release:** [`fcc-v1.1.7`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.7) has a prebuilt, stripped `codex` and `codex-code-mode-host` for x86_64 Linux, on the 0.171 base.
 - **macOS preview:** [`fcc-v1.1.2-macos.1`](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.2-macos.1) is a prerelease for Apple Silicon (macOS 14.4 or newer). See [macOS (preview)](#macos-preview) below.
-- **In daily use:** this fork has been the Codex binary of the maintainer's ChatGPT desktop app on Linux since 2026-10-13. It ran on the alpha.2 base with app 26.1002 until 2026-10-15, on alpha.17.2 with app 26.1007 until 2026-10-27, on 0.164.0-alpha.11.1 with app 26.1021 until 2026-11-11, on 0.167.0-alpha.3.2 with app 26.1103 until 2026-11-18, and since then on this base with app 26.1111.
+- **In daily use:** this fork has been the Codex binary of the maintainer's ChatGPT desktop app on Linux since 2026-10-13. It ran on the alpha.2 base with app 26.1002 until 2026-10-15, on alpha.17.2 with app 26.1007 until 2026-10-27, on 0.164.0-alpha.11.1 with app 26.1021 until 2026-11-11, on 0.167.0-alpha.3.2 with app 26.1103 until 2026-11-18, on 0.169.0-alpha.11.1 with app 26.1111 until 2026-11-25, and since then on this base with app 26.1120.
 - **Gates:** the application smoke gates (S1-S5) pass, with no failed receipts and no compaction events.
 - **CI:** [`fcc-ci`](.github/workflows/fcc-ci.yml) builds and tests on x86_64 Linux with the prebuilt libvrs, then runs one mock-provider turn that must be assembled by VRS. Upstream's Bazel and multi-platform workflows are turned off in this repository: they need OpenAI's own runners and a toolchain the prebuilt library is not built for.
 - **Real use (alpha.2 base):** this branch was measured across 5 threads with 2,577 model requests after it replaced the app's Codex. The long-run figures below are being measured again on the new base.
@@ -29,7 +29,7 @@ Every place that builds model input calls that same assembly. That includes the 
 
 Building from this branch is Linux only (on other systems the store refuses to open). For a Mac, see [macOS (preview)](#macos-preview).
 
-To skip building, download the binaries from the [`fcc-v1.1.6` release](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.6). They were built on Ubuntu 24.04 (glibc 2.39) and run there and on newer distributions.
+To skip building, download the binaries from the [`fcc-v1.1.7` release](https://github.com/raspie10032/CODEX-CLI-SWEGCA-VRS-FCC/releases/tag/fcc-v1.1.7). They were built on Ubuntu 24.04 (glibc 2.39) and run there and on newer distributions.
 
 The library is already here: [`vrs-lib7/prebuilt/x86_64-linux-gnu/libvrs.a`](vrs-lib7/prebuilt/x86_64-linux-gnu/) is the exact libvrs round 7 used by the deployed build, with the SWEGCA C++ core compiled in. The Rust build links it by default, so this is all you need:
 

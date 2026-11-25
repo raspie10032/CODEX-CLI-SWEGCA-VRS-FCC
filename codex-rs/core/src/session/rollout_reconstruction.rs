@@ -2,6 +2,7 @@ use super::*;
 use crate::context::world_state::WorldStateSnapshot;
 use crate::context_manager::is_user_turn_boundary;
 use codex_history::CompactedItem;
+use codex_history::ResponseItemEnvelope;
 use codex_history::TurnAttribution;
 use codex_protocol::ContextWindowId;
 use codex_protocol::protocol::SessionContextWindow;
@@ -14,6 +15,7 @@ use std::collections::BTreeSet;
 #[derive(Debug, PartialEq)]
 pub(crate) struct RolloutReconstruction {
     pub(super) rejected_audio_file_ids: BTreeSet<String>,
+    pub(super) always_retained: Vec<ResponseItemEnvelope>,
     pub(crate) retained_context: codex_history::RetainedContext,
     pub(super) guardian_history: Option<codex_history::GuardianHistoryCheckpoint>,
     pub(super) last_started_turn_id: Option<String>,
@@ -199,7 +201,9 @@ impl Session {
                 turn_context.root_capabilities_restricted,
                 &turn_context.config.features,
                 turn_context.config.guardian_context_budgeting(),
-                std::sync::Arc::clone(&self.item_id_generator),
+                // Reconstructing retained evidence may mint temporary revisions before restoring
+                // the durable originals. Replay must not consume the live thread's item sequence.
+                Self::new_item_id_generator(),
             ),
             turn_context.model_info().truncation_policy.into(),
         )
@@ -218,6 +222,8 @@ impl ContextManager {
         // so retaining a fact after rollback is conservative and cannot suppress a different
         // future upload.
         let mut rejected_audio_file_ids = BTreeSet::new();
+        // Ret keeps the original envelopes; nothing here becomes model input.
+        let mut retention = crate::context_manager::RetentionReplay::default();
         for item in rollout_items {
             match item {
                 RolloutItem::Compacted(compacted) => {
@@ -232,9 +238,19 @@ impl ContextManager {
                             .extend(error.rejected_audio_file_ids.iter().cloned());
                     }
                 }
+                RolloutItem::EventMsg(EventMsg::ThreadRolledBack(rollback)) => {
+                    retention.rollback(rollback.num_turns);
+                }
+                RolloutItem::ResponseItem(envelope) => {
+                    retention.record(envelope);
+                }
+                RolloutItem::InterAgentCommunication(communication) => {
+                    retention.record_item(&communication.to_model_input_item());
+                }
                 _ => {}
             }
         }
+        let always_retained = retention.finish();
         // Select the compaction and suffix that can affect reconstruction.
         let has_legacy_compaction_without_window_number =
             rollout_items.iter().any(|item| {
@@ -574,6 +590,7 @@ impl ContextManager {
             guardian_history: history.guardian_history_checkpoint(),
             last_started_turn_id,
             rejected_audio_file_ids,
+            always_retained,
             previous_turn_settings,
             reference_context_item,
             turn_attribution,
@@ -614,4 +631,61 @@ fn reconstructed_window_from_session_context_window(
         previous_id: None,
         id: Some(id),
     })
+}
+
+#[cfg(test)]
+mod retained_tests {
+    use super::*;
+    use codex_history::CodexHarnessMetadata;
+    use codex_protocol::ResponseItemId;
+    use codex_protocol::models::ContentItem;
+    use codex_protocol::models::ResponseItem;
+
+    fn retained_message(id: &str, text: &str, limit: usize) -> ResponseItemEnvelope {
+        ResponseItemEnvelope {
+            item: ResponseItem::Message {
+                id: Some(ResponseItemId::with_suffix("msg", id)),
+                role: "user".to_string(),
+                content: vec![ContentItem::InputText {
+                    text: text.to_string(),
+                }],
+                status: None,
+                encrypted_content: None,
+                phase: None,
+                internal_chat_message_metadata_passthrough: None,
+            },
+            metadata: Some(CodexHarnessMetadata {
+                retain_across_windows: Some(true),
+                history_truncation_token_limit: Some(limit),
+                ..Default::default()
+            }),
+        }
+    }
+
+    #[test]
+    fn rollout_reconstruction_restores_the_live_always_retained_value() {
+        let mut persisted = [
+            retained_message("resume-a", "first retained", 111),
+            retained_message("resume-b", "second retained", 222),
+        ];
+        let mut live = ContextManager::default();
+        live.record_annotated_items(&mut persisted, TruncationPolicy::Tokens(10_000));
+        let rollout_items = persisted
+            .iter()
+            .cloned()
+            .map(RolloutItem::ResponseItem)
+            .collect::<Vec<_>>();
+
+        let reconstructed = ContextManager::reconstruct_rollout(
+            &rollout_items,
+            ThreadHistoryMode::Legacy,
+            ContextManager::default(),
+            TruncationPolicy::Tokens(10_000),
+        );
+
+        assert_eq!(
+            reconstructed.always_retained,
+            live.always_retained().as_ref().clone()
+        );
+    }
 }

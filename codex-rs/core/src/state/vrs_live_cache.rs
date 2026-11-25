@@ -383,4 +383,32 @@ mod tests {
         assert!(items(&history).is_empty());
         assert!(cache.records.is_empty());
     }
+
+    #[test]
+    fn releasing_bounded_vrs_history_keeps_always_retained_originals() {
+        let mut cache = VrsLiveCache::default();
+        let mut history = ContextManager::default();
+        let mut retained = ResponseItemEnvelope {
+            item: message("retained outside the bounded assembly"),
+            metadata: Some(CodexHarnessMetadata {
+                retain_across_windows: Some(true),
+                history_truncation_token_limit: Some(321),
+                ..Default::default()
+            }),
+        };
+        cache
+            .record(
+                &mut history,
+                std::slice::from_mut(&mut retained),
+                TruncationPolicy::Tokens(10_000),
+            )
+            .unwrap()
+            .finish(true);
+        let expected = retained.clone();
+
+        cache.release(&mut history);
+
+        assert!(items(&history).is_empty());
+        assert_eq!(history.always_retained().as_ref(), &[expected]);
+    }
 }

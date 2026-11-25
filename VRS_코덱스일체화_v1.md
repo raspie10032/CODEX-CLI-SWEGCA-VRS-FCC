@@ -2362,3 +2362,28 @@ L1 끝:
 - 실패는 모두 오류로 드러낸다(D5). 새 잠금·대기·장벽 없음(위 실시간 내구 장벽은 upstream 의 음성 기록 동작이고 포크가 더하는 것이 아니다).
 
 L2 끝: 이음매마다 0.171 자리를 적었고 새 자리(Ret·Prov·A4′·media·rollout 장벽)의 처리를 정했다. libvrs·FFI·스토어 배치는 그대로다. 직렬 구조 없음: Ret 은 항목 id 기준 합집합이고 늘어놓는 차례만 원문 위치를 쓴다. G_117 진척: L3 로 넘어간다.
+
+#### 16.1 덧붙임 — 되돌린 턴과 Ret (11-25 14시)
+
+0.171 은 새 롤백 표지를 쓰지 않는다. `drop_last_n_user_turns` 는 옛 롤아웃의 `ThreadRolledBack` 을 다시 읽을 때만 불린다. 그래서 라이브 Ret 은 합집합만이고, 저장된 S 를 읽을 때만 되돌린 턴을 뺀다.
+- 정의. S 의 줄을 위치 p 로 부른다. 턴 경계 줄의 무게는 +1, 롤백 줄(n)의 작용은 h ↦ max(h − n, 0). H(p) = 위치 ≤ p 의 작용을 0 에 합성한 값(남은 턴 수). Ret(S) = {item(p) : retain(p), ∀ q > p, H(q) ≥ H(p)}.
+- 증명. 작용은 h ↦ max(h + a, b) 꼴이고 이 꼴은 합성에 닫히며 결합적이다. 따라서 H 는 구간을 어떻게 나눠 합쳐도 같은 값이고(병렬 접두 합성), 도착 차례가 아니라 줄의 위치만 쓴다. 롤백이 없으면 H 는 감소하지 않으므로 Ret(S) = {item(p) : retain(p)} 로 앞의 정의와 같다. 롤백 줄이 남은 턴을 k 로 낮추면 H(p) > k 인 줄, 곧 k+1 번째 남은 턴 이후의 줄이 빠진다: upstream 이 잘라 내는 구간과 같다. 첫 턴 앞의 줄은 H = 0 이라 빠지지 않는다. ∎
+- 구현(`context_manager/always_retained.rs RetentionReplay`)은 보존 표지가 있는 줄만 (H, 항목)으로 들고 나머지 줄은 읽고 버린다. 메모리는 |Ret| 에 비례한다.
+
+### 16.3 L3·L4 결과 (11-25 13–16시)
+
+- **L3 병합.** 충돌 65(DU 20 삭제 유지 + UU 45)와 새 압축 파일 2개 삭제. 코덱스 다섯 묶음으로 나눠 풀었고 A·B 는 한 턴 창 초과(알려진 한계)로 끊겨 A2·B2·B3 로 이었다. 해결 기록 `l3check/port_171/REPORT.md`, 입구·Ret 감사 `l3check/port_171/REPORT_inputs.md`.
+- **L3 결함(모두 막음, 고침).**
+  - V117-01: `tools/registry.rs` 조립 실패가 버려지던 자리를 `.await??` 로.
+  - 병합이 되살린 0.169 코드: `guardian-v2 sampler.rs` 의 이미지 세부 지우기(0.171 은 `request.rs` 로 옮김). 0.169→0.171 에서 사라진 줄의 되살아남과 새 줄의 빠짐을 파일마다 대조해(`stale_check_117.py`) 본체에서 이 한 곳임을 확인했다.
+  - Ret 첫 구현이 재개·경로 읽기에서 롤아웃 항목 전체를 복제하고(O(N) 메모리) 라이브 기록마다 id 집합을 다시 지음 → 위 `RetentionReplay` 와 지속 id 집합.
+  - 재개·V9-01 포크가 Ret·Prov 를 버림, 저장 재생의 술어가 라이브와 다름(F3b).
+  - `guardian/review_request.rs` 가 조립 실패를 `.ok()` 로 버림 → 오류로 드러냄(F3a).
+- **감사.** U1 압축 실행 참조 0, U2 빠짐 0, U3 조립 실패를 버리는 자리 0, D3″ 세 자리 거짓, U6 새 잠금·대기·순서 보장 0.
+  - V117-02 (층 L2 로 정함): 포크·재개 뒤 첫 조립 설치가 Ret 원본을 메타 후보에서 빼 보존 메타를 잃음. 16.2 의 자리 표가 「라이브 목록을 통째로 바꾸는 자리」(`replace_assembled_with_suffix`)를 빠뜨린 것이다. 같은 id 의 `always_retained` 원본을 후보에 넣었다. 이 함수를 지나는 길은 재개, 저장본 읽기, 라이브 설치, D4″ 놓아줌, 조립 사본(`with_assembled_items`) 다섯이고 모두 이 고침이 덮는다. 라이브 봉투를 메타 없이 다시 짓는 본체 자리 가운데 Ret 를 잃는 곳은 더 없다.
+- **시험.** prompts 41, models-manager 60, vrs 70, rollout 181, history 3 통과. core: `session::vrs_input` 9, `state::vrs_live_cache` 9, `agent::history` 3 통과, `context_manager::` 112 통과·7 실패(모두 §15.1 의 알려진 guardian Legacy 기대 시험, 새 실패 0). 포크 통합 시험 `live_and_stored_parent_forks_…` 은 하위 에이전트의 라이브 캐시(첫 턴에 채워진다)를 첫 턴과 경쟁하며 읽어 결과가 흔들렸다. 자식 자신의 조립(`vrs_history`)을 읽게 고쳤고 기대값은 그대로다.
+- 병합이 무관하게 지운 upstream 시험 `scenarios_statusline_authoring_tests` 를 되돌렸다.
+- **사고(늦춤).** 컨테이너 LTO(24 GB)와 core 릴리스 시험 컴파일(11 GB)을 동시에 돌려 홈이 14:48 에 메모리를 다 썼다. 다음 이식부터: 릴리스 빌드는 컨테이너에서 한 번, 시험은 dev 프로필로 먼저, 10 GB 넘는 rustc 는 하나씩.
+- **1.1.6 과의 대조(같은 시험을 같은 설정으로 컴파일).** core lib 의 context_manager·vrs_input·vrs_live_cache·agent·rollout_reconstruction·registry 시험: 1.1.7 에서만 실패하는 것 0(함께 실패 19 = 압축·라이브 이력·원격 저장 기대 시험, 1.1.6 에서만 실패 6). 병합이 시험 도우미 `mcp_attribution_in_constructed_request` 를 다르게 바꿔 둘이 실패하던 것은 upstream 본문으로 되돌렸다. 포크 시험은 20회 모두 통과.
+- **scenarios(시험마다 한 프로세스, 1.1.6 과 대조).** 1.1.6 은 통과하고 1.1.7 은 실패하는 것 2(`incremental_tools_append_…::mantle_default`·`runtime_default`): 0.171 이 Bedrock 기본값을 켰고 D3″ 가 끄므로 기대가 어긋난다(의도한 차이). 이 묶음은 두 판 모두 대부분 실패하고 libvrs `Ctx::assemble` 널 참조로 죽는 시험이 있다(`vrs_lib.cpp` `TT[TV[i0-1]]` 가 비어 있음). libvrs 는 1.1.6 과 같고, 실사용은 한 주 조립 109,375건에 코덱스 코어 덤프 0건이다. G_117 무관, 목록에만 둔다(원인 미확인).
+- **L4.** 컨테이너 바이너리로 S1–S5 6/6(실패 영수증 0, 압축 0), release1 4/4, 컨테이너 안 스모크 PASS, 경로·개인 문자열 0, U8 격리 시험(열기 resume·items/list 0, 스크롤·단추 같음, 보내기 resume → turn/start, 앱 로그 오류 0).

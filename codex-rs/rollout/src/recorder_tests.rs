@@ -725,9 +725,10 @@ async fn recorder_materializes_on_flush_with_pending_items() -> std::io::Result<
 
     let rollout_path = recorder.rollout_path().to_path_buf();
     assert!(
-        !rollout_path.exists(),
-        "rollout file should not exist before the first recordable item"
+        rollout_path.exists(),
+        "VRS needs the empty rollout file identity before the first recordable item"
     );
+    assert_eq!(fs::metadata(&rollout_path)?.len(), 0);
 
     recorder
         .record_canonical_items(&[RolloutItem::EventMsg(EventMsg::AgentMessage(
@@ -1010,8 +1011,10 @@ async fn persist_reports_filesystem_error_and_retries_buffered_items() -> std::i
             },
         ))])
         .await?;
-    let sessions_blocker_path = home.path().join("sessions");
-    File::create(&sessions_blocker_path)?;
+    let sessions_path = home.path().join("sessions");
+    let moved_sessions_path = home.path().join("sessions-moved");
+    fs::rename(&sessions_path, &moved_sessions_path)?;
+    File::create(&sessions_path)?;
 
     let err = recorder
         .persist()
@@ -1023,7 +1026,8 @@ async fn persist_reports_filesystem_error_and_retries_buffered_items() -> std::i
         "failed persist should keep the rollout deferred"
     );
 
-    fs::remove_file(sessions_blocker_path)?;
+    fs::remove_file(&sessions_path)?;
+    fs::rename(moved_sessions_path, sessions_path)?;
     recorder.flush().await?;
     let text = std::fs::read_to_string(&rollout_path)?;
     assert!(
@@ -1035,6 +1039,59 @@ async fn persist_reports_filesystem_error_and_retries_buffered_items() -> std::i
     Ok(())
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn first_realtime_seal_requires_directory_sync_after_ordinary_writes() -> std::io::Result<()>
+{
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = TempDir::new()?;
+    let config = test_config(home.path());
+    let recorder = RolloutRecorder::new(
+        &config,
+        RolloutRecorderParams::new(
+            ThreadId::new(),
+            /*forked_from_id*/ None,
+            /*parent_thread_id*/ None,
+            SessionSource::Exec,
+            /*thread_source*/ None,
+            "test_originator".to_string(),
+            BaseInstructions::default(),
+            Vec::new(),
+        ),
+    )
+    .await?;
+    let parent = recorder.rollout_path().parent().expect("rollout directory");
+    fs::create_dir_all(parent)?;
+    // Creating and appending a file only needs write/search access to the directory.
+    let permissions = fs::metadata(parent)?.permissions();
+    fs::set_permissions(parent, fs::Permissions::from_mode(0o300))?;
+    recorder
+        .record_canonical_items(&[agent_message_item("typed")])
+        .await?;
+    let ordinary_flush = recorder.flush().await;
+    fs::set_permissions(parent, permissions)?;
+    ordinary_flush?;
+
+    let record = RolloutItem::RealtimeItem(codex_protocol::realtime::RealtimeItem {
+        id: "opening".to_string(),
+        realtime_session_id: "voice".to_string(),
+        observed_at_ms: Some(1),
+        content: codex_protocol::realtime::RealtimeItemContent::RealtimeSessionStarted,
+    });
+    recorder.record_canonical_items(&[record]).await?;
+    // The open file still accepts writes. Only the directory barrier can see this failure.
+    let moved = home.path().join("moved");
+    fs::rename(parent, &moved)?;
+    assert_eq!(
+        recorder.flush().await.unwrap_err().kind(),
+        std::io::ErrorKind::NotFound
+    );
+    fs::rename(moved, parent)?;
+    recorder.flush().await?;
+    recorder.shutdown().await
+}
+
 #[tokio::test]
 async fn writer_state_retries_write_error_before_reporting_flush_success() -> std::io::Result<()> {
     let home = TempDir::new().expect("temp dir");
@@ -1044,6 +1101,9 @@ async fn writer_state_retries_write_error_before_reporting_flush_success() -> st
     let mut state = RolloutWriterState {
         writer: Some(JsonlWriter::new(read_only_file, rollout_path.clone())),
         deferred_creation: false,
+        realtime_sync_pending: false,
+        #[cfg(unix)]
+        directories_to_sync: Vec::new(),
         pending_items: Vec::new(),
         meta: None,
         unpersisted_session_meta: None,
@@ -1062,7 +1122,7 @@ async fn writer_state_retries_write_error_before_reporting_flush_success() -> st
             questions: None,
         })),
     )?;
-    state.add_items(vec![line]);
+    state.add_items(vec![line], false);
 
     state.flush().await?;
     let text_after_retry = std::fs::read_to_string(&rollout_path)?;
